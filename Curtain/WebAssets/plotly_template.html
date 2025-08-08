@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curtain Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--background-color, #ffffff);
+            color: var(--text-color, #000000);
+        }
+        
+        #plot {
+            width: 100%;
+            height: 100vh;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-size: 18px;
+            color: var(--text-color, #666);
+        }
+        
+        .error {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-size: 16px;
+            color: #d32f2f;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            body {
+                --background-color: #1c1c1e;
+                --text-color: #ffffff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading">Loading visualization...</div>
+    <div id="plot" style="display: none;"></div>
+    <div id="error" class="error" style="display: none;">
+        <div>
+            <h3>Unable to load visualization</h3>
+            <p>Please check your data and try again.</p>
+        </div>
+    </div>
+
+    <script src="plotly.min.js"></script>
+    <script>
+        // Global configuration for Plotly
+        Plotly.setPlotConfig({
+            displayModeBar: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
+        });
+
+        // iOS WebView communication interface
+        window.CurtainVisualization = {
+            // Create plot with data and layout
+            createPlot: function(data, layout, config) {
+                try {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'none';
+                    document.getElementById('plot').style.display = 'block';
+                    
+                    // Default configuration
+                    const defaultConfig = {
+                        displayModeBar: true,
+                        displaylogo: false,
+                        responsive: true,
+                        modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
+                    };
+                    
+                    const finalConfig = Object.assign(defaultConfig, config || {});
+                    
+                    Plotly.newPlot('plot', data, layout, finalConfig)
+                        .then(() => {
+                            // Notify iOS app that plot is ready
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotReady) {
+                                window.webkit.messageHandlers.plotReady.postMessage('ready');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error creating plot:', error);
+                            this.showError('Failed to create visualization: ' + error.message);
+                        });
+                } catch (error) {
+                    console.error('Error in createPlot:', error);
+                    this.showError('JavaScript error: ' + error.message);
+                }
+            },
+            
+            // Update existing plot
+            updatePlot: function(data, layout) {
+                try {
+                    Plotly.react('plot', data, layout)
+                        .then(() => {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotUpdated) {
+                                window.webkit.messageHandlers.plotUpdated.postMessage('updated');
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error updating plot:', error);
+                            this.showError('Failed to update visualization: ' + error.message);
+                        });
+                } catch (error) {
+                    console.error('Error in updatePlot:', error);
+                    this.showError('JavaScript error: ' + error.message);
+                }
+            },
+            
+            // Create volcano plot (common in proteomics)
+            createVolcanoPlot: function(data, title, settings) {
+                try {
+                    const traces = [];
+                    
+                    // Significant points (above thresholds)
+                    const significantData = data.filter(point => 
+                        Math.abs(point.log2FC) >= (settings.log2FCCutoff || 0.6) && 
+                        point.pValue <= (settings.pCutoff || 0.05)
+                    );
+                    
+                    // Non-significant points
+                    const nonSignificantData = data.filter(point => 
+                        Math.abs(point.log2FC) < (settings.log2FCCutoff || 0.6) || 
+                        point.pValue > (settings.pCutoff || 0.05)
+                    );
+                    
+                    // Non-significant points trace
+                    if (nonSignificantData.length > 0) {
+                        traces.push({
+                            x: nonSignificantData.map(p => p.log2FC),
+                            y: nonSignificantData.map(p => -Math.log10(p.pValue)),
+                            mode: 'markers',
+                            type: 'scatter',
+                            name: 'Non-significant',
+                            marker: {
+                                color: '#cccccc',
+                                size: settings.scatterPlotMarkerSize || 6
+                            },
+                            text: nonSignificantData.map(p => p.proteinName || p.primaryID),
+                            hovertemplate: '<b>%{text}</b><br>Log2FC: %{x}<br>-Log10(p-value): %{y}<extra></extra>'
+                        });
+                    }
+                    
+                    // Significant points trace
+                    if (significantData.length > 0) {
+                        traces.push({
+                            x: significantData.map(p => p.log2FC),
+                            y: significantData.map(p => -Math.log10(p.pValue)),
+                            mode: 'markers',
+                            type: 'scatter',
+                            name: 'Significant',
+                            marker: {
+                                color: '#d32f2f',
+                                size: settings.scatterPlotMarkerSize || 8
+                            },
+                            text: significantData.map(p => p.proteinName || p.primaryID),
+                            hovertemplate: '<b>%{text}</b><br>Log2FC: %{x}<br>-Log10(p-value): %{y}<extra></extra>'
+                        });
+                    }
+                    
+                    const layout = {
+                        title: {
+                            text: title || settings.volcanoPlotTitle || 'Volcano Plot',
+                            font: { family: settings.plotFontFamily || 'Arial' }
+                        },
+                        xaxis: {
+                            title: 'Log2 Fold Change',
+                            zeroline: true,
+                            zerolinecolor: '#000000',
+                            font: { family: settings.plotFontFamily || 'Arial' }
+                        },
+                        yaxis: {
+                            title: '-Log10(p-value)',
+                            font: { family: settings.plotFontFamily || 'Arial' }
+                        },
+                        hovermode: 'closest',
+                        showlegend: true,
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        font: { family: settings.plotFontFamily || 'Arial' }
+                    };
+                    
+                    // Add threshold lines
+                    const shapes = [
+                        // Vertical lines for fold change cutoffs
+                        {
+                            type: 'line',
+                            x0: settings.log2FCCutoff || 0.6,
+                            x1: settings.log2FCCutoff || 0.6,
+                            y0: 0,
+                            y1: 1,
+                            yref: 'paper',
+                            line: { color: '#666666', width: 1, dash: 'dash' }
+                        },
+                        {
+                            type: 'line',
+                            x0: -(settings.log2FCCutoff || 0.6),
+                            x1: -(settings.log2FCCutoff || 0.6),
+                            y0: 0,
+                            y1: 1,
+                            yref: 'paper',
+                            line: { color: '#666666', width: 1, dash: 'dash' }
+                        },
+                        // Horizontal line for p-value cutoff
+                        {
+                            type: 'line',
+                            x0: 0,
+                            x1: 1,
+                            xref: 'paper',
+                            y0: -Math.log10(settings.pCutoff || 0.05),
+                            y1: -Math.log10(settings.pCutoff || 0.05),
+                            line: { color: '#666666', width: 1, dash: 'dash' }
+                        }
+                    ];
+                    
+                    layout.shapes = shapes;
+                    
+                    this.createPlot(traces, layout);
+                } catch (error) {
+                    console.error('Error creating volcano plot:', error);
+                    this.showError('Failed to create volcano plot: ' + error.message);
+                }
+            },
+            
+            // Show error message
+            showError: function(message) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('plot').style.display = 'none';
+                const errorDiv = document.getElementById('error');
+                errorDiv.innerHTML = '<div><h3>Visualization Error</h3><p>' + message + '</p></div>';
+                errorDiv.style.display = 'flex';
+                
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotError) {
+                    window.webkit.messageHandlers.plotError.postMessage(message);
+                }
+            },
+            
+            // Show loading state
+            showLoading: function() {
+                document.getElementById('loading').style.display = 'flex';
+                document.getElementById('plot').style.display = 'none';
+                document.getElementById('error').style.display = 'none';
+            }
+        };
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Notify iOS app that WebView is ready
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.webViewReady) {
+                window.webkit.messageHandlers.webViewReady.postMessage('ready');
+            }
+        });
+    </script>
+</body>
+</html>

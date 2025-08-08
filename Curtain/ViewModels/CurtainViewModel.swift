@@ -1,0 +1,470 @@
+//
+//  CurtainViewModel.swift
+//  Curtain
+//
+//  Created by Toan Phung on 02/08/2025.
+//
+
+import Foundation
+import SwiftData
+
+// MARK: - CurtainViewModel (Based on Android CurtainViewModel.kt)
+
+@MainActor
+@Observable
+class CurtainViewModel {
+    private var curtainRepository: CurtainRepository
+    private let curtainDataService: CurtainDataService
+    
+    // MARK: - State Properties (Like Android StateFlow)
+    
+    // Curtain List State
+    var curtains: [CurtainEntity] = []
+    private var allCurtains: [CurtainEntity] = []
+    private var loadedCurtains: [CurtainEntity] = []
+    
+    // Pagination State (Like Android)
+    private var currentPage = 0
+    private var hasMoreData = true
+    private static let pageSize = 10
+    private static let initialPageSize = 5
+    
+    // Loading States
+    var isLoading = false
+    var isLoadingMore = false
+    var isDownloading = false
+    
+    // Progress Tracking (Like Android)
+    var downloadProgress = 0
+    var downloadSpeed = 0.0
+    
+    // Error Handling
+    var error: String?
+    
+    // Counts
+    var totalCurtains = 0
+    
+    private var hasBeenSetup = false
+    
+    init(curtainRepository: CurtainRepository? = nil, curtainDataService: CurtainDataService? = nil) {
+        // Use dependency injection or create defaults
+        self.curtainDataService = curtainDataService ?? CurtainDataService()
+        
+        // For curtainRepository, we'll set it up in onAppear to use proper ModelContext
+        if let repository = curtainRepository {
+            self.curtainRepository = repository
+            hasBeenSetup = true
+            loadCurtains()
+        } else {
+            // Create a temporary repository - will be replaced in setupWithModelContext
+            do {
+                let schema = Schema([
+                    CurtainEntity.self,
+                    CurtainSiteSettings.self,
+                    DataFilterListEntity.self
+                ])
+                let modelContainer = try ModelContainer(for: schema)
+                let tempModelContext = ModelContext(modelContainer)
+                self.curtainRepository = CurtainRepository(modelContext: tempModelContext)
+            } catch {
+                print("CurtainViewModel: Failed to create temporary ModelContext: \(error)")
+                // Create minimal repository to prevent crashes
+                fatalError("Unable to initialize CurtainViewModel")
+            }
+        }
+    }
+    
+    /// Setup the ViewModel with the proper ModelContext from environment
+    func setupWithModelContext(_ modelContext: ModelContext) {
+        guard !hasBeenSetup else { 
+            print("CurtainViewModel: Already setup, skipping")
+            return 
+        }
+        
+        print("CurtainViewModel: Setting up with proper ModelContext")
+        self.curtainRepository = CurtainRepository(modelContext: modelContext)
+        hasBeenSetup = true
+        loadCurtains()
+    }
+    
+    // MARK: - Data Loading Methods (Like Android)
+    
+    func loadCurtains() {
+        print("🔴 CurtainViewModel: loadCurtains() called")
+        isLoading = true
+        error = nil
+        
+        // Reset pagination state (like Android)
+        currentPage = 0
+        hasMoreData = true
+        allCurtains.removeAll()
+        loadedCurtains.removeAll()
+        
+        do {
+            // Get all curtains from repository
+            allCurtains = curtainRepository.getAllCurtains()
+            totalCurtains = allCurtains.count
+            print("🔴 CurtainViewModel: Loaded \(totalCurtains) total curtains from repository")
+            
+            // Load initial page
+            loadInitialPage()
+            print("🔴 CurtainViewModel: Initial page loaded, displaying \(curtains.count) curtains")
+            
+            // Database ready for user to add data via + button
+            
+            isLoading = false
+            
+        } catch {
+            self.error = error.localizedDescription
+            isLoading = false
+        }
+    }
+    
+    private func loadInitialPage() {
+        let initialCurtains = Array(allCurtains.prefix(Self.initialPageSize))
+        loadedCurtains.removeAll()
+        loadedCurtains.append(contentsOf: initialCurtains)
+        curtains = loadedCurtains
+        
+        hasMoreData = allCurtains.count > Self.initialPageSize
+        print("CurtainViewModel: Loaded initial \(initialCurtains.count) curtains, total: \(allCurtains.count), hasMore: \(hasMoreData)")
+    }
+    
+    func loadMoreCurtains() {
+        guard !isLoadingMore && hasMoreData else { return }
+        
+        isLoadingMore = true
+        
+        Task {
+            defer { isLoadingMore = false }
+            
+            do {
+                currentPage += 1
+                let startIndex = Self.initialPageSize + (currentPage - 1) * Self.pageSize
+                let endIndex = min(startIndex + Self.pageSize, allCurtains.count)
+                
+                guard startIndex < allCurtains.count else {
+                    hasMoreData = false
+                    return
+                }
+                
+                let newCurtains = Array(allCurtains[startIndex..<endIndex])
+                loadedCurtains.append(contentsOf: newCurtains)
+                curtains = loadedCurtains
+                
+                hasMoreData = loadedCurtains.count < allCurtains.count
+                print("CurtainViewModel: Loaded \(newCurtains.count) more curtains, total loaded: \(loadedCurtains.count)/\(allCurtains.count)")
+                
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+    
+    func getPaginationInfo() -> String {
+        return "Showing \(loadedCurtains.count) of \(allCurtains.count) curtains"
+    }
+    
+    // MARK: - Download Methods (Like Android)
+    
+    /// Downloads the curtain data when a user clicks on a curtain item
+    /// Shows progress updates during the download
+    func downloadCurtainData(_ curtain: CurtainEntity) async throws -> String {
+        isDownloading = true
+        downloadProgress = 0
+        downloadSpeed = 0.0
+        error = nil
+        
+        do {
+            // Download the curtain data with progress tracking (like Android)
+            let result = try await curtainRepository.downloadCurtainData(
+                linkId: curtain.linkId,
+                hostname: curtain.sourceHostname,
+                progressCallback: { [weak self] progress, speed in
+                    Task { @MainActor in
+                        self?.downloadProgress = progress
+                        self?.downloadSpeed = speed
+                    }
+                }
+            )
+            
+            isDownloading = false
+            return result
+            
+        } catch {
+            isDownloading = false
+            downloadSpeed = 0.0
+            self.error = error.localizedDescription
+            throw error
+        }
+    }
+    
+    /// Deletes the existing curtain file and redownloads the data
+    /// Shows progress updates during the download
+    func redownloadCurtainData(_ curtain: CurtainEntity) async throws -> String {
+        isDownloading = true
+        downloadProgress = 0
+        downloadSpeed = 0.0
+        error = nil
+        
+        do {
+            // Delete old file if it exists (like Android)
+            if let filePath = curtain.file {
+                try? FileManager.default.removeItem(atPath: filePath)
+            }
+            
+            // Download the curtain data with progress tracking and force download
+            let result = try await curtainRepository.downloadCurtainData(
+                linkId: curtain.linkId,
+                hostname: curtain.sourceHostname,
+                progressCallback: { [weak self] progress, speed in
+                    Task { @MainActor in
+                        self?.downloadProgress = progress
+                        self?.downloadSpeed = speed
+                    }
+                },
+                forceDownload: true
+            )
+            
+            isDownloading = false
+            return result
+            
+        } catch {
+            isDownloading = false
+            downloadSpeed = 0.0
+            self.error = error.localizedDescription
+            throw error
+        }
+    }
+    
+    // MARK: - Data Processing Methods
+    
+    /// Loads and processes curtain data using CurtainDataService
+    func loadAndProcessCurtainData(_ curtain: CurtainEntity) async throws {
+        guard let filePath = curtain.file else {
+            throw CurtainViewModelError.noDataFile
+        }
+        
+        // Read the JSON file
+        let jsonString = try String(contentsOfFile: filePath)
+        
+        // Process using CurtainDataService (like Android)
+        try await curtainDataService.restoreSettings(from: jsonString)
+        
+        print("CurtainViewModel: Successfully processed curtain data for \(curtain.linkId)")
+    }
+    
+    // MARK: - CRUD Operations
+    
+    func updateCurtainDescription(_ curtain: CurtainEntity, description: String) {
+        do {
+            try curtainRepository.updateCurtainDescription(curtain.linkId, description: description)
+            loadCurtains() // Refresh list
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+    
+    func updatePinStatus(_ curtain: CurtainEntity, isPinned: Bool) {
+        do {
+            try curtainRepository.updatePinStatus(curtain.linkId, isPinned: isPinned)
+            loadCurtains() // Refresh list
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+    
+    func deleteCurtain(_ curtain: CurtainEntity) {
+        do {
+            try curtainRepository.deleteCurtain(curtain.linkId)
+            loadCurtains() // Refresh list
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+    
+    // MARK: - Network Operations
+    
+    func syncCurtains(hostname: String) async {
+        isLoading = true
+        error = nil
+        
+        do {
+            _ = try await curtainRepository.syncCurtains(hostname: hostname)
+            loadCurtains() // Refresh list after sync
+        } catch {
+            self.error = error.localizedDescription
+            isLoading = false
+        }
+    }
+    
+    func fetchCurtainByLinkId(linkId: String, hostname: String, frontendURL: String? = nil) async {
+        isLoading = true
+        error = nil
+        
+        do {
+            _ = try await curtainRepository.fetchCurtainByLinkIdAndHost(
+                linkId: linkId,
+                hostname: hostname,
+                frontendURL: frontendURL
+            )
+            loadCurtains() // Refresh list after fetch
+        } catch {
+            self.error = error.localizedDescription
+            isLoading = false
+        }
+    }
+    
+    func createCurtainEntry(linkId: String, hostname: String, frontendURL: String? = nil, description: String = "") async {
+        isLoading = true
+        error = nil
+        
+        do {
+            _ = try await curtainRepository.createCurtainEntry(
+                linkId: linkId,
+                hostname: hostname,
+                frontendURL: frontendURL,
+                description: description
+            )
+            loadCurtains() // Refresh list after creation
+        } catch {
+            self.error = error.localizedDescription
+            isLoading = false
+        }
+    }
+    
+    // MARK: - Utility Methods
+    
+    func cancelDownload() {
+        curtainRepository.cancelDownload()
+        isDownloading = false
+        downloadProgress = 0
+        downloadSpeed = 0.0
+    }
+    
+    func clearError() {
+        error = nil
+    }
+    
+    func getPinnedCurtains() -> [CurtainEntity] {
+        return curtainRepository.getPinnedCurtains()
+    }
+    
+    // MARK: - Filtering and Search
+    
+    func getCurtainsByHostname(_ hostname: String) -> [CurtainEntity] {
+        return curtainRepository.getCurtainsByHostname(hostname)
+    }
+    
+    func searchCurtains(_ searchText: String) -> [CurtainEntity] {
+        guard !searchText.isEmpty else { return curtains }
+        
+        return curtains.filter { curtain in
+            curtain.dataDescription.localizedCaseInsensitiveContains(searchText) ||
+            curtain.linkId.localizedCaseInsensitiveContains(searchText) ||
+            curtain.curtainType.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+    
+    // MARK: - Pagination Methods (Like Android)
+    
+    func hasMoreCurtains() -> Bool {
+        return curtains.count < totalCurtains
+    }
+    
+    func getRemainingCurtainCount() -> Int {
+        return max(0, totalCurtains - curtains.count)
+    }
+    
+    // MARK: - Example/Demo Data Methods (Like Android MainActivity.kt)
+    
+    /// Load example curtain with predefined values (like Android loadExampleCurtain)
+    func loadExampleCurtain() async {
+        isLoading = true
+        error = nil
+        
+        do {
+            // Use predefined example values from Android
+            _ = try await curtainRepository.fetchCurtainByLinkIdAndHost(
+                linkId: CurtainConstants.ExampleData.uniqueId,
+                hostname: CurtainConstants.ExampleData.apiUrl,
+                frontendURL: CurtainConstants.ExampleData.frontendUrl
+            )
+            
+            await MainActor.run {
+                loadCurtains() // Refresh the list
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Failed to load example curtain: \(error.localizedDescription)"
+                isLoading = false
+            }
+        }
+    }
+    
+    /// Create curtain entry for specific hostname (like Android loadCurtain method)
+    func loadCurtain(linkId: String, apiUrl: String, frontendUrl: String? = nil) async {
+        isLoading = true
+        error = nil
+        
+        do {
+            _ = try await curtainRepository.fetchCurtainByLinkIdAndHost(
+                linkId: linkId,
+                hostname: apiUrl,
+                frontendURL: frontendUrl
+            )
+            
+            await MainActor.run {
+                loadCurtains() // Refresh the list
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Failed to load curtain: \(error.localizedDescription)"
+                isLoading = false
+            }
+        }
+    }
+    
+    /// Handle special curtain.proteo.info URLs (like Android AddCurtainDialog logic)
+    func handleProteoURL(_ urlString: String) async {
+        guard CurtainConstants.URLPatterns.isProteoURL(urlString),
+              let linkId = CurtainConstants.URLPatterns.extractLinkIdFromProteoURL(urlString) else {
+            error = "Invalid curtain.proteo.info URL format"
+            return
+        }
+        
+        // Use predefined backend and frontend URLs for curtain.proteo.info
+        await loadCurtain(
+            linkId: linkId,
+            apiUrl: CurtainConstants.PredefinedHosts.celsusBackend,
+            frontendUrl: CurtainConstants.PredefinedHosts.proteoFrontend
+        )
+    }
+    
+    /// Get active site settings (exposed for sync operations)
+    func getActiveSiteSettings() -> [CurtainSiteSettings] {
+        return curtainRepository.getActiveSiteSettings()
+    }
+    
+}
+
+// MARK: - ViewModel Errors
+
+enum CurtainViewModelError: Error, LocalizedError {
+    case noDataFile
+    case processingFailed
+    case downloadFailed
+    
+    var errorDescription: String? {
+        switch self {
+        case .noDataFile:
+            return "No data file available for this curtain"
+        case .processingFailed:
+            return "Failed to process curtain data"
+        case .downloadFailed:
+            return "Failed to download curtain data"
+        }
+    }
+}

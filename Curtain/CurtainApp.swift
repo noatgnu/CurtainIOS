@@ -12,7 +12,9 @@ import SwiftData
 struct CurtainApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            CurtainEntity.self,
+            CurtainSiteSettings.self,
+            DataFilterListEntity.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -26,7 +28,26 @@ struct CurtainApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { url in
+                    Task {
+                        await handleDeepLink(url)
+                    }
+                }
         }
         .modelContainer(sharedModelContainer)
+    }
+    
+    private func handleDeepLink(_ url: URL) async {
+        print("🔗 CurtainApp: Received deep link: \(url.absoluteString)")
+        
+        let result = await DeepLinkHandler.shared.processURL(url)
+        
+        if result.isValid {
+            print("🔗 CurtainApp: Deep link processed successfully")
+            // The deep link processing will be handled by the views
+            // For now, just log the success
+        } else {
+            print("🔗 CurtainApp: Deep link processing failed: \(result.error ?? "Unknown error")")
+        }
     }
 }

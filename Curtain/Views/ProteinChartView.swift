@@ -1,0 +1,1541 @@
+//
+//  ProteinChartView.swift
+//  Curtain
+//
+//  Created by Toan Phung on 05/08/2025.
+//
+
+import SwiftUI
+import WebKit
+import Foundation
+
+struct ProteinChartView: View {
+    let proteinId: String
+    @Binding var curtainData: CurtainData
+    @Binding var chartType: ProteinChartType
+    @Binding var isPresented: Bool
+    
+    // Navigation support
+    let proteinList: [String]
+    let initialIndex: Int
+    
+    @State private var chartHtml: String = ""
+    @State private var isLoading = true
+    @State private var error: String?
+    @State private var currentIndex: Int
+    @State private var showingConditionColorManager = false
+    
+    // Initialize with protein list for swipe navigation
+    init(proteinId: String, curtainData: Binding<CurtainData>, chartType: Binding<ProteinChartType>, isPresented: Binding<Bool>, proteinList: [String] = [], initialIndex: Int = 0) {
+        self.proteinId = proteinId
+        self._curtainData = curtainData
+        self._chartType = chartType
+        self._isPresented = isPresented
+        self.proteinList = proteinList
+        self.initialIndex = initialIndex
+        self._currentIndex = State(initialValue: initialIndex)
+    }
+    
+    // Current protein being displayed
+    private var currentProteinId: String {
+        guard currentIndex >= 0 && currentIndex < proteinList.count else {
+            return proteinId // Fallback to original protein
+        }
+        return proteinList[currentIndex]
+    }
+    
+    // Navigation state
+    private var hasPreviousProtein: Bool {
+        return currentIndex > 0
+    }
+    
+    private var hasNextProtein: Bool {
+        return currentIndex < proteinList.count - 1
+    }
+    
+    private var displayName: String {
+        // Use UniProt data directly from curtainData (proper approach)
+        if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
+           let uniprotRecord = uniprotDB[currentProteinId] as? [String: Any],
+           let geneNames = uniprotRecord["Gene Names"] as? String,
+           !geneNames.isEmpty {
+            // Parse the first gene name from Gene Names string (can be space or semicolon separated)
+            let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
+                .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .first
+            
+            if let geneName = firstGeneName, geneName != currentProteinId {
+                return "\(geneName) (\(currentProteinId))"
+            }
+        }
+        
+        return currentProteinId
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Chart type selector
+                VStack(spacing: 12) {
+                    HStack {
+                        Text("Chart Type:")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        Spacer()
+                        
+                        Picker("Chart Type", selection: $chartType) {
+                            ForEach(ProteinChartType.allCases, id: \.self) { type in
+                                Text(type.displayName).tag(type)
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        .frame(maxWidth: 250)
+                    }
+                    
+                    // Navigation controls (only show if we have a protein list)
+                    if proteinList.count > 1 {
+                        HStack {
+                            // Previous button
+                            Button(action: {
+                                navigateToPrevious()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                        .font(.caption)
+                                    Text("Previous")
+                                        .font(.caption)
+                                }
+                                .foregroundColor(hasPreviousProtein ? .blue : .gray)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray6))
+                                .clipShape(Capsule())
+                            }
+                            .disabled(!hasPreviousProtein)
+                            
+                            Spacer()
+                            
+                            // Position indicator
+                            Text("\(currentIndex + 1) of \(proteinList.count)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            Spacer()
+                            
+                            // Next button
+                            Button(action: {
+                                navigateToNext()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Text("Next")
+                                        .font(.caption)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                }
+                                .foregroundColor(hasNextProtein ? .blue : .gray)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color(.systemGray6))
+                                .clipShape(Capsule())
+                            }
+                            .disabled(!hasNextProtein)
+                        }
+                    }
+                    
+                    Text(displayName)
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                
+                // Chart content with floating action button
+                ZStack {
+                    if isLoading {
+                        VStack {
+                            Spacer()
+                            VStack(spacing: 16) {
+                                ProgressView()
+                                    .scaleEffect(1.2)
+                                Text("Loading \(chartType.displayName.lowercased())...")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            .onAppear {
+                                print("🔍 ProteinChartView: Showing loading state")
+                            }
+                            Spacer()
+                        }
+                    } else if let error = error {
+                        VStack {
+                            Spacer()
+                            VStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.system(size: 50))
+                                    .foregroundColor(.orange)
+                                
+                                Text("Chart Error")
+                                    .font(.title2)
+                                    .fontWeight(.medium)
+                                
+                                Text(error)
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal)
+                            }
+                            .onAppear {
+                                print("❌ ProteinChartView: Showing error state: \(error)")
+                            }
+                            Spacer()
+                        }
+                    } else {
+                        ProteinChartWebView(htmlContent: chartHtml)
+                            .onAppear {
+                                print("🔍 ProteinChartView: Showing chart content, HTML length: \(chartHtml.count)")
+                            }
+                            .gesture(
+                                // Add swipe gesture for navigation
+                                DragGesture(minimumDistance: 50)
+                                    .onEnded { value in
+                                        handleSwipeGesture(value)
+                                    }
+                            )
+                    }
+                    
+                    // Floating Action Button for Condition Colors
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button(action: {
+                                showingConditionColorManager = true
+                            }) {
+                                Image(systemName: "chart.bar.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.blue)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .padding(.trailing, 16)
+                            .padding(.bottom, 16)
+                            .disabled(isLoading)
+                            .opacity(isLoading ? 0.5 : 1.0)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Protein Chart")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(
+                leading: Button("Close") {
+                    isPresented = false
+                },
+                trailing: HStack {
+                    Button("Export") {
+                        // TODO: Export functionality
+                    }
+                    .disabled(isLoading || error != nil)
+                }
+            )
+        }
+        .sheet(isPresented: $showingConditionColorManager) {
+            ConditionColorManagerView(curtainData: $curtainData)
+        }
+        .onAppear {
+            print("🔍 ProteinChartView: onAppear called for protein: \(currentProteinId)")
+            loadChart()
+        }
+        .onChange(of: chartType) { oldValue, newValue in
+            print("🔍 ProteinChartView: chartType changed from \(oldValue) to \(newValue)")
+            loadChart()
+        }
+        .onChange(of: currentIndex) { oldValue, newValue in
+            print("🔍 ProteinChartView: currentIndex changed from \(oldValue) to \(newValue)")
+            print("🔍 ProteinChartView: Now showing protein: \(currentProteinId)")
+            loadChart()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ProteinChartRefresh"))) { notification in
+            // Reload the chart with updated colors
+            loadChart()
+        }
+    }
+    
+    private func loadChart() {
+        print("🔍 ProteinChartView: loadChart() called for protein: \(currentProteinId)")
+        isLoading = true
+        error = nil
+        
+        Task {
+            do {
+                let html = try await generateChartHtml()
+                await MainActor.run {
+                    self.chartHtml = html
+                    self.isLoading = false
+                }
+            } catch {
+                print("❌ ProteinChartView: Error during chart generation: \(error)")
+                print("❌ ProteinChartView: Error type: \(type(of: error))")
+                if let chartError = error as? ChartGenerationError {
+                    print("❌ ProteinChartView: Chart generation error: \(chartError)")
+                }
+                await MainActor.run {
+                    self.error = error.localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+    
+    // MARK: - Navigation Functions
+    
+    private func navigateToPrevious() {
+        guard hasPreviousProtein else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            currentIndex -= 1
+        }
+    }
+    
+    private func navigateToNext() {
+        guard hasNextProtein else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            currentIndex += 1
+        }
+    }
+    
+    private func handleSwipeGesture(_ value: DragGesture.Value) {
+        let swipeThreshold: CGFloat = 100
+        let horizontalDistance = value.translation.width
+        let verticalDistance = abs(value.translation.height)
+        
+        // Only process horizontal swipes (ignore vertical swipes)
+        guard abs(horizontalDistance) > swipeThreshold && abs(horizontalDistance) > verticalDistance else {
+            return
+        }
+        
+        if horizontalDistance > 0 {
+            // Swipe right -> go to previous protein
+            navigateToPrevious()
+        } else {
+            // Swipe left -> go to next protein
+            navigateToNext()
+        }
+    }
+    
+    private func generateChartHtml() async throws -> String {
+        print("🔍 ProteinChartView: Starting chart generation for protein: \(currentProteinId)")
+        print("🔍 ProteinChartView: Chart type: \(chartType)")
+        print("🔍 ProteinChartView: Raw data available: \(curtainData.raw != nil ? "YES" : "NO")")
+        
+        if let rawData = curtainData.raw {
+            print("🔍 ProteinChartView: Raw data length: \(rawData.count)")
+            let lines = rawData.components(separatedBy: .newlines).filter { !$0.isEmpty }
+            print("🔍 ProteinChartView: Raw data lines: \(lines.count)")
+            if !lines.isEmpty {
+                let header = lines[0].components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                print("🔍 ProteinChartView: Header columns: \(header)")
+            }
+        } else {
+            print("❌ ProteinChartView: No raw data available!")
+        }
+        
+        print("🔍 ProteinChartView: Raw form samples count: \(curtainData.rawForm.samples.count)")
+        print("🔍 ProteinChartView: Raw form samples: \(curtainData.rawForm.samples)")
+        print("🔍 ProteinChartView: Raw form primaryIDs: '\(curtainData.rawForm.primaryIDs)'")
+        
+        let processedSettings = curtainData.getProcessedSettings()
+        print("🔍 ProteinChartView: Settings conditionOrder: \(processedSettings.conditionOrder)")
+        print("🔍 ProteinChartView: Settings sampleMap keys: \(processedSettings.sampleMap.keys.count)")
+        print("🔍 ProteinChartView: Settings sampleVisible count: \(processedSettings.sampleVisible.count)")
+        
+        let generator = ProteinChartGenerator()
+        let html = try await generator.generateProteinChart(
+            proteinId: currentProteinId,
+            curtainData: curtainData,
+            chartType: chartType
+        )
+        
+        print("🔍 ProteinChartView: Chart HTML generated successfully, length: \(html.count)")
+        if html.count < 100 {
+            print("⚠️ ProteinChartView: HTML seems too short: \(html)")
+        }
+        return html
+    }
+}
+
+struct ProteinChartWebView: UIViewRepresentable {
+    let htmlContent: String
+    
+    func makeUIView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.scrollView.isScrollEnabled = true
+        webView.scrollView.bounces = false
+        webView.isOpaque = false
+        webView.backgroundColor = UIColor.clear
+        
+        return webView
+    }
+    
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        print("🔍 ProteinChartWebView: updateUIView called with HTML content length: \(htmlContent.count)")
+        if !htmlContent.isEmpty {
+            print("🔍 ProteinChartWebView: Loading HTML content into WebView")
+            webView.loadHTMLString(htmlContent, baseURL: nil)
+        } else {
+            print("❌ ProteinChartWebView: HTML content is empty!")
+        }
+    }
+}
+
+// MARK: - Protein Chart Generator
+
+class ProteinChartGenerator {
+    
+    func generateProteinChart(proteinId: String, curtainData: CurtainData, chartType: ProteinChartType) async throws -> String {
+        print("🔍 ProteinChartGenerator: Generating \(chartType.rawValue) for protein: \(proteinId)")
+        
+        // Check if we have raw CSV data to parse
+        guard let rawCSV = curtainData.raw, !rawCSV.isEmpty else {
+            print("❌ ProteinChartGenerator: No raw CSV data available - curtainData.raw is \(curtainData.raw == nil ? "nil" : "empty")")
+            print("❌ ProteinChartGenerator: Raw form samples: \(curtainData.rawForm.samples)")
+            print("❌ ProteinChartGenerator: This dataset only has differential data, not raw sample data")
+            throw ChartGenerationError.noRawData
+        }
+        
+        // Parse the raw CSV data to extract sample-level intensity values
+        print("📊 ProteinChartGenerator: Parsing raw CSV data...")
+        let chartData = try parseRawDataForProtein(proteinId: proteinId, rawCSV: rawCSV, curtainData: curtainData)
+        
+        print("📈 ProteinChartGenerator: Extracted data - Protein values count: \(chartData.proteinValues.count)")
+        print("📈 ProteinChartGenerator: Condition data: \(chartData.conditionData.mapValues { $0.count })")
+        
+        guard !chartData.proteinValues.isEmpty else {
+            print("❌ ProteinChartGenerator: No protein values found for \(proteinId)")
+            throw ChartGenerationError.invalidProteinData
+        }
+        
+        let plotData = createPlotData(chartData: chartData, chartType: chartType, curtainData: curtainData)
+        
+        let plotJSON = try plotData.toJSON()
+        return generateChartHtmlTemplate(plotJSON: plotJSON, chartType: chartType)
+    }
+    
+    private func parseRawDataForProtein(proteinId: String, rawCSV: String, curtainData: CurtainData) throws -> ProteinChartData {
+        print("🔧 parseRawDataForProtein: Parsing CSV for protein \(proteinId)")
+        
+        let primaryIdColumn = curtainData.rawForm.primaryIDs
+        let samples = curtainData.rawForm.samples
+        let processedSettings = curtainData.getProcessedSettings()
+        let conditionOrder = processedSettings.conditionOrder
+        _ = processedSettings.sampleMap
+        
+        print("🔧 parseRawDataForProtein: Primary ID column: \(primaryIdColumn)")
+        print("🔧 parseRawDataForProtein: Samples count: \(samples.count)")
+        print("🔧 parseRawDataForProtein: Conditions: \(conditionOrder)")
+        
+        // Parse tab-separated data into rows
+        let lines = rawCSV.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        guard !lines.isEmpty else {
+            throw ChartGenerationError.noRawData
+        }
+        
+        // Get header row (tab-separated)
+        let header = lines[0].components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        print("🔧 parseRawDataForProtein: Available header columns: \(header)")
+        
+        // Find column indices
+        guard let primaryIdIndex = header.firstIndex(of: primaryIdColumn) else {
+            print("❌ parseRawDataForProtein: Primary ID column '\(primaryIdColumn)' not found in header")
+            print("❌ parseRawDataForProtein: Available columns: \(header)")
+            print("❌ parseRawDataForProtein: Looking for exact match of: '\(primaryIdColumn)'")
+            
+            // Try to find similar columns
+            let similarColumns = header.filter { $0.localizedCaseInsensitiveContains("index") || $0.localizedCaseInsensitiveContains("id") }
+            if !similarColumns.isEmpty {
+                print("❌ parseRawDataForProtein: Similar columns found: \(similarColumns)")
+            }
+            
+            throw ChartGenerationError.invalidProteinData
+        }
+        
+        // Find sample column indices
+        var sampleIndices: [String: Int] = [:]
+        for sample in samples {
+            if let index = header.firstIndex(of: sample) {
+                sampleIndices[sample] = index
+            }
+        }
+        
+        print("🔧 parseRawDataForProtein: Found \(sampleIndices.count) sample columns")
+        
+        // Find the protein row
+        var proteinValues: [String: Double] = [:]
+        var proteinFound = false
+        
+        for (lineIndex, line) in lines.dropFirst().enumerated() { // Skip header
+            let values = line.components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            
+            guard values.count > primaryIdIndex else { 
+                if lineIndex < 3 {
+                    print("🔧 parseRawDataForProtein: Line \(lineIndex + 1) has insufficient columns: expected > \(primaryIdIndex), got \(values.count)")
+                }
+                continue 
+            }
+            
+            let rowProteinId = values[primaryIdIndex]
+            if lineIndex < 3 {
+                print("🔧 parseRawDataForProtein: Line \(lineIndex + 1) protein ID: '\(rowProteinId)' (looking for '\(proteinId)')")
+            }
+            
+            if rowProteinId == proteinId {
+                print("🔧 parseRawDataForProtein: Found protein row at line \(lineIndex + 1)")
+                proteinFound = true
+                
+                // Extract sample values
+                print("🔧 parseRawDataForProtein: Processing protein row with \(values.count) columns")
+                for (sample, index) in sampleIndices {
+                    guard values.count > index else { 
+                        print("🔧 parseRawDataForProtein: Sample \(sample) index \(index) out of bounds for line with \(values.count) columns")
+                        continue 
+                    }
+                    
+                    let valueString = values[index]
+                    if let value = Double(valueString), value.isFinite {
+                        proteinValues[sample] = value
+                        if proteinValues.count <= 5 {
+                            print("🔧 parseRawDataForProtein: Sample '\(sample)': \(value)")
+                        }
+                    } else {
+                        // Treat invalid values as null (don't add to proteinValues)
+                        if proteinValues.count <= 5 {
+                            print("🔧 parseRawDataForProtein: Sample '\(sample)' has invalid/null value: '\(valueString)'")
+                        }
+                    }
+                }
+                
+                print("🔧 parseRawDataForProtein: Total extracted values: \(proteinValues.count) from \(sampleIndices.count) sample columns")
+                break
+            }
+        }
+        
+        if !proteinFound {
+            print("❌ parseRawDataForProtein: Protein '\(proteinId)' not found in CSV data!")
+        }
+        
+        print("🔧 parseRawDataForProtein: Extracted \(proteinValues.count) sample values")
+        print("🔧 parseRawDataForProtein: Sample names in proteinValues: \(Array(proteinValues.keys.sorted()))")
+        
+        // Organize by conditions, respecting sampleVisible filter
+        var conditionData: [String: [Double]] = [:]
+        var conditionSamples: [String: [String]] = [:]
+        
+        print("🔧 parseRawDataForProtein: Starting condition grouping...")
+        print("🔧 parseRawDataForProtein: sampleMap structure: \(processedSettings.sampleMap)")
+        print("🔧 parseRawDataForProtein: sampleVisible count: \(processedSettings.sampleVisible.count)")
+        print("🔧 parseRawDataForProtein: proteinValues keys: \(Array(proteinValues.keys.prefix(5)))")
+        
+        for condition in conditionOrder {
+            conditionData[condition] = []
+            conditionSamples[condition] = []
+            
+            // Find all samples that belong to this condition
+            // sampleMap is structured as [sampleName: [metadata]] where metadata contains "condition"
+            let samplesForCondition = processedSettings.sampleMap.compactMap { (sampleName, metadata) -> String? in
+                if let sampleCondition = metadata["condition"], sampleCondition == condition {
+                    return sampleName
+                }
+                return nil
+            }
+            
+            print("🔧 parseRawDataForProtein: Condition '\(condition)' has \(samplesForCondition.count) samples: \(samplesForCondition)")
+            
+            for sample in samplesForCondition {
+                // IMPORTANT: Apply sampleVisible filter (like Android)
+                // Only include samples where sampleVisible[sampleName] == true
+                let isVisible = processedSettings.sampleVisible[sample] ?? true // Default to true if not specified
+                
+                print("🔧 parseRawDataForProtein: Sample '\(sample)' - visible: \(isVisible), hasValue: \(proteinValues[sample] != nil)")
+                
+                if isVisible, let value = proteinValues[sample] {
+                    conditionData[condition]?.append(value)
+                    conditionSamples[condition]?.append(sample)
+                    print("🔧 parseRawDataForProtein: Added sample '\(sample)' with value \(value) to condition '\(condition)'")
+                }
+            }
+            
+            print("🔧 parseRawDataForProtein: Condition '\(condition)' final count: \(conditionData[condition]?.count ?? 0)")
+        }
+        
+        return ProteinChartData(
+            proteinId: proteinId,
+            samples: samples,
+            conditions: conditionOrder,
+            conditionData: conditionData,
+            conditionSamples: conditionSamples,
+            proteinValues: proteinValues
+        )
+    }
+    
+    
+    private func createPlotData(chartData: ProteinChartData, chartType: ProteinChartType, curtainData: CurtainData) -> PlotData {
+        switch chartType {
+        case .barChart:
+            return createBarChart(chartData: chartData, curtainData: curtainData)
+        case .averageBarChart:
+            return createAverageBarChart(chartData: chartData, curtainData: curtainData)
+        case .violinPlot:
+            return createViolinPlot(chartData: chartData, curtainData: curtainData)
+        }
+    }
+    
+    private func createBarChart(chartData: ProteinChartData, curtainData: CurtainData) -> PlotData {
+        // Android INDIVIDUAL_BAR implementation - exact replication with grouping and dividers
+        var xValues: [Int] = []          // Use indices instead of sample names
+        var yValues: [Double] = []
+        var colors: [String] = []
+        var hoverText: [String] = []
+        var sampleNames: [String] = []   // Keep sample names for hover
+        
+        // Track position info for grouping and dividers
+        var tickvals: [Double] = []    // Positions for condition labels (x-axis indices)
+        var ticktext: [String] = []    // Condition names
+        var shapes: [PlotShape] = []   // Separator lines
+        var currentPosition = 0
+        
+        // Process data exactly like Android: iterate through conditions in order
+        for (conditionIndex, condition) in chartData.conditions.enumerated() {
+            guard let values = chartData.conditionData[condition],
+                  let samples = chartData.conditionSamples[condition] else { continue }
+            
+            let conditionColor = getConditionColor(condition: condition, curtainData: curtainData)
+            let startPosition = currentPosition
+            
+            // Add each sample as individual bar (Android approach)
+            for (index, sample) in samples.enumerated() {
+                let value = values[index]
+                
+                xValues.append(currentPosition)  // Use position index
+                yValues.append(value)
+                colors.append(conditionColor)
+                sampleNames.append(sample)
+                
+                // Android hover template: sampleName, value, condition
+                hoverText.append("<b>\(sample)</b><br>Value: \(String(format: "%.3f", value))<br>Condition: \(condition)")
+                currentPosition += 1
+            }
+            
+            // Calculate middle position for condition label (using x-axis indices)
+            // For samples at positions [0,1,2] the middle is at 1.0
+            // For samples at positions [3,4,5,6] the middle is at 4.5
+            let endPosition = currentPosition - 1
+            let middlePosition = Double(startPosition + endPosition) / 2.0
+            tickvals.append(middlePosition)
+            ticktext.append(condition)
+            
+            // Add separator line after each condition group (except the last one)
+            if conditionIndex < chartData.conditions.count - 1 {
+                let separatorPosition = Double(currentPosition) - 0.5
+                shapes.append(PlotShape(
+                    type: "line",
+                    x0: separatorPosition,
+                    x1: separatorPosition,
+                    y0: 0,
+                    y1: nil,  // Will be set to ymax in layout
+                    xref: "x",  // Use data coordinates
+                    yref: "paper",
+                    line: PlotLine(
+                        color: "rgba(0,0,0,0.5)",  // Android semi-transparent black
+                        width: 1,
+                        dash: "dash"  // Android dashed line
+                    )
+                ))
+            }
+        }
+        
+        // Single trace with all bars (Android pattern)
+        let trace = PlotTrace(
+            x: xValues,  // Use indices for proper tick positioning
+            y: yValues,
+            mode: "markers",
+            type: "bar",
+            name: "",  // No name needed
+            marker: PlotMarker(
+                color: colors,
+                size: 10,
+                symbol: nil,
+                line: PlotLine(color: "rgba(0,0,0,0.3)", width: 1, dash: nil)  // Android border
+            ),
+            text: nil,
+            hovertemplate: "%{customdata}<extra></extra>",  // Use customdata for hover
+            customdata: hoverText.map { ["text": $0] }
+        )
+        
+        // Android layout configuration with custom grouping
+        let layout = createAndroidIndividualBarChartLayout(
+            title: "\(getProteinDisplayName(chartData.proteinId, curtainData: curtainData))",
+            yRange: [0.0, (yValues.max() ?? 1.0) * 1.1],
+            tickvals: tickvals,
+            ticktext: ticktext,
+            shapes: shapes
+        )
+        
+        let config = createAndroidChartConfig()
+        
+        return PlotData(traces: [trace], layout: layout, config: config)
+    }
+    
+    private func createAverageBarChart(chartData: ProteinChartData, curtainData: CurtainData) -> PlotData {
+        // Android AVERAGE_BAR implementation - exact replication
+        var traces: [PlotTrace] = []
+        var xValues: [String] = []
+        var yValues: [Double] = []
+        var errorValues: [Double] = []
+        var colors: [String] = []
+        
+        // Collect individual sample data for dot overlay
+        var allDotXValues: [String] = []
+        var allDotYValues: [Double] = []
+        
+        // Statistical calculations matching Android exactly
+        for condition in chartData.conditions {
+            guard let values = chartData.conditionData[condition], !values.isEmpty else { continue }
+            
+            // Android statistical calculations
+            let mean = values.reduce(0, +) / Double(values.count)
+            let variance = values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count)
+            let std = sqrt(variance)
+            let standardError = std / sqrt(Double(values.count))  // Android uses SE
+            
+            let conditionColor = getConditionColor(condition: condition, curtainData: curtainData)
+            
+            xValues.append(condition)
+            yValues.append(mean)
+            errorValues.append(standardError)
+            colors.append(conditionColor)
+            
+            // Collect individual sample values for dots (Android feature)
+            for value in values {
+                allDotXValues.append(condition)  // Each dot uses condition name as x
+                allDotYValues.append(value)      // Individual sample values
+            }
+        }
+        
+        // Main bar trace with error bars (Android configuration)
+        let barTrace = PlotTrace(
+            x: xValues,
+            y: yValues,
+            mode: "markers",
+            type: "bar",
+            name: "",  // No name needed
+            marker: PlotMarker(
+                color: colors,
+                size: 10,
+                symbol: nil,
+                line: PlotLine(color: "black", width: 1, dash: nil)  // Android black border
+            ),
+            text: nil,
+            hovertemplate: "<b>%{x}</b><br>Mean: %{y:.3f}<extra></extra>",  // Android hover
+            customdata: nil,
+            error_y: PlotErrorBar(
+                type: "data",
+                array: errorValues,
+                visible: true,
+                color: "black",      // Android black error bars
+                thickness: 2,       // Android thickness
+                width: 4            // Android width
+            )
+        )
+        traces.append(barTrace)
+        
+        // Individual sample dots overlay (Android feature)
+        let dotTrace = PlotTrace(
+            x: allDotXValues,
+            y: allDotYValues,
+            mode: "markers",
+            type: "scatter",
+            name: "",  // No legend
+            marker: PlotMarker(
+                color: "rgba(0,0,0,0.6)",  // Android semi-transparent black
+                size: 6,                   // Android 6px markers
+                symbol: "circle",
+                line: nil
+            ),
+            text: nil,
+            hovertemplate: "<b>%{x}</b><br>Value: %{y:.3f}<extra></extra>",  // Android hover for individual points
+            customdata: nil
+        )
+        traces.append(dotTrace)
+        
+        // Android layout configuration
+        let layout = createAndroidAverageChartLayout(
+            title: "\(getProteinDisplayName(chartData.proteinId, curtainData: curtainData))",
+            yRange: [0.0, (yValues.max() ?? 1.0) * 1.15]  // Extra space for error bars
+        )
+        
+        let config = createAndroidChartConfig()
+        
+        return PlotData(traces: traces, layout: layout, config: config)
+    }
+    
+    private func calculateStandardError(values: [Double]) -> Double {
+        guard values.count > 1 else { return 0.0 }
+        let mean = values.reduce(0, +) / Double(values.count)
+        let variance = values.reduce(0) { sum, value in
+            sum + pow(value - mean, 2)
+        } / Double(values.count - 1)
+        let standardDeviation = sqrt(variance)
+        return standardDeviation / sqrt(Double(values.count))  // Standard Error = SD / sqrt(N)
+    }
+    
+    private func createViolinPlot(chartData: ProteinChartData, curtainData: CurtainData) -> PlotData {
+        // Android VIOLIN_PLOT implementation - exact replication
+        var traces: [PlotTrace] = []
+        
+        // Create one trace per condition (Android approach)
+        for condition in chartData.conditions {
+            guard let values = chartData.conditionData[condition], 
+                  let _ = chartData.conditionSamples[condition],
+                  !values.isEmpty else { continue }
+            
+            let conditionColor = getConditionColor(condition: condition, curtainData: curtainData)
+            
+            // Calculate Android-style statistics for enhanced hover
+            let mean = values.reduce(0, +) / Double(values.count)
+            let variance = values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count)
+            let std = sqrt(variance)
+            let sortedValues = values.sorted()
+            let median = sortedValues.count % 2 == 0 
+                ? (sortedValues[sortedValues.count / 2 - 1] + sortedValues[sortedValues.count / 2]) / 2.0
+                : sortedValues[sortedValues.count / 2]
+            
+            // Create enhanced hover template with all statistics (Android-style)
+            let hoverTemplate = "<b>%{x}</b><br>" +
+                "Value: %{y:.3f}<br>" +
+                "Mean: \(String(format: "%.3f", mean))<br>" +
+                "Median: \(String(format: "%.3f", median))<br>" +
+                "Std: \(String(format: "%.3f", std))<br>" +
+                "N: \(values.count)<extra></extra>"
+            
+            // Android violin plot trace configuration - exact match
+            let trace = PlotTrace(
+                x: Array(repeating: condition, count: values.count),
+                y: values,
+                mode: "markers",       // Android mode
+                type: "violin",
+                name: condition,       // Android uses condition name
+                marker: PlotMarker(
+                    color: conditionColor,
+                    size: 4,           // Android point size  
+                    symbol: "circle",
+                    line: nil,         // No marker border in Android
+                    opacity: 0.7       // Android marker opacity
+                ),
+                text: nil,
+                hovertemplate: hoverTemplate,  // Android enhanced hover with stats
+                customdata: nil,
+                // Android violin plot exact settings
+                violinmode: nil,        // Android doesn't set violinmode for individual traces
+                box_visible: true,      // Show box plot overlay with white fill
+                meanline_visible: true, // Show mean line (red in Android)
+                points: "all",          // Show all individual points
+                pointpos: -1.2,         // Android point position (configurable)
+                jitter: nil,           // Android doesn't set jitter (uses default)
+                fillcolor: conditionColor,
+                line_color: "black",    // Android uses black violin outline
+                // Additional Android properties
+                spanmode: "soft",       // Smooth kernel density estimation
+                bandwidth: "auto",      // Automatic bandwidth selection
+                scalemode: "width",     // Scale violin width consistently
+                selected: PlotMarker(   // Android selection state
+                    color: "#e61010",
+                    size: 6,
+                    symbol: "circle",
+                    line: nil,
+                    opacity: 1.0        // Full opacity when selected
+                ),
+                unselected: PlotMarker( // Android unselected state
+                    color: conditionColor,
+                    size: 4,
+                    symbol: "circle",
+                    line: nil,
+                    opacity: 0.3        // Reduced opacity when unselected
+                )
+            )
+            traces.append(trace)
+        }
+        
+        // Android layout configuration
+        let yValues = chartData.conditionData.values.flatMap { $0 }
+        let yRange = [(yValues.min() ?? 0.0) * 0.95, (yValues.max() ?? 1.0) * 1.05]
+        
+        let layout = createAndroidViolinLayout(
+            title: "\(getProteinDisplayName(chartData.proteinId, curtainData: curtainData))",
+            yRange: yRange
+        )
+        
+        let config = createAndroidChartConfig()
+        
+        return PlotData(traces: traces, layout: layout, config: config)
+    }
+    
+    private func createChartLayoutWithDividers(title: String, xAxisTitle: String, yAxisTitle: String, curtainData: CurtainData, xValues: [String], yRange: [Double]) -> PlotLayout {
+        // Create base layout
+        let baseLayout = createChartLayout(title: title, xAxisTitle: xAxisTitle, yAxisTitle: yAxisTitle, curtainData: curtainData)
+        
+        // Add divider lines between conditions (like Android)
+        var shapes: [PlotShape] = []
+        for i in 0..<(xValues.count - 1) {
+            let dividerX = Double(i) + 0.5  // Position between bars
+            shapes.append(PlotShape(
+                type: "line",
+                x0: dividerX,
+                x1: dividerX,
+                y0: yRange[0],
+                y1: yRange[1] * 1.1,  // Extend slightly above
+                xref: "x",
+                yref: "y",
+                line: PlotLine(color: "#cccccc", width: 1, dash: "dash")
+            ))
+        }
+        
+        return PlotLayout(
+            title: baseLayout.title,
+            xaxis: baseLayout.xaxis,
+            yaxis: baseLayout.yaxis,
+            hovermode: baseLayout.hovermode,
+            showlegend: baseLayout.showlegend,
+            plot_bgcolor: baseLayout.plot_bgcolor,
+            paper_bgcolor: baseLayout.paper_bgcolor,
+            font: baseLayout.font,
+            shapes: shapes,  // Add divider shapes
+            annotations: baseLayout.annotations,
+            legend: baseLayout.legend
+        )
+    }
+    
+    private func createChartLayout(title: String, xAxisTitle: String, yAxisTitle: String, curtainData: CurtainData) -> PlotLayout {
+        // Android-style layout: White background, black borders, clean typography
+        let plotTitle = PlotTitle(
+            text: title,
+            font: PlotFont(
+                family: "Arial",  // Android uses Arial
+                size: 14,         // Android uses 14px bold titles
+                color: "#000000"  // Black text like Android
+            )
+        )
+        
+        let xaxis = PlotAxis(
+            title: PlotAxisTitle(
+                text: xAxisTitle,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000")  // Android uses 10px axis labels
+            ),
+            zeroline: false,
+            zerolinecolor: nil,
+            gridcolor: "#e0e0e0",  // Light gray grid like Android
+            range: nil,
+            font: PlotFont(family: "Arial", size: 10, color: "#000000"),
+            dtick: nil,
+            ticklen: 4,  // Android uses 4px tick length
+            showgrid: true
+        )
+        
+        let yaxis = PlotAxis(
+            title: PlotAxisTitle(
+                text: yAxisTitle,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000")
+            ),
+            zeroline: true,
+            zerolinecolor: "#000000",  // Black zero line
+            gridcolor: "#e0e0e0",
+            range: nil,
+            font: PlotFont(family: "Arial", size: 10, color: "#000000"),
+            dtick: nil,
+            ticklen: 4,
+            showgrid: true
+        )
+        
+        return PlotLayout(
+            title: plotTitle,
+            xaxis: xaxis,
+            yaxis: yaxis,
+            hovermode: "closest",
+            showlegend: true,
+            plot_bgcolor: "#ffffff",     // White background like Android
+            paper_bgcolor: "#ffffff",    // White paper background like Android
+            font: PlotFont(family: "Arial", size: 10, color: "#000000"),
+            shapes: nil,
+            annotations: nil,
+            legend: PlotLegend(
+                orientation: "h",  // Horizontal legend like Android
+                x: 0.5,
+                xanchor: "center",
+                y: -0.15,           // Position below chart like Android
+                yanchor: "top"
+            )
+        )
+    }
+    
+    private func createChartConfig() -> PlotConfig {
+        // Android-style config: Disable mode bar, enable responsiveness
+        return PlotConfig(
+            responsive: true,
+            displayModeBar: false,    // Android: always hidden
+            editable: false,          // Android: disable Plotly editing
+            scrollZoom: false,        // Android: disable scroll zoom for consistency
+            doubleClick: "reset"      // Android: enable double-click reset
+        )
+    }
+    
+    private func createChartConfigWithoutLegend() -> PlotConfig {
+        // Same as createChartConfig but designed for charts that don't need legends
+        return PlotConfig(
+            responsive: true,
+            displayModeBar: false,
+            editable: false,
+            scrollZoom: false,
+            doubleClick: "reset"
+        )
+    }
+    
+    private func createBarChartLayoutWithConditionDividers(
+        title: String,
+        xAxisTitle: String,
+        yAxisTitle: String,
+        curtainData: CurtainData,
+        xValues: [String],
+        yRange: [Double],
+        conditionPositions: [String: (start: Int, end: Int)]
+    ) -> PlotLayout {
+        // Create base layout
+        let baseLayout = createChartLayout(title: title, xAxisTitle: xAxisTitle, yAxisTitle: yAxisTitle, curtainData: curtainData)
+        
+        // Create divider lines between condition groups
+        var shapes: [PlotShape] = []
+        var annotations: [PlotAnnotation] = []
+        
+        let conditions = Array(conditionPositions.keys).sorted()
+        
+        // Add dividers between condition groups (not between individual bars)
+        for i in 0..<(conditions.count - 1) {
+            let currentCondition = conditions[i]
+            guard let currentRange = conditionPositions[currentCondition] else { continue }
+            
+            // Position divider after the last bar of current condition
+            let dividerX = Double(currentRange.end) + 0.5
+            
+            shapes.append(PlotShape(
+                type: "line",
+                x0: dividerX,
+                x1: dividerX,
+                y0: yRange[0],
+                y1: yRange[1],
+                xref: "x",
+                yref: "y",
+                line: PlotLine(color: "#cccccc", width: 1, dash: "dash")
+            ))
+        }
+        
+        // Add condition labels at the center of each group
+        for condition in conditions {
+            guard let range = conditionPositions[condition] else { continue }
+            
+            let centerX = Double(range.start + range.end) / 2.0
+            
+            annotations.append(PlotAnnotation(
+                id: "condition-\(condition)",
+                title: "condition-\(condition)",
+                text: condition,
+                x: centerX,
+                y: yRange[1] * 0.95,  // Position near top of chart
+                showarrow: false,
+                arrowhead: nil,
+                arrowsize: nil,
+                arrowwidth: nil,
+                arrowcolor: nil,
+                ax: nil,
+                ay: nil,
+                xanchor: "center",
+                yanchor: "bottom",
+                font: PlotFont(family: "Arial", size: 12, color: "#000000")
+            ))
+        }
+        
+        // Return layout with dividers, condition labels, and no legend
+        return PlotLayout(
+            title: baseLayout.title,
+            xaxis: PlotAxis(
+                title: PlotAxisTitle(text: "Samples", font: PlotFont(family: "Arial", size: 10, color: "#000000")),
+                zeroline: false,
+                zerolinecolor: nil,
+                gridcolor: "#e0e0e0",
+                range: nil,
+                font: PlotFont(family: "Arial", size: 8, color: "#000000"),  // Smaller font for sample names
+                dtick: nil,
+                ticklen: 4,
+                showgrid: true
+            ),
+            yaxis: baseLayout.yaxis,
+            hovermode: baseLayout.hovermode,
+            showlegend: false,  // No legend needed - conditions shown as annotations
+            plot_bgcolor: baseLayout.plot_bgcolor,
+            paper_bgcolor: baseLayout.paper_bgcolor,
+            font: baseLayout.font,
+            shapes: shapes,
+            annotations: annotations,
+            legend: nil  // No legend
+        )
+    }
+    
+    // MARK: - Android Layout Functions
+    
+    private func createAndroidChartConfig() -> PlotConfig {
+        // Android exact configuration
+        return PlotConfig(
+            responsive: true,
+            displayModeBar: false,  // Android: always disabled
+            editable: false,        // Android: always disabled
+            scrollZoom: false,      // Android: always disabled
+            doubleClick: "reset"    // Android: enable double-click reset
+        )
+    }
+    
+    private func createAndroidBarChartLayout(title: String, yRange: [Double]) -> PlotLayout {
+        // Android Individual Bar Chart layout - exact configuration
+        return PlotLayout(
+            title: nil,  // Remove title - already have header title
+            xaxis: PlotAxis(
+                title: PlotAxisTitle(
+                    text: "Conditions",
+                    font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil)
+                ),
+                zeroline: false,
+                zerolinecolor: nil,
+                gridcolor: "#e0e0e0",
+                range: nil,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+                dtick: nil,
+                ticklen: nil,
+                showgrid: true,
+                tickangle: 0,      // Android: horizontal labels
+                type: "category",  // Android: categorical axis
+                automargin: true   // Android: auto margin
+            ),
+            yaxis: PlotAxis(
+                title: PlotAxisTitle(
+                    text: "Intensity",
+                    font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil)
+                ),
+                zeroline: true,
+                zerolinecolor: "#000000",
+                gridcolor: "#e0e0e0",
+                range: yRange,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+                dtick: nil,
+                ticklen: nil,
+                showgrid: true,
+                automargin: true
+            ),
+            hovermode: "closest",
+            showlegend: false,      // Android: no legend for individual bars
+            plot_bgcolor: "#ffffff",
+            paper_bgcolor: "#ffffff",
+            font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+            shapes: nil,
+            annotations: nil,
+            legend: nil,
+            margin: PlotMargin(left: 50, right: 20, top: 20, bottom: 100)  // Android margins
+        )
+    }
+    
+    private func createAndroidIndividualBarChartLayout(
+        title: String, 
+        yRange: [Double], 
+        tickvals: [Double], 
+        ticktext: [String], 
+        shapes: [PlotShape]
+    ) -> PlotLayout {
+        // Android Individual Bar Chart with custom grouping and dividers
+        
+        // Update shapes to have proper y1 values
+        let updatedShapes = shapes.map { shape in
+            PlotShape(
+                type: shape.type,
+                x0: shape.x0,
+                x1: shape.x1,
+                y0: shape.y0,
+                y1: 1.0,  // Set to top of chart in paper coordinates
+                xref: shape.xref,
+                yref: shape.yref,
+                line: shape.line
+            )
+        }
+        
+        return PlotLayout(
+            title: nil,  // Remove title as requested - already have header title
+            xaxis: PlotAxis(
+                title: PlotAxisTitle(
+                    text: "Conditions",
+                    font: PlotFont(family: "Arial", size: 10, color: "#000000")
+                ),
+                zeroline: false,
+                zerolinecolor: nil,
+                gridcolor: "#e0e0e0",
+                range: nil,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000"),
+                dtick: nil,
+                ticklen: nil,
+                showgrid: true,
+                tickangle: 0,
+                type: "category",
+                automargin: true,
+                tickmode: "array",      // Android custom tick mode
+                tickvals: tickvals,     // Positions for condition labels
+                ticktext: ticktext      // Condition names as labels
+            ),
+            yaxis: PlotAxis(
+                title: PlotAxisTitle(
+                    text: "Intensity",
+                    font: PlotFont(family: "Arial", size: 10, color: "#000000")
+                ),
+                zeroline: true,
+                zerolinecolor: "#000000",
+                gridcolor: "#e0e0e0",
+                range: yRange,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000"),
+                dtick: nil,
+                ticklen: nil,
+                showgrid: true,
+                automargin: true
+            ),
+            hovermode: "closest",
+            showlegend: false,
+            plot_bgcolor: "#ffffff",
+            paper_bgcolor: "#ffffff",
+            font: PlotFont(family: "Arial", size: 10, color: "#000000"),
+            shapes: updatedShapes,   // Separator lines between condition groups
+            annotations: nil,
+            legend: nil,
+            margin: PlotMargin(left: 50, right: 20, top: 20, bottom: 100)
+        )
+    }
+    
+    private func createAndroidAverageChartLayout(title: String, yRange: [Double]) -> PlotLayout {
+        // Android Average Bar Chart layout - exact configuration
+        return PlotLayout(
+            title: nil,  // Remove title - already have header title
+            xaxis: PlotAxis(
+                title: PlotAxisTitle(
+                    text: "Conditions",
+                    font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil)
+                ),
+                zeroline: false,
+                zerolinecolor: nil,
+                gridcolor: "#e0e0e0",
+                range: nil,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+                dtick: nil,
+                ticklen: nil,
+                showgrid: true,
+                tickangle: 0,
+                type: "category",
+                automargin: true
+            ),
+            yaxis: PlotAxis(
+                title: PlotAxisTitle(
+                    text: "Intensity",
+                    font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil)
+                ),
+                zeroline: true,
+                zerolinecolor: "#000000",
+                gridcolor: "#e0e0e0",
+                range: yRange,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+                dtick: nil,
+                ticklen: nil,
+                showgrid: true,
+                automargin: true
+            ),
+            hovermode: "closest",
+            showlegend: false,      // Android: no legend for average bars
+            plot_bgcolor: "#ffffff",
+            paper_bgcolor: "#ffffff",
+            font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+            shapes: nil,
+            annotations: nil,
+            legend: nil,
+            margin: PlotMargin(left: 50, right: 20, top: 20, bottom: 100)
+        )
+    }
+    
+    private func createAndroidViolinLayout(title: String, yRange: [Double]) -> PlotLayout {
+        // Android Violin Plot layout - exact configuration
+        return PlotLayout(
+            title: nil,  // Remove title - already have header title
+            xaxis: PlotAxis(
+                title: PlotAxisTitle(
+                    text: "Conditions",
+                    font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil)
+                ),
+                zeroline: false,
+                zerolinecolor: nil,
+                gridcolor: "#e0e0e0",
+                range: nil,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+                dtick: nil,
+                ticklen: nil,
+                showgrid: true,
+                tickangle: 0,
+                type: "category",
+                automargin: true
+            ),
+            yaxis: PlotAxis(
+                title: PlotAxisTitle(
+                    text: "Intensity",
+                    font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil)
+                ),
+                zeroline: true,
+                zerolinecolor: "#000000",
+                gridcolor: "#e0e0e0",
+                range: yRange,
+                font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+                dtick: nil,
+                ticklen: nil,
+                showgrid: true,
+                automargin: true
+            ),
+            hovermode: "closest",
+            showlegend: false,      // Android: no legend for violin plots
+            plot_bgcolor: "#ffffff",
+            paper_bgcolor: "#ffffff",
+            font: PlotFont(family: "Arial", size: 10, color: "#000000", dash: nil),
+            shapes: nil,
+            annotations: nil,
+            legend: nil,
+            margin: PlotMargin(left: 50, right: 20, top: 20, bottom: 100)
+        )
+    }
+    
+    // MARK: - Color Management
+    
+    private func getConditionColor(condition: String, curtainData: CurtainData) -> String {
+        // Android Color Assignment Priority (matching ConditionColorService.kt):
+        // 1. barchartColorMap (protein-specific overrides) - highest priority
+        // 2. colorMap (general condition colors)  
+        // 3. Default palette assignment
+        
+        // First priority: barchartColorMap (protein-specific overrides)
+        if let color = curtainData.settings.barchartColorMap[condition] as? String, !color.isEmpty {
+            return color
+        }
+        
+        // Second priority: general colorMap
+        if let color = curtainData.settings.colorMap[condition], !color.isEmpty {
+            return color
+        }
+        
+        // Third priority: Android Default Color Palettes (Pastel palette as default)
+        let androidPastelColors = [
+            "#fd7f6f",  // Red
+            "#7eb0d5",  // Blue  
+            "#b2e061",  // Green
+            "#bd7ebe",  // Purple
+            "#ffb55a",  // Orange
+            "#ffee65",  // Yellow
+            "#beb9db",  // Light Purple
+            "#fdcce5",  // Pink
+            "#8bd3c7",  // Teal
+            "#b3de69"   // Light Green
+        ]
+        
+        let conditionIndex = curtainData.settings.conditionOrder.firstIndex(of: condition) ?? 0
+        let defaultColor = androidPastelColors[conditionIndex % androidPastelColors.count]
+        return defaultColor
+    }
+    
+    
+    private func getProteinDisplayName(_ proteinId: String, curtainData: CurtainData) -> String {
+        // Use UniProt data directly from curtainData (proper approach)
+        if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
+           let uniprotRecord = uniprotDB[proteinId] as? [String: Any],
+           let geneNames = uniprotRecord["Gene Names"] as? String,
+           !geneNames.isEmpty {
+            // Parse the first gene name from Gene Names string (can be space or semicolon separated)
+            let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
+                .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .first
+            
+            if let geneName = firstGeneName, geneName != proteinId {
+                return "\(geneName) (\(proteinId))"
+            }
+        }
+        
+        return proteinId
+    }
+    
+    private func calculateStandardDeviation(values: [Double], mean: Double) -> Double {
+        let variance = values.reduce(0) { sum, value in
+            sum + pow(value - mean, 2)
+        } / Double(values.count - 1)
+        return sqrt(variance)
+    }
+    
+    private func generateChartHtmlTemplate(plotJSON: String, chartType: ProteinChartType) -> String {
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; img-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
+            <title>\(chartType.displayName)</title>
+            <style>
+                body {
+                    margin: 0;
+                    padding: 0;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    background-color: var(--background-color, #ffffff);
+                    color: var(--text-color, #000000);
+                }
+                
+                #plot {
+                    width: 100%;
+                    height: 100vh;
+                }
+                
+                .loading {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    font-size: 18px;
+                    color: var(--text-color, #666);
+                }
+                
+                .error {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    font-size: 16px;
+                    color: #d32f2f;
+                    text-align: center;
+                    padding: 20px;
+                }
+                
+                /* Dark mode support */
+                @media (prefers-color-scheme: dark) {
+                    body {
+                        --background-color: #1c1c1e;
+                        --text-color: #ffffff;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div id="loading" class="loading">Loading \(chartType.displayName.lowercased())...</div>
+            <div id="plot" style="display: none;"></div>
+            <div id="error" class="error" style="display: none;">
+                <div>
+                    <h3>Unable to load chart</h3>
+                    <p>Please check your data and try again.</p>
+                </div>
+            </div>
+
+            <script>
+            // Inline Plotly.js to avoid resource loading issues
+            \(getInlinePlotlyJS())
+            </script>
+            <script>
+                // Check if Plotly loaded successfully
+                if (typeof Plotly === 'undefined') {
+                    console.error('Plotly.js failed to load');
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                } else {
+                    // Global configuration for Plotly
+                    Plotly.setPlotConfig({
+                        displayModeBar: true,
+                        displaylogo: false,
+                        modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
+                    });
+
+                    // Plot data from iOS
+                    const plotData = \(plotJSON);
+                
+                    // Initialize the plot
+                    document.addEventListener('DOMContentLoaded', function() {
+                        try {
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('error').style.display = 'none';
+                            document.getElementById('plot').style.display = 'block';
+                            
+                            Plotly.newPlot('plot', plotData.data, plotData.layout, plotData.config)
+                                .then(() => {
+                                    console.log('\(chartType.displayName) loaded successfully');
+                                })
+                                .catch(error => {
+                                    console.error('Error creating chart:', error);
+                                    document.getElementById('plot').style.display = 'none';
+                                    document.getElementById('error').style.display = 'flex';
+                                });
+                        } catch (error) {
+                            console.error('Error in initialization:', error);
+                            document.getElementById('loading').style.display = 'none';
+                            document.getElementById('error').style.display = 'flex';
+                        }
+                    });
+                }
+            </script>
+        </body>
+        </html>
+        """
+    }
+    
+    private func getInlinePlotlyJS() -> String {
+        // Try to read plotly.min.js from the bundle
+        if let plotlyURL = Bundle.main.url(forResource: "plotly.min", withExtension: "js"),
+           let plotlyContent = try? String(contentsOf: plotlyURL, encoding: .utf8) {
+            return plotlyContent
+        } else {
+            // Return a minimal fallback that will trigger the error handler
+            return "console.error('Plotly.js not found in bundle');"
+        }
+    }
+}
+
+// MARK: - Data Models
+
+struct ProteinChartData {
+    let proteinId: String
+    let samples: [String]
+    let conditions: [String]
+    let conditionData: [String: [Double]]
+    let conditionSamples: [String: [String]]
+    let proteinValues: [String: Double]
+}
+
+enum ChartGenerationError: Error {
+    case noRawData
+    case invalidProteinData
+    case plotGenerationFailed
+    
+    var localizedDescription: String {
+        switch self {
+        case .noRawData:
+            return "No raw sample data available for chart generation"
+        case .invalidProteinData:
+            return "Invalid protein data format"
+        case .plotGenerationFailed:
+            return "Failed to generate plot data"
+        }
+    }
+}

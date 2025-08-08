@@ -1,0 +1,516 @@
+//
+//  CurtainDataModels.swift
+//  Curtain
+//
+//  Created by Toan Phung on 02/08/2025.
+//
+
+import Foundation
+
+// MARK: - Main CurtainData Structure (Based on Android CurtainData.kt)
+
+struct CurtainData {
+    // Data Content Fields
+    let raw: String?
+    let rawForm: CurtainRawForm
+    let differentialForm: CurtainDifferentialForm
+    let processed: String?
+    let password: String
+    let selections: [String: [Any]]?
+    var selectionsMap: [String: Any]?
+    var selectedMap: [String: [String: Bool]]? // Android runtime data structure
+    var selectionsName: [String]?
+    private let _settings: CurtainSettings
+    let fetchUniprot: Bool
+    let annotatedData: Any?
+    let extraData: ExtraData?
+    let permanent: Bool
+    
+    // Direct access to settings without automatic processing to avoid loops
+    var settings: CurtainSettings {
+        return _settings
+    }
+    
+    // Method to get processed settings when needed (e.g., for protein charts)
+    func getProcessedSettings() -> CurtainSettings {
+        // Only process if we have the necessary data and are missing metadata
+        guard let rawData = raw, 
+              !rawData.isEmpty, 
+              !rawForm.samples.isEmpty,
+              (_settings.conditionOrder.isEmpty || _settings.sampleMap.isEmpty) else {
+            return _settings
+        }
+        
+        print("🔄 CurtainData: Processing raw data to create metadata...")
+        let processedSettings = CurtainDataProcessor.processRawData(self)
+        print("🔄 CurtainData: Processing complete - new conditionOrder count: \(processedSettings.conditionOrder.count)")
+        return processedSettings
+    }
+    
+    // Computed properties for easier access
+    var proteomicsData: [String: Any] {
+        // Priority 1: Use processed differential data (like Android)
+        if let extraData = extraData,
+           let data = extraData.data,
+           let dataMap = data.dataMap {
+            let convertedDataMap = convertDataMapToDict(dataMap)
+            
+            // Check if we have processedDifferentialData (like Android)
+            if let processedData = convertedDataMap["processedDifferentialData"] as? [[String: Any]] {
+                print("🔍 CurtainData: Using processedDifferentialData with \(processedData.count) entries")
+                
+                // Convert array to dictionary with protein IDs as keys
+                var result: [String: Any] = [:]
+                for (index, row) in processedData.enumerated() {
+                    // Find the protein ID field
+                    let proteinId = findProteinId(in: row) ?? "PROTEIN_\(index)"
+                    result[proteinId] = row
+                }
+                
+                print("🔍 CurtainData: Converted to \(result.count) protein entries")
+                return result
+            }
+            
+            // Fallback: Use raw dataMap conversion
+            print("🔍 CurtainData: Using raw dataMap with \(convertedDataMap.count) entries")
+            return convertedDataMap
+        }
+        
+        return [:]
+    }
+    
+    // Helper to find protein ID field in row data - use ONLY user-specified column
+    private func findProteinId(in row: [String: Any]) -> String? {
+        // CRITICAL: Use ONLY the user-specified primary ID column from differential form
+        guard !differentialForm.primaryIDs.isEmpty else {
+            print("❌ CurtainData: Primary ID column not specified by user")
+            return nil
+        }
+        
+        let primaryIdColumn = differentialForm.primaryIDs
+        guard let id = row[primaryIdColumn] as? String, !id.isEmpty else {
+            if let debugValue = row[primaryIdColumn] {
+                print("❌ CurtainData: Invalid primary ID in column '\(primaryIdColumn)': \(debugValue) (\(type(of: debugValue)))")
+            } else {
+                print("❌ CurtainData: Primary ID column '\(primaryIdColumn)' not found in row")
+            }
+            return nil
+        }
+        
+        return id
+    }
+    
+    // Data row counts (matching Android implementation)
+    var rawDataRowCount: Int {
+        // Count based on samples or data availability
+        if !rawForm.samples.isEmpty {
+            return rawForm.samples.count
+        }
+        return proteomicsData.count
+    }
+    
+    var differentialDataRowCount: Int {
+        // Count differential data rows
+        return proteomicsData.count
+    }
+    
+    var linkId: String {
+        return settings.currentId
+    }
+    
+    var description: String {
+        return settings.description
+    }
+    
+    var curtainType: String {
+        // Derive curtain type from settings or data structure
+        if !rawForm.samples.isEmpty {
+            return "TP" // Total Proteome
+        } else if !differentialForm.comparison.isEmpty {
+            return "CC" // Comparative Analysis  
+        }
+        return "TP"
+    }
+    
+    init(
+        raw: String? = nil,
+        rawForm: CurtainRawForm = CurtainRawForm(),
+        differentialForm: CurtainDifferentialForm = CurtainDifferentialForm(),
+        processed: String? = nil,
+        password: String = "",
+        selections: [String: [Any]]? = nil,
+        selectionsMap: [String: Any]? = nil,
+        selectedMap: [String: [String: Bool]]? = nil,
+        selectionsName: [String]? = nil,
+        settings: CurtainSettings = CurtainSettings(),
+        fetchUniprot: Bool = true,
+        annotatedData: Any? = nil,
+        extraData: ExtraData? = nil,
+        permanent: Bool = false
+    ) {
+        self.raw = raw
+        self.rawForm = rawForm
+        self.differentialForm = differentialForm
+        self.processed = processed
+        self.password = password
+        self.selections = selections
+        self.selectionsMap = selectionsMap
+        self.selectedMap = selectedMap
+        self.selectionsName = selectionsName
+        self._settings = settings
+        self.fetchUniprot = fetchUniprot
+        self.annotatedData = annotatedData
+        self.extraData = extraData
+        self.permanent = permanent
+    }
+    
+    // Helper method to convert JavaScript Map serialization formats
+    private func convertDataMapToDict(_ dataMap: Any) -> [String: Any] {
+        print("🔍 CurtainData: convertDataMapToDict called")
+        print("🔍 CurtainData: dataMap type: \(type(of: dataMap))")
+        
+        // Use the same logic as CurtainDataService.convertToMutableMap
+        guard let dataDict = dataMap as? [String: Any] else {
+            print("🔍 CurtainData: dataMap is not dictionary, checking if it's array format")
+            if let arrayData = dataMap as? [[Any]] {
+                print("🔍 CurtainData: dataMap is array format with \(arrayData.count) pairs")
+                return convertArrayToDict(arrayData)
+            }
+            print("🔍 CurtainData: dataMap is not convertible, returning empty dict")
+            return [:]
+        }
+        
+        print("🔍 CurtainData: dataMap keys: \(dataDict.keys)")
+        
+        // Check for JavaScript Map serialization format: {value: [[key, value], ...]}
+        if let mapValue = dataDict["value"] as? [[Any]] {
+            print("🔍 CurtainData: Found 'value' key with array format (\(mapValue.count) pairs)")
+            return convertArrayToDict(mapValue)
+        }
+        
+        // Return the dictionary as-is if it's not in the special format
+        print("🔍 CurtainData: Dictionary doesn't have 'value' key, returning as-is")
+        return dataDict
+    }
+    
+    private func convertArrayToDict(_ arrayData: [[Any]]) -> [String: Any] {
+        var result: [String: Any] = [:]
+        for (index, pair) in arrayData.enumerated() {
+            if pair.count >= 2,
+               let key = pair[0] as? String {
+                result[key] = pair[1]
+                
+                // Debug first few pairs to understand data structure
+                if index < 3 {
+                    print("🔍 CurtainData: Pair \(index): key=\(key), value=\(pair[1]) (\(type(of: pair[1])))")
+                    if let dict = pair[1] as? [String: Any] {
+                        print("🔍 CurtainData: Value is dict with keys: \(dict.keys.sorted())")
+                        // Show first few key-value pairs from the protein data
+                        for (dictKey, dictValue) in dict.prefix(3) {
+                            print("🔍 CurtainData:   \(dictKey): \(dictValue) (\(type(of: dictValue)))")
+                        }
+                    }
+                }
+            }
+        }
+        print("🔍 CurtainData: Converted \(arrayData.count) pairs to \(result.count) dictionary entries")
+        return result
+    }
+}
+
+// MARK: - CurtainRawForm (Raw Data Configuration)
+
+struct CurtainRawForm {
+    let primaryIDs: String
+    let samples: [String]
+    let log2: Bool
+    
+    init(
+        primaryIDs: String = "",
+        samples: [String] = [],
+        log2: Bool = false
+    ) {
+        self.primaryIDs = primaryIDs
+        self.samples = samples
+        self.log2 = log2
+    }
+}
+
+// MARK: - CurtainDifferentialForm (Comparative Analysis Configuration)
+
+struct CurtainDifferentialForm {
+    let primaryIDs: String
+    let geneNames: String
+    let foldChange: String
+    let transformFC: Bool
+    let significant: String
+    let transformSignificant: Bool
+    let comparison: String
+    let comparisonSelect: [String]
+    let reverseFoldChange: Bool
+    
+    init(
+        primaryIDs: String = "",
+        geneNames: String = "",
+        foldChange: String = "",
+        transformFC: Bool = false,
+        significant: String = "",
+        transformSignificant: Bool = false,
+        comparison: String = "",
+        comparisonSelect: [String] = [],
+        reverseFoldChange: Bool = false
+    ) {
+        self.primaryIDs = primaryIDs
+        self.geneNames = geneNames
+        self.foldChange = foldChange
+        self.transformFC = transformFC
+        self.significant = significant
+        self.transformSignificant = transformSignificant
+        self.comparison = comparison
+        self.comparisonSelect = comparisonSelect
+        self.reverseFoldChange = reverseFoldChange
+    }
+}
+
+// MARK: - ExtraData (UniProt and Additional Data)
+
+struct ExtraData {
+    let uniprot: UniprotExtraData?
+    let data: DataMapContainer?
+    
+    init(
+        uniprot: UniprotExtraData? = nil,
+        data: DataMapContainer? = nil
+    ) {
+        self.uniprot = uniprot
+        self.data = data
+    }
+}
+
+// MARK: - DataMapContainer (Proteomics Data Container)
+
+struct DataMapContainer {
+    let dataMap: Any? // Can be Map or Array format
+    let genesMap: Any?
+    let primaryIDsMap: Any?
+    let allGenes: [String]?
+    
+    init(
+        dataMap: Any? = nil,
+        genesMap: Any? = nil,
+        primaryIDsMap: Any? = nil,
+        allGenes: [String]? = nil
+    ) {
+        self.dataMap = dataMap
+        self.genesMap = genesMap
+        self.primaryIDsMap = primaryIDsMap
+        self.allGenes = allGenes
+    }
+}
+
+// MARK: - UniprotExtraData (UniProt Annotations)
+
+struct UniprotExtraData {
+    let results: [String: Any]
+    let dataMap: Any?
+    let db: Any?
+    let organism: String?
+    let accMap: Any?
+    let geneNameToAcc: Any?
+    
+    init(
+        results: [String: Any] = [:],
+        dataMap: Any? = nil,
+        db: Any? = nil,
+        organism: String? = nil,
+        accMap: Any? = nil,
+        geneNameToAcc: Any? = nil
+    ) {
+        self.results = results
+        self.dataMap = dataMap
+        self.db = db
+        self.organism = organism
+        self.accMap = accMap
+        self.geneNameToAcc = geneNameToAcc
+    }
+}
+
+// MARK: - JSON Parsing Extensions
+
+extension CurtainData {
+    
+    /// Parse CurtainData from JSON dictionary (like Android Moshi adapter)
+    static func fromJSON(_ json: [String: Any]) -> CurtainData? {
+        // Parse CurtainRawForm
+        let rawForm: CurtainRawForm
+        if let rawFormDict = json["rawForm"] as? [String: Any] {
+            rawForm = CurtainRawForm(
+                primaryIDs: rawFormDict["_primaryIDs"] as? String ?? "",
+                samples: rawFormDict["_samples"] as? [String] ?? [],
+                log2: rawFormDict["_log2"] as? Bool ?? false
+            )
+        } else {
+            rawForm = CurtainRawForm()
+        }
+        
+        // Parse CurtainDifferentialForm
+        let differentialForm: CurtainDifferentialForm
+        if let diffFormDict = json["differentialForm"] as? [String: Any] {
+            differentialForm = CurtainDifferentialForm(
+                primaryIDs: diffFormDict["_primaryIDs"] as? String ?? "",
+                geneNames: diffFormDict["_geneNames"] as? String ?? "",
+                foldChange: diffFormDict["_foldChange"] as? String ?? "",
+                transformFC: diffFormDict["_transformFC"] as? Bool ?? false,
+                significant: diffFormDict["_significant"] as? String ?? "",
+                transformSignificant: diffFormDict["_transformSignificant"] as? Bool ?? false,
+                comparison: diffFormDict["_comparison"] as? String ?? "",
+                comparisonSelect: diffFormDict["_comparisonSelect"] as? [String] ?? [],
+                reverseFoldChange: diffFormDict["_reverseFoldChange"] as? Bool ?? false
+            )
+        } else {
+            differentialForm = CurtainDifferentialForm()
+        }
+        
+        // Parse ExtraData
+        let extraData: ExtraData?
+        if let extraDataDict = json["extraData"] as? [String: Any] {
+            // Parse UniProt data
+            let uniprotData: UniprotExtraData?
+            if let uniprotDict = extraDataDict["uniprot"] as? [String: Any] {
+                uniprotData = UniprotExtraData(
+                    results: uniprotDict["results"] as? [String: Any] ?? [:],
+                    dataMap: uniprotDict["dataMap"],
+                    db: uniprotDict["db"],
+                    organism: uniprotDict["organism"] as? String,
+                    accMap: uniprotDict["accMap"],
+                    geneNameToAcc: uniprotDict["geneNameToAcc"]
+                )
+            } else {
+                uniprotData = nil
+            }
+            
+            // Parse data container
+            let dataContainer: DataMapContainer?
+            if let dataDict = extraDataDict["data"] as? [String: Any] {
+                dataContainer = DataMapContainer(
+                    dataMap: dataDict["dataMap"],
+                    genesMap: dataDict["genesMap"],
+                    primaryIDsMap: dataDict["primaryIDsMap"],
+                    allGenes: dataDict["allGenes"] as? [String]
+                )
+            } else {
+                dataContainer = nil
+            }
+            
+            extraData = ExtraData(uniprot: uniprotData, data: dataContainer)
+        } else {
+            extraData = nil
+        }
+        
+        // Parse settings (assume already available from CurtainSettings parsing)
+        let settings: CurtainSettings
+        if let _ = json["settings"] as? [String: Any] {
+            // This would use the existing CurtainSettings parsing logic
+            settings = CurtainSettings() // Placeholder - would need full parsing
+        } else {
+            settings = CurtainSettings()
+        }
+        
+        return CurtainData(
+            raw: json["raw"] as? String,
+            rawForm: rawForm,
+            differentialForm: differentialForm,
+            processed: json["processed"] as? String,
+            password: json["password"] as? String ?? "",
+            selections: json["selections"] as? [String: [Any]],
+            selectionsMap: json["selectionsMap"] as? [String: Any],
+            selectionsName: json["selectionsName"] as? [String],
+            settings: settings,
+            fetchUniprot: json["fetchUniprot"] as? Bool ?? true,
+            annotatedData: json["annotatedData"],
+            extraData: extraData,
+            permanent: json["permanent"] as? Bool ?? false
+        )
+    }
+    
+    /// Convert CurtainData to JSON dictionary
+    func toJSON() -> [String: Any] {
+        var json: [String: Any] = [:]
+        
+        json["raw"] = raw
+        json["processed"] = processed
+        json["password"] = password
+        json["fetchUniprot"] = fetchUniprot
+        json["permanent"] = permanent
+        
+        // Convert RawForm
+        json["rawForm"] = [
+            "_primaryIDs": rawForm.primaryIDs,
+            "_samples": rawForm.samples,
+            "_log2": rawForm.log2
+        ]
+        
+        // Convert DifferentialForm
+        json["differentialForm"] = [
+            "_primaryIDs": differentialForm.primaryIDs,
+            "_geneNames": differentialForm.geneNames,
+            "_foldChange": differentialForm.foldChange,
+            "_transformFC": differentialForm.transformFC,
+            "_significant": differentialForm.significant,
+            "_transformSignificant": differentialForm.transformSignificant,
+            "_comparison": differentialForm.comparison,
+            "_comparisonSelect": differentialForm.comparisonSelect,
+            "_reverseFoldChange": differentialForm.reverseFoldChange
+        ]
+        
+        if let selections = selections {
+            json["selections"] = selections
+        }
+        
+        if let selectionsMap = selectionsMap {
+            json["selectionsMap"] = selectionsMap
+        }
+        
+        if let selectionsName = selectionsName {
+            json["selectionsName"] = selectionsName
+        }
+        
+        if let annotatedData = annotatedData {
+            json["annotatedData"] = annotatedData
+        }
+        
+        // Convert ExtraData
+        if let extraData = extraData {
+            var extraDataDict: [String: Any] = [:]
+            
+            if let uniprot = extraData.uniprot {
+                extraDataDict["uniprot"] = [
+                    "results": uniprot.results,
+                    "dataMap": uniprot.dataMap as Any,
+                    "db": uniprot.db as Any,
+                    "organism": uniprot.organism as Any,
+                    "accMap": uniprot.accMap as Any,
+                    "geneNameToAcc": uniprot.geneNameToAcc as Any
+                ]
+            }
+            
+            if let data = extraData.data {
+                extraDataDict["data"] = [
+                    "dataMap": data.dataMap as Any,
+                    "genesMap": data.genesMap as Any,
+                    "primaryIDsMap": data.primaryIDsMap as Any,
+                    "allGenes": data.allGenes as Any
+                ]
+            }
+            
+            json["extraData"] = extraDataDict
+        }
+        
+        // Serialize settings using the raw _settings (not the computed property)
+        json["settings"] = _settings.toDictionary()
+        
+        return json
+    }
+}
+
+
