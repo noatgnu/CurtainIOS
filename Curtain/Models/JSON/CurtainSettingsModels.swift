@@ -71,7 +71,37 @@ struct CurtainSettings {
     let enableImputation: Bool
     let viewPeptideCount: Bool
     let peptideCountData: [String: Any]
-    
+
+    // Volcano Plot Advanced Settings
+    let volcanoConditionLabels: VolcanoConditionLabels
+    let volcanoTraceOrder: [String]
+    let volcanoPlotYaxisPosition: [String]
+    let customVolcanoTextCol: String
+
+    // Bar Chart Advanced Settings
+    let barChartConditionBracket: BarChartConditionBracket
+    let columnSize: [String: Int]
+    let chartYAxisLimits: [String: ChartYAxisLimits]
+    let individualYAxisLimits: [String: Any]
+
+    // Violin Plot Settings
+    let violinPointPos: Double
+
+    // Advanced Data Features
+    let networkInteractionData: [Any]
+    let enrichrGeneRankMap: [String: Any]
+    let enrichrRunList: [String]
+    let extraData: [ExtraDataItem]
+
+    // Metabolomics Support
+    let enableMetabolomics: Bool
+    let metabolomicsColumnMap: MetabolomicsColumnMap
+
+    // Additional Metadata
+    let encrypted: Bool
+    let dataAnalysisContact: String
+    let markerSizeMap: [String: Any]
+
     init() {
         self.fetchUniprot = true
         self.inputDataCols = [:]
@@ -119,6 +149,28 @@ struct CurtainSettings {
         self.enableImputation = false
         self.viewPeptideCount = false
         self.peptideCountData = [:]
+        self.volcanoConditionLabels = VolcanoConditionLabels()
+        self.volcanoTraceOrder = []
+        self.volcanoPlotYaxisPosition = ["middle"]
+        self.customVolcanoTextCol = ""
+        self.barChartConditionBracket = BarChartConditionBracket()
+        self.columnSize = [:]
+        self.chartYAxisLimits = [
+            "barChart": ChartYAxisLimits(),
+            "averageBarChart": ChartYAxisLimits(),
+            "violinPlot": ChartYAxisLimits()
+        ]
+        self.individualYAxisLimits = [:]
+        self.violinPointPos = -2.0
+        self.networkInteractionData = []
+        self.enrichrGeneRankMap = [:]
+        self.enrichrRunList = []
+        self.extraData = []
+        self.enableMetabolomics = false
+        self.metabolomicsColumnMap = MetabolomicsColumnMap()
+        self.encrypted = false
+        self.dataAnalysisContact = ""
+        self.markerSizeMap = [:]
     }
     
     init(
@@ -167,7 +219,29 @@ struct CurtainSettings {
         imputationMap: [String: Any] = [:],
         enableImputation: Bool = false,
         viewPeptideCount: Bool = false,
-        peptideCountData: [String: Any] = [:]
+        peptideCountData: [String: Any] = [:],
+        volcanoConditionLabels: VolcanoConditionLabels = VolcanoConditionLabels(),
+        volcanoTraceOrder: [String] = [],
+        volcanoPlotYaxisPosition: [String] = ["middle"],
+        customVolcanoTextCol: String = "",
+        barChartConditionBracket: BarChartConditionBracket = BarChartConditionBracket(),
+        columnSize: [String: Int] = [:],
+        chartYAxisLimits: [String: ChartYAxisLimits] = [
+            "barChart": ChartYAxisLimits(),
+            "averageBarChart": ChartYAxisLimits(),
+            "violinPlot": ChartYAxisLimits()
+        ],
+        individualYAxisLimits: [String: Any] = [:],
+        violinPointPos: Double = -2.0,
+        networkInteractionData: [Any] = [],
+        enrichrGeneRankMap: [String: Any] = [:],
+        enrichrRunList: [String] = [],
+        extraData: [ExtraDataItem] = [],
+        enableMetabolomics: Bool = false,
+        metabolomicsColumnMap: MetabolomicsColumnMap = MetabolomicsColumnMap(),
+        encrypted: Bool = false,
+        dataAnalysisContact: String = "",
+        markerSizeMap: [String: Any] = [:]
     ) {
         self.fetchUniprot = fetchUniprot
         self.inputDataCols = inputDataCols
@@ -215,6 +289,24 @@ struct CurtainSettings {
         self.enableImputation = enableImputation
         self.viewPeptideCount = viewPeptideCount
         self.peptideCountData = peptideCountData
+        self.volcanoConditionLabels = volcanoConditionLabels
+        self.volcanoTraceOrder = volcanoTraceOrder
+        self.volcanoPlotYaxisPosition = volcanoPlotYaxisPosition
+        self.customVolcanoTextCol = customVolcanoTextCol
+        self.barChartConditionBracket = barChartConditionBracket
+        self.columnSize = columnSize
+        self.chartYAxisLimits = chartYAxisLimits
+        self.individualYAxisLimits = individualYAxisLimits
+        self.violinPointPos = violinPointPos
+        self.networkInteractionData = networkInteractionData
+        self.enrichrGeneRankMap = enrichrGeneRankMap
+        self.enrichrRunList = enrichrRunList
+        self.extraData = extraData
+        self.enableMetabolomics = enableMetabolomics
+        self.metabolomicsColumnMap = metabolomicsColumnMap
+        self.encrypted = encrypted
+        self.dataAnalysisContact = dataAnalysisContact
+        self.markerSizeMap = markerSizeMap
     }
     
     // MARK: - Default Values (From Android)
@@ -400,19 +492,146 @@ struct VolcanoPlotMargin {
     let right: Int?
     let bottom: Int?
     let top: Int?
-    
+
     init() {
         self.left = nil
         self.right = nil
         self.bottom = nil
         self.top = nil
     }
-    
+
     init(left: Int?, right: Int?, bottom: Int?, top: Int?) {
         self.left = left
         self.right = right
         self.bottom = bottom
         self.top = top
+    }
+}
+
+struct VolcanoConditionLabels {
+    let enabled: Bool
+    let leftCondition: String
+    let rightCondition: String
+    let leftX: Double
+    let rightX: Double
+    let yPosition: Double
+    let fontSize: Int
+    let fontColor: String
+
+    init() {
+        self.enabled = false
+        self.leftCondition = ""
+        self.rightCondition = ""
+        self.leftX = 0.25
+        self.rightX = 0.75
+        self.yPosition = -0.1
+        self.fontSize = 14
+        self.fontColor = "#000000"
+    }
+
+    init(
+        enabled: Bool,
+        leftCondition: String,
+        rightCondition: String,
+        leftX: Double,
+        rightX: Double,
+        yPosition: Double,
+        fontSize: Int,
+        fontColor: String
+    ) {
+        self.enabled = enabled
+        self.leftCondition = leftCondition
+        self.rightCondition = rightCondition
+        self.leftX = leftX
+        self.rightX = rightX
+        self.yPosition = yPosition
+        self.fontSize = fontSize
+        self.fontColor = fontColor
+    }
+}
+
+struct BarChartConditionBracket {
+    let showBracket: Bool
+    let bracketHeight: Double
+    let bracketColor: String
+    let bracketWidth: Int
+
+    init() {
+        self.showBracket = false
+        self.bracketHeight = 0.05
+        self.bracketColor = "#000000"
+        self.bracketWidth = 2
+    }
+
+    init(
+        showBracket: Bool,
+        bracketHeight: Double,
+        bracketColor: String,
+        bracketWidth: Int
+    ) {
+        self.showBracket = showBracket
+        self.bracketHeight = bracketHeight
+        self.bracketColor = bracketColor
+        self.bracketWidth = bracketWidth
+    }
+}
+
+struct ChartYAxisLimits {
+    let min: Double?
+    let max: Double?
+
+    init() {
+        self.min = nil
+        self.max = nil
+    }
+
+    init(min: Double?, max: Double?) {
+        self.min = min
+        self.max = max
+    }
+}
+
+struct MetabolomicsColumnMap {
+    let polarity: String?
+    let formula: String?
+    let abbreviation: String?
+    let smiles: String?
+
+    init() {
+        self.polarity = nil
+        self.formula = nil
+        self.abbreviation = nil
+        self.smiles = nil
+    }
+
+    init(
+        polarity: String?,
+        formula: String?,
+        abbreviation: String?,
+        smiles: String?
+    ) {
+        self.polarity = polarity
+        self.formula = formula
+        self.abbreviation = abbreviation
+        self.smiles = smiles
+    }
+}
+
+struct ExtraDataItem {
+    let name: String
+    let content: String
+    let type: String
+
+    init() {
+        self.name = ""
+        self.content = ""
+        self.type = ""
+    }
+
+    init(name: String, content: String, type: String) {
+        self.name = name
+        self.content = content
+        self.type = type
     }
 }
 
@@ -468,7 +687,25 @@ extension CurtainSettings {
             imputationMap: map["imputationMap"] as? [String: Any] ?? [:],
             enableImputation: map["enableImputation"] as? Bool ?? false,
             viewPeptideCount: map["viewPeptideCount"] as? Bool ?? false,
-            peptideCountData: map["peptideCountData"] as? [String: Any] ?? [:]
+            peptideCountData: map["peptideCountData"] as? [String: Any] ?? [:],
+            volcanoConditionLabels: VolcanoConditionLabels.fromDictionary(map["volcanoConditionLabels"] as? [String: Any]),
+            volcanoTraceOrder: map["volcanoTraceOrder"] as? [String] ?? [],
+            volcanoPlotYaxisPosition: map["volcanoPlotYaxisPosition"] as? [String] ?? ["middle"],
+            customVolcanoTextCol: map["customVolcanoTextCol"] as? String ?? "",
+            barChartConditionBracket: BarChartConditionBracket.fromDictionary(map["barChartConditionBracket"] as? [String: Any]),
+            columnSize: map["columnSize"] as? [String: Int] ?? [:],
+            chartYAxisLimits: ChartYAxisLimits.fromChartDictionary(map["chartYAxisLimits"] as? [String: Any]),
+            individualYAxisLimits: map["individualYAxisLimits"] as? [String: Any] ?? [:],
+            violinPointPos: map["violinPointPos"] as? Double ?? -2.0,
+            networkInteractionData: map["networkInteractionData"] as? [Any] ?? [],
+            enrichrGeneRankMap: map["enrichrGeneRankMap"] as? [String: Any] ?? [:],
+            enrichrRunList: map["enrichrRunList"] as? [String] ?? [],
+            extraData: ExtraDataItem.fromDictionaryArray(map["extraData"] as? [[String: Any]]),
+            enableMetabolomics: map["enableMetabolomics"] as? Bool ?? false,
+            metabolomicsColumnMap: MetabolomicsColumnMap.fromDictionary(map["metabolomicsColumnMap"] as? [String: Any]),
+            encrypted: map["encrypted"] as? Bool ?? false,
+            dataAnalysisContact: map["dataAnalysisContact"] as? String ?? "",
+            markerSizeMap: map["markerSizeMap"] as? [String: Any] ?? [:]
         )
     }
     
@@ -531,7 +768,25 @@ extension CurtainSettings {
         dict["enableImputation"] = enableImputation
         dict["viewPeptideCount"] = viewPeptideCount
         dict["peptideCountData"] = peptideCountData
-        
+        dict["volcanoConditionLabels"] = volcanoConditionLabels.toDictionary()
+        dict["volcanoTraceOrder"] = volcanoTraceOrder
+        dict["volcanoPlotYaxisPosition"] = volcanoPlotYaxisPosition
+        dict["customVolcanoTextCol"] = customVolcanoTextCol
+        dict["barChartConditionBracket"] = barChartConditionBracket.toDictionary()
+        dict["columnSize"] = columnSize
+        dict["chartYAxisLimits"] = chartYAxisLimits.mapValues { $0.toDictionary() }
+        dict["individualYAxisLimits"] = individualYAxisLimits
+        dict["violinPointPos"] = violinPointPos
+        dict["networkInteractionData"] = networkInteractionData
+        dict["enrichrGeneRankMap"] = enrichrGeneRankMap
+        dict["enrichrRunList"] = enrichrRunList
+        dict["extraData"] = extraData.map { $0.toDictionary() }
+        dict["enableMetabolomics"] = enableMetabolomics
+        dict["metabolomicsColumnMap"] = metabolomicsColumnMap.toDictionary()
+        dict["encrypted"] = encrypted
+        dict["dataAnalysisContact"] = dataAnalysisContact
+        dict["markerSizeMap"] = markerSizeMap
+
         return dict
     }
     
@@ -666,7 +921,7 @@ extension VolcanoPlotDimension {
 extension VolcanoPlotMargin {
     static func fromDictionary(_ map: [String: Any]?) -> VolcanoPlotMargin {
         guard let map = map else { return VolcanoPlotMargin() }
-        
+
         return VolcanoPlotMargin(
             left: map["l"] as? Int,
             right: map["r"] as? Int,
@@ -674,15 +929,167 @@ extension VolcanoPlotMargin {
             top: map["t"] as? Int
         )
     }
-    
+
     func toDictionary() -> [String: Any] {
         var dict: [String: Any] = [:]
-        
+
         if let left = left { dict["l"] = left }
         if let right = right { dict["r"] = right }
         if let bottom = bottom { dict["b"] = bottom }
         if let top = top { dict["t"] = top }
-        
+
         return dict
+    }
+}
+
+extension VolcanoConditionLabels {
+    static func fromDictionary(_ map: [String: Any]?) -> VolcanoConditionLabels {
+        guard let map = map else { return VolcanoConditionLabels() }
+
+        return VolcanoConditionLabels(
+            enabled: map["enabled"] as? Bool ?? false,
+            leftCondition: map["leftCondition"] as? String ?? "",
+            rightCondition: map["rightCondition"] as? String ?? "",
+            leftX: map["leftX"] as? Double ?? 0.25,
+            rightX: map["rightX"] as? Double ?? 0.75,
+            yPosition: map["yPosition"] as? Double ?? -0.1,
+            fontSize: map["fontSize"] as? Int ?? 14,
+            fontColor: map["fontColor"] as? String ?? "#000000"
+        )
+    }
+
+    func toDictionary() -> [String: Any] {
+        return [
+            "enabled": enabled,
+            "leftCondition": leftCondition,
+            "rightCondition": rightCondition,
+            "leftX": leftX,
+            "rightX": rightX,
+            "yPosition": yPosition,
+            "fontSize": fontSize,
+            "fontColor": fontColor
+        ]
+    }
+}
+
+extension BarChartConditionBracket {
+    static func fromDictionary(_ map: [String: Any]?) -> BarChartConditionBracket {
+        guard let map = map else { return BarChartConditionBracket() }
+
+        return BarChartConditionBracket(
+            showBracket: map["showBracket"] as? Bool ?? false,
+            bracketHeight: map["bracketHeight"] as? Double ?? 0.05,
+            bracketColor: map["bracketColor"] as? String ?? "#000000",
+            bracketWidth: map["bracketWidth"] as? Int ?? 2
+        )
+    }
+
+    func toDictionary() -> [String: Any] {
+        return [
+            "showBracket": showBracket,
+            "bracketHeight": bracketHeight,
+            "bracketColor": bracketColor,
+            "bracketWidth": bracketWidth
+        ]
+    }
+}
+
+extension ChartYAxisLimits {
+    static func fromDictionary(_ map: [String: Any]?) -> ChartYAxisLimits {
+        guard let map = map else { return ChartYAxisLimits() }
+
+        return ChartYAxisLimits(
+            min: map["min"] as? Double,
+            max: map["max"] as? Double
+        )
+    }
+
+    static func fromChartDictionary(_ map: [String: Any]?) -> [String: ChartYAxisLimits] {
+        guard let map = map else {
+            return [
+                "barChart": ChartYAxisLimits(),
+                "averageBarChart": ChartYAxisLimits(),
+                "violinPlot": ChartYAxisLimits()
+            ]
+        }
+
+        var result: [String: ChartYAxisLimits] = [:]
+        for (key, value) in map {
+            if let limitDict = value as? [String: Any] {
+                result[key] = ChartYAxisLimits.fromDictionary(limitDict)
+            }
+        }
+
+        // Ensure default keys exist
+        if result["barChart"] == nil {
+            result["barChart"] = ChartYAxisLimits()
+        }
+        if result["averageBarChart"] == nil {
+            result["averageBarChart"] = ChartYAxisLimits()
+        }
+        if result["violinPlot"] == nil {
+            result["violinPlot"] = ChartYAxisLimits()
+        }
+
+        return result
+    }
+
+    func toDictionary() -> [String: Any] {
+        var dict: [String: Any] = [:]
+
+        if let min = min { dict["min"] = min }
+        if let max = max { dict["max"] = max }
+
+        return dict
+    }
+}
+
+extension MetabolomicsColumnMap {
+    static func fromDictionary(_ map: [String: Any]?) -> MetabolomicsColumnMap {
+        guard let map = map else { return MetabolomicsColumnMap() }
+
+        return MetabolomicsColumnMap(
+            polarity: map["polarity"] as? String,
+            formula: map["formula"] as? String,
+            abbreviation: map["abbreviation"] as? String,
+            smiles: map["smiles"] as? String
+        )
+    }
+
+    func toDictionary() -> [String: Any] {
+        var dict: [String: Any] = [:]
+
+        if let polarity = polarity { dict["polarity"] = polarity }
+        if let formula = formula { dict["formula"] = formula }
+        if let abbreviation = abbreviation { dict["abbreviation"] = abbreviation }
+        if let smiles = smiles { dict["smiles"] = smiles }
+
+        return dict
+    }
+}
+
+extension ExtraDataItem {
+    static func fromDictionary(_ map: [String: Any]?) -> ExtraDataItem {
+        guard let map = map else { return ExtraDataItem() }
+
+        return ExtraDataItem(
+            name: map["name"] as? String ?? "",
+            content: map["content"] as? String ?? "",
+            type: map["type"] as? String ?? ""
+        )
+    }
+
+    static func fromDictionaryArray(_ array: [[String: Any]]?) -> [ExtraDataItem] {
+        guard let array = array else { return [] }
+
+        return array.map { fromDictionary($0) }
+    }
+
+    func toDictionary() -> [String: Any] {
+        return [
+            "name": name,
+            "content": content,
+            "type": type
+        ]
     }
 }

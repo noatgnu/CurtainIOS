@@ -254,6 +254,138 @@
                 document.getElementById('loading').style.display = 'flex';
                 document.getElementById('plot').style.display = 'none';
                 document.getElementById('error').style.display = 'none';
+            },
+            
+            // Export plot as PNG
+            exportAsPNG: function(filename, width, height) {
+                try {
+                    const options = {
+                        format: 'png',
+                        width: width || 1200,
+                        height: height || 800,
+                        scale: 2, // High DPI
+                        filename: filename || 'plot.png'
+                    };
+                    
+                    Plotly.toImage('plot', options)
+                        .then(function(dataURL) {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotExported) {
+                                window.webkit.messageHandlers.plotExported.postMessage({
+                                    format: 'png',
+                                    filename: options.filename,
+                                    dataURL: dataURL,
+                                    width: options.width,
+                                    height: options.height
+                                });
+                            }
+                        })
+                        .catch(function(error) {
+                            console.error('PNG export failed:', error);
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotExportError) {
+                                window.webkit.messageHandlers.plotExportError.postMessage({
+                                    format: 'png',
+                                    error: error.message || 'PNG export failed'
+                                });
+                            }
+                        });
+                } catch (error) {
+                    console.error('PNG export error:', error);
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotExportError) {
+                        window.webkit.messageHandlers.plotExportError.postMessage({
+                            format: 'png',
+                            error: error.message || 'PNG export failed'
+                        });
+                    }
+                }
+            },
+            
+            // Export plot as SVG
+            exportAsSVG: function(filename, width, height) {
+                try {
+                    const options = {
+                        format: 'svg',
+                        width: width || 1200,
+                        height: height || 800,
+                        filename: filename || 'plot.svg'
+                    };
+                    
+                    Plotly.toImage('plot', options)
+                        .then(function(dataURL) {
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotExported) {
+                                window.webkit.messageHandlers.plotExported.postMessage({
+                                    format: 'svg',
+                                    filename: options.filename,
+                                    dataURL: dataURL,
+                                    width: options.width,
+                                    height: options.height
+                                });
+                            }
+                        })
+                        .catch(function(error) {
+                            console.error('SVG export failed:', error);
+                            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotExportError) {
+                                window.webkit.messageHandlers.plotExportError.postMessage({
+                                    format: 'svg',
+                                    error: error.message || 'SVG export failed'
+                                });
+                            }
+                        });
+                } catch (error) {
+                    console.error('SVG export error:', error);
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotExportError) {
+                        window.webkit.messageHandlers.plotExportError.postMessage({
+                            format: 'svg',
+                            error: error.message || 'SVG export failed'
+                        });
+                    }
+                }
+            },
+            
+            // Get current plot info for export filename generation
+            getCurrentPlotInfo: function() {
+                try {
+                    const plotDiv = document.getElementById('plot');
+                    const plotData = plotDiv.data || [];
+                    const plotLayout = plotDiv.layout || {};
+                    
+                    const info = {
+                        title: plotLayout.title?.text || 'plot',
+                        traces: plotData.length,
+                        type: this.getPlotType(plotData),
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotInfo) {
+                        window.webkit.messageHandlers.plotInfo.postMessage(info);
+                    }
+                    
+                    return info;
+                } catch (error) {
+                    console.error('Error getting plot info:', error);
+                    return {
+                        title: 'plot',
+                        traces: 0,
+                        type: 'unknown',
+                        timestamp: new Date().toISOString()
+                    };
+                }
+            },
+            
+            // Helper function to determine plot type
+            getPlotType: function(plotData) {
+                if (!plotData || plotData.length === 0) return 'unknown';
+                
+                const firstTrace = plotData[0];
+                if (firstTrace.type === 'scatter' && firstTrace.mode === 'markers') {
+                    // Check if it looks like a volcano plot (has negative log10 p-values)
+                    const hasNegativeLogValues = firstTrace.y && firstTrace.y.some(y => y > 0 && y < 10);
+                    const hasSymmetricX = firstTrace.x && Math.min(...firstTrace.x) < 0 && Math.max(...firstTrace.x) > 0;
+                    if (hasNegativeLogValues && hasSymmetricX) return 'volcano';
+                    return 'scatter';
+                }
+                if (firstTrace.type === 'heatmap') return 'heatmap';
+                if (firstTrace.type === 'bar') return 'bar';
+                return firstTrace.type || 'unknown';
             }
         };
         

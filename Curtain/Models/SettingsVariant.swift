@@ -2,7 +2,7 @@
 //  SettingsVariant.swift
 //  Curtain
 //
-//  Created by Claude on 06/08/2025.
+//  Created by Toan Phung on 06/08/2025.
 //
 
 import Foundation
@@ -49,9 +49,6 @@ struct SettingsVariant: Codable, Identifiable {
     // Computed property to reconstruct CurtainSettings from stored dictionary
     private var storedSettings: CurtainSettings? {
         // Reconstruct CurtainSettings from the stored dictionary
-        // We need to access the private method, so we'll create a temporary service instance
-        let service = CurtainDataService()
-        // Since the method is private, we'll implement our own reconstruction
         return SettingsVariant.reconstructSettings(from: storedSettingsDict)
     }
     

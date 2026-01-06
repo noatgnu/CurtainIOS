@@ -2,7 +2,7 @@
 //  VolcanoColorManagerView.swift
 //  Curtain
 //
-//  Created by Claude on 06/08/2025.
+//  Created by Toan Phung on 06/08/2025.
 //
 
 import SwiftUI

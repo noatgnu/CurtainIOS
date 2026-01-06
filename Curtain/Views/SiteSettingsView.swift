@@ -321,7 +321,7 @@ struct EditSiteSheet: View {
         self.modelContext = modelContext
         
         _hostname = State(initialValue: site.hostname)
-        _description = State(initialValue: site.description ?? "")
+        _description = State(initialValue: site.description)
         _apiKey = State(initialValue: site.apiKey ?? "")
         _isActive = State(initialValue: site.isActive)
         _requiresAuth = State(initialValue: site.requiresAuthentication)

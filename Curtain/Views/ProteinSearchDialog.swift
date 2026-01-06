@@ -72,7 +72,7 @@ struct ProteinSearchDialog: View {
                 .disabled(!canPerformSearch)
             )
         }
-        .onChange(of: typeaheadQuery) { newValue in
+        .onChange(of: typeaheadQuery) { oldValue, newValue in
             performTypeaheadSearch(query: newValue)
         }
         .onAppear {

@@ -74,7 +74,8 @@ class PlotlyChartGenerator {
                 comparison: dataPoint["comparison"] as? String ?? "1",
                 selections: dataPoint["selections"] as? [String] ?? [],
                 colors: dataPoint["colors"] as? [String] ?? [],
-                color: dataPoint["color"] as? String ?? "#808080"
+                color: dataPoint["color"] as? String ?? "#808080",
+                customText: dataPoint["customText"] as? String
             )
             
             // Process each selection for this point (like Android JavaScript)
@@ -106,32 +107,37 @@ class PlotlyChartGenerator {
                 dataPoints: groupData.points,
                 name: selectionName,
                 color: groupData.color,
-                markerSize: settings.scatterPlotMarkerSize
+                markerSize: getMarkerSize(for: selectionName, settings: settings)
             )
             traces.append(trace)
         }
-        
+
         // Second: Add background and significance group traces
         let backgroundAndSignificance = selectionGroups.filter { (selectionName, _) in
-            return selectionName == "Background" || 
+            return selectionName == "Background" ||
                    selectionName == "Other" ||
                    selectionName.contains("P-value") ||
                    selectionName.contains("FC")
         }
-        
+
         for (selectionName, groupData) in backgroundAndSignificance {
             let trace = createAndroidCompatibleTrace(
                 dataPoints: groupData.points,
                 name: selectionName,
                 color: groupData.color,
-                markerSize: settings.scatterPlotMarkerSize
+                markerSize: getMarkerSize(for: selectionName, settings: settings)
             )
             traces.append(trace)
         }
         
         // Reverse traces array to match Android/Angular frontend ordering
         traces.reverse()
-        
+
+        // Apply custom trace order if configured
+        if !settings.volcanoTraceOrder.isEmpty {
+            traces = reorderTraces(traces, accordingTo: settings.volcanoTraceOrder)
+        }
+
         print("🔍 PlotlyChartGenerator: Final trace order: \(traces.map { $0.name })")
         return traces
     }
@@ -141,11 +147,17 @@ class PlotlyChartGenerator {
         let x = dataPoints.map { $0.x }
         let y = dataPoints.map { $0.y }
         
-        // Format text like Android: <genename>(<primaryid>) if gene name exists, otherwise just primaryid
+        // Format text like Android: use customText if available, otherwise <genename>(<primaryid>) format
         let text = dataPoints.map { point -> String in
+            // Use custom text if available
+            if let customText = point.customText, !customText.isEmpty {
+                return customText
+            }
+
+            // Default format: <genename>(<primaryid>) if gene name exists, otherwise just primaryid
             let geneName = point.gene.trimmingCharacters(in: .whitespacesAndNewlines)
             let primaryId = point.id.trimmingCharacters(in: .whitespacesAndNewlines)
-            
+
             if !geneName.isEmpty && geneName != primaryId {
                 return "\(geneName)(\(primaryId))"
             } else {
@@ -190,44 +202,60 @@ class PlotlyChartGenerator {
     private func createAndroidCompatibleLayout(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotLayout {
         let settings = context.settings
         let volcanoAxis = volcanoResult.updatedVolcanoAxis
-        
+
+        // Get colors appropriate for current color scheme
+        let textColor = context.isDarkMode ? "#FFFFFF" : "#000000"
+        let gridColor = context.isDarkMode ? "#404040" : "#e0e0e0"
+        let zeroLineColor = context.isDarkMode ? "#606060" : "#000000"
+
         let title = PlotTitle(
             text: settings.volcanoPlotTitle,
             font: PlotFont(
                 family: settings.plotFontFamily,
                 size: 16,
-                color: nil
+                color: textColor
             )
         )
-        
+
         let xaxis = PlotAxis(
             title: PlotAxisTitle(
                 text: volcanoAxis.x,
-                font: PlotFont(family: settings.plotFontFamily, size: 12, color: nil)
+                font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor)
             ),
             zeroline: true,
-            zerolinecolor: "#000000",
-            gridcolor: "#e0e0e0",
+            zerolinecolor: zeroLineColor,
+            gridcolor: gridColor,
             range: [volcanoAxis.minX ?? -3.0, volcanoAxis.maxX ?? 3.0],
-            font: PlotFont(family: settings.plotFontFamily, size: 10, color: nil),
+            font: PlotFont(family: settings.plotFontFamily, size: 10, color: textColor),
             dtick: volcanoAxis.dtickX,
             ticklen: volcanoAxis.ticklenX,
             showgrid: settings.volcanoPlotGrid["x"] ?? true
         )
-        
+
+        // Determine Y-axis position from settings
+        let yaxisSide: String? = {
+            if let position = settings.volcanoPlotYaxisPosition.first {
+                // "left" position explicitly sets side to "left"
+                // "middle" or empty uses default (no side specified = middle behavior in Plotly)
+                return position == "left" ? "left" : nil
+            }
+            return nil
+        }()
+
         let yaxis = PlotAxis(
             title: PlotAxisTitle(
                 text: volcanoAxis.y,
-                font: PlotFont(family: settings.plotFontFamily, size: 12, color: nil)
+                font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor)
             ),
             zeroline: false,
             zerolinecolor: nil,
-            gridcolor: "#e0e0e0",
+            gridcolor: gridColor,
             range: [volcanoAxis.minY ?? 0.0, volcanoAxis.maxY ?? 5.0],
-            font: PlotFont(family: settings.plotFontFamily, size: 10, color: nil),
+            font: PlotFont(family: settings.plotFontFamily, size: 10, color: textColor),
             dtick: volcanoAxis.dtickY,
             ticklen: volcanoAxis.ticklenY,
-            showgrid: settings.volcanoPlotGrid["y"] ?? true
+            showgrid: settings.volcanoPlotGrid["y"] ?? true,
+            side: yaxisSide  // Apply Y-axis position setting
         )
         
         let shapes = createAndroidCompatibleThresholdShapes(settings, volcanoAxis)
@@ -235,9 +263,14 @@ class PlotlyChartGenerator {
         for (key, value) in settings.textAnnotation {
             print("🔍 PlotlyChartGenerator: textAnnotation key '\(key)': \(value)")
         }
-        let annotations = convertTextAnnotations(settings.textAnnotation)
-        print("🔍 PlotlyChartGenerator: Final annotations count: \(annotations.count)")
-        
+        var annotations = convertTextAnnotations(settings.textAnnotation)
+        print("🔍 PlotlyChartGenerator: Initial annotations count: \(annotations.count)")
+
+        // Add volcano condition labels if enabled
+        let conditionLabelAnnotations = createVolcanoConditionLabelAnnotations(settings)
+        annotations.append(contentsOf: conditionLabelAnnotations)
+        print("🔍 PlotlyChartGenerator: Final annotations count after adding condition labels: \(annotations.count)")
+
         return PlotLayout(
             title: title,
             xaxis: xaxis,
@@ -246,14 +279,14 @@ class PlotlyChartGenerator {
             showlegend: true,
             plot_bgcolor: "rgba(0,0,0,0)",
             paper_bgcolor: "rgba(0,0,0,0)",
-            font: PlotFont(family: settings.plotFontFamily, size: 12, color: nil),
+            font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor),
             shapes: shapes,
             annotations: annotations,
             legend: PlotLegend(
                 orientation: "h", // Horizontal orientation like Android
                 x: 0.5,
                 xanchor: "center",
-                y: -0.1, // Position below the plot like Android
+                y: settings.volcanoPlotLegendY ?? -0.1, // Position below the plot like Android
                 yanchor: "top"
             )
         )
@@ -318,6 +351,7 @@ class PlotlyChartGenerator {
         let selections: [String]
         let colors: [String]
         let color: String
+        let customText: String?  // Optional custom text from user-specified column
     }
     
     private func convertTextAnnotations(_ textAnnotations: [String: Any]) -> [PlotAnnotation] {
@@ -374,6 +408,8 @@ class PlotlyChartGenerator {
                         text: text,
                         x: x,
                         y: y,
+                        xref: nil,  // Use default data coordinates
+                        yref: nil,  // Use default data coordinates
                         showarrow: showarrow,
                         arrowhead: arrowhead,
                         arrowsize: arrowsize,
@@ -402,6 +438,93 @@ class PlotlyChartGenerator {
         return annotations
     }
     
+    // MARK: - Volcano Condition Label Annotations
+
+    private func createVolcanoConditionLabelAnnotations(_ settings: CurtainSettings) -> [PlotAnnotation] {
+        var conditionAnnotations: [PlotAnnotation] = []
+
+        // Check if condition labels are enabled
+        guard settings.volcanoConditionLabels.enabled else {
+            print("🏷️ PlotlyChartGenerator: Volcano condition labels disabled")
+            return conditionAnnotations
+        }
+
+        let leftCondition = settings.volcanoConditionLabels.leftCondition
+        let rightCondition = settings.volcanoConditionLabels.rightCondition
+
+        // Validate that both conditions are not empty and are different from each other
+        guard !leftCondition.isEmpty && !rightCondition.isEmpty else {
+            print("🏷️ PlotlyChartGenerator: One or both conditions are empty")
+            return conditionAnnotations
+        }
+
+        guard leftCondition != rightCondition else {
+            print("🏷️ PlotlyChartGenerator: Left and right conditions are the same - skipping labels")
+            return conditionAnnotations
+        }
+
+        print("🏷️ PlotlyChartGenerator: Creating volcano condition label annotations")
+        print("🏷️ PlotlyChartGenerator: Left condition: '\(leftCondition)'")
+        print("🏷️ PlotlyChartGenerator: Right condition: '\(rightCondition)'")
+
+        // Create left condition label
+        let leftLabel = PlotAnnotation(
+            id: "volcanoConditionLabel_left",
+            title: "Left Condition Label",
+            text: leftCondition,
+            x: settings.volcanoConditionLabels.leftX,
+            y: settings.volcanoConditionLabels.yPosition,
+            xref: "paper",  // Use paper coordinates (0-1 range)
+            yref: "paper",  // Use paper coordinates (0-1 range)
+            showarrow: false,
+            arrowhead: nil,
+            arrowsize: nil,
+            arrowwidth: nil,
+            arrowcolor: nil,
+            ax: nil,
+            ay: nil,
+            xanchor: "center",
+            yanchor: "top",
+            font: PlotFont(
+                family: settings.plotFontFamily,
+                size: Double(settings.volcanoConditionLabels.fontSize),
+                color: settings.volcanoConditionLabels.fontColor
+            )
+        )
+        conditionAnnotations.append(leftLabel)
+        print("🏷️ PlotlyChartGenerator: Added left label '\(leftCondition)' at x=\(settings.volcanoConditionLabels.leftX), y=\(settings.volcanoConditionLabels.yPosition)")
+
+        // Create right condition label
+        let rightLabel = PlotAnnotation(
+            id: "volcanoConditionLabel_right",
+            title: "Right Condition Label",
+            text: rightCondition,
+            x: settings.volcanoConditionLabels.rightX,
+            y: settings.volcanoConditionLabels.yPosition,
+            xref: "paper",  // Use paper coordinates (0-1 range)
+            yref: "paper",  // Use paper coordinates (0-1 range)
+            showarrow: false,
+            arrowhead: nil,
+            arrowsize: nil,
+            arrowwidth: nil,
+            arrowcolor: nil,
+            ax: nil,
+            ay: nil,
+            xanchor: "center",
+            yanchor: "top",
+            font: PlotFont(
+                family: settings.plotFontFamily,
+                size: Double(settings.volcanoConditionLabels.fontSize),
+                color: settings.volcanoConditionLabels.fontColor
+            )
+        )
+        conditionAnnotations.append(rightLabel)
+        print("🏷️ PlotlyChartGenerator: Added right label '\(rightCondition)' at x=\(settings.volcanoConditionLabels.rightX), y=\(settings.volcanoConditionLabels.yPosition)")
+
+        print("🏷️ PlotlyChartGenerator: Created \(conditionAnnotations.count) condition label annotations")
+        return conditionAnnotations
+    }
+
     private func createDefaultPlotConfig() -> PlotConfig {
         return PlotConfig(
             responsive: true,
@@ -1146,6 +1269,50 @@ class PlotlyChartGenerator {
         }
     }
     
+    /// Get marker size for a specific group, checking markerSizeMap first, then falling back to default
+    private func getMarkerSize(for groupName: String, settings: CurtainSettings) -> Double {
+        // Check if there's a custom size for this group in markerSizeMap
+        if let customSize = settings.markerSizeMap[groupName] as? Int {
+            print("🎯 PlotlyChartGenerator: Using custom marker size \(customSize) for group '\(groupName)'")
+            return Double(customSize)
+        } else if let customSize = settings.markerSizeMap[groupName] as? Double {
+            print("🎯 PlotlyChartGenerator: Using custom marker size \(customSize) for group '\(groupName)'")
+            return customSize
+        }
+
+        // Fall back to default marker size
+        return settings.scatterPlotMarkerSize
+    }
+
+    /// Reorder traces according to volcanoTraceOrder setting
+    private func reorderTraces(_ traces: [PlotTrace], accordingTo order: [String]) -> [PlotTrace] {
+        // Create a dictionary for quick lookup
+        var tracesByName: [String: PlotTrace] = [:]
+        for trace in traces {
+            tracesByName[trace.name] = trace
+        }
+
+        var reorderedTraces: [PlotTrace] = []
+
+        // Add traces in the specified order
+        for traceName in order {
+            if let trace = tracesByName[traceName] {
+                reorderedTraces.append(trace)
+                tracesByName.removeValue(forKey: traceName)
+            }
+        }
+
+        // Add any remaining traces that weren't in the order (to preserve them)
+        for trace in traces {
+            if tracesByName[trace.name] != nil {
+                reorderedTraces.append(trace)
+            }
+        }
+
+        print("🔄 PlotlyChartGenerator: Reordered traces from \(traces.map { $0.name }) to \(reorderedTraces.map { $0.name })")
+        return reorderedTraces
+    }
+
     private func generateErrorHtml(_ message: String) -> String {
         return """
         <!DOCTYPE html>

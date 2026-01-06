@@ -60,6 +60,11 @@ class MultiHostNetworkManager {
         return try await service.downloadCurtain(hostname: hostname, downloadPath: downloadPath)
     }
     
+    func downloadCurtain(hostname: String, downloadPath: String, progressCallback: ((Int, Double) -> Void)?) async throws -> Data {
+        let service = getNetworkService(for: hostname)
+        return try await service.downloadCurtain(hostname: hostname, downloadPath: downloadPath, progressCallback: progressCallback)
+    }
+    
     func getAllDataFilterLists(hostname: String, limit: Int? = nil, offset: Int? = nil) async throws -> PaginatedResponse<DataFilterList> {
         let service = getNetworkService(for: hostname)
         return try await service.getAllDataFilterLists(hostname: hostname, limit: limit, offset: offset)

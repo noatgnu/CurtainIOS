@@ -483,7 +483,11 @@ struct VolcanoPlotTab: View {
     @Binding var annotationEditMode: Bool
     @State private var showingProteinSearch = false
     @State private var showingVolcanoColorManager = false
-    
+    @State private var showingConditionLabelsSettings = false
+    @State private var showingTextColumnSettings = false
+    @State private var showingTraceOrderSettings = false
+    @State private var showingYAxisPositionSettings = false
+
     var body: some View {
         if data != nil {
             ZStack {
@@ -502,6 +506,66 @@ struct VolcanoPlotTab: View {
                     HStack {
                         Spacer()
                         VStack(spacing: 12) {
+                            // Condition Labels Settings Button
+                            Button(action: {
+                                showingConditionLabelsSettings = true
+                            }) {
+                                Image(systemName: "text.below.photo")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.purple)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .disabled(annotationEditMode)
+                            .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                            // Custom Text Column Button
+                            Button(action: {
+                                showingTextColumnSettings = true
+                            }) {
+                                Image(systemName: "text.bubble")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.indigo)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .disabled(annotationEditMode)
+                            .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                            // Trace Order Button
+                            Button(action: {
+                                showingTraceOrderSettings = true
+                            }) {
+                                Image(systemName: "line.3.horizontal.decrease.circle")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.teal)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .disabled(annotationEditMode)
+                            .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                            // Y-Axis Position Button
+                            Button(action: {
+                                showingYAxisPositionSettings = true
+                            }) {
+                                Image(systemName: "arrow.left.and.right.square")
+                                    .font(.title2)
+                                    .foregroundColor(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.mint)
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .disabled(annotationEditMode)
+                            .opacity(annotationEditMode ? 0.5 : 1.0)
+
                             // Color Manager Button
                             Button(action: {
                                 showingVolcanoColorManager = true
@@ -516,7 +580,7 @@ struct VolcanoPlotTab: View {
                             }
                             .disabled(annotationEditMode)
                             .opacity(annotationEditMode ? 0.5 : 1.0)
-                            
+
                             // Search Button
                             Button(action: {
                                 showingProteinSearch = true
@@ -531,6 +595,11 @@ struct VolcanoPlotTab: View {
                             }
                             .disabled(annotationEditMode)
                             .opacity(annotationEditMode ? 0.5 : 1.0)
+                            
+                            // Export Button
+                            ExportPlotButton()
+                                .disabled(annotationEditMode)
+                                .opacity(annotationEditMode ? 0.5 : 1.0)
                             
                             // Annotation Edit Button
                             Button(action: {
@@ -561,6 +630,30 @@ struct VolcanoPlotTab: View {
             }
             .sheet(isPresented: $showingVolcanoColorManager) {
                 VolcanoColorManagerView(curtainData: Binding(
+                    get: { data! },
+                    set: { newValue in data = newValue }
+                ))
+            }
+            .sheet(isPresented: $showingConditionLabelsSettings) {
+                VolcanoConditionLabelsSettingsView(curtainData: Binding(
+                    get: { data! },
+                    set: { newValue in data = newValue }
+                ))
+            }
+            .sheet(isPresented: $showingTextColumnSettings) {
+                VolcanoTextColumnSettingsView(curtainData: Binding(
+                    get: { data! },
+                    set: { newValue in data = newValue }
+                ))
+            }
+            .sheet(isPresented: $showingTraceOrderSettings) {
+                VolcanoTraceOrderSettingsView(curtainData: Binding(
+                    get: { data! },
+                    set: { newValue in data = newValue }
+                ))
+            }
+            .sheet(isPresented: $showingYAxisPositionSettings) {
+                VolcanoYAxisPositionSettingsView(curtainData: Binding(
                     get: { data! },
                     set: { newValue in data = newValue }
                 ))
@@ -820,7 +913,12 @@ struct SettingsTab: View {
     @State private var suppressDataUpdates = false
     @State private var loadAttempts: [String: Int] = [:] // Track load attempts per variant
     @State private var circuitBreakerTripped = false
-    
+    @State private var showingGlobalYAxisLimitsSettings = false
+    @State private var showingColumnSizeSettings = false
+    @State private var showingMarkerSizeMapSettings = false
+    @State private var showingViolinPointPositionSettings = false
+    @State private var showingExtraDataStorageSettings = false
+
     var body: some View {
         Form {
             // Settings Variants Section
@@ -959,7 +1057,93 @@ struct SettingsTab: View {
                         .lineLimit(1)
                 }
             }
-            
+
+            Section("Chart Settings") {
+                // Global Y-Axis Limits
+                Button(action: {
+                    showingGlobalYAxisLimitsSettings = true
+                }) {
+                    HStack {
+                        Image(systemName: "chart.bar.xaxis")
+                            .foregroundColor(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Global Y-Axis Limits")
+                            Text("Set consistent Y-axis ranges for all protein charts")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .foregroundColor(.primary)
+
+                // Column Size
+                Button(action: {
+                    showingColumnSizeSettings = true
+                }) {
+                    HStack {
+                        Image(systemName: "ruler")
+                            .foregroundColor(.blue)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Column Size")
+                            Text("Control bar/column width for each chart type")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .foregroundColor(.primary)
+
+                // Marker Size Map
+                Button(action: {
+                    showingMarkerSizeMapSettings = true
+                }) {
+                    HStack {
+                        Image(systemName: "circle.dotted.and.circle")
+                            .foregroundColor(.purple)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Marker Size Map")
+                            Text("Configure custom marker sizes for selection groups")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .foregroundColor(.primary)
+
+                // Violin Point Position
+                Button(action: {
+                    showingViolinPointPositionSettings = true
+                }) {
+                    HStack {
+                        Image(systemName: "circle.lefthalf.filled")
+                            .foregroundColor(.teal)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Violin Point Position")
+                            Text("Control horizontal position of data points in violin plots")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .foregroundColor(.primary)
+            }
+
             Section("Color Management") {
                 // Volcano Plot Colors Reference
                 HStack {
@@ -1003,7 +1187,7 @@ struct SettingsTab: View {
                     Image(systemName: data.settings.uniprot ? "checkmark" : "xmark")
                         .foregroundColor(data.settings.uniprot ? .green : .red)
                 }
-                
+
                 HStack {
                     Text("Imputation Enabled")
                     Spacer()
@@ -1011,7 +1195,41 @@ struct SettingsTab: View {
                         .foregroundColor(data.settings.enableImputation ? .green : .red)
                 }
             }
-            
+
+            Section("Data Management") {
+                // Extra Data Storage
+                Button(action: {
+                    showingExtraDataStorageSettings = true
+                }) {
+                    HStack {
+                        Image(systemName: "externaldrive.badge.plus")
+                            .foregroundColor(.orange)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Extra Data Storage")
+                            Text("Manage additional metadata and notes")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+
+                        if !data.settings.extraData.isEmpty {
+                            Text("\(data.settings.extraData.count)")
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.2))
+                                .foregroundColor(.orange)
+                                .cornerRadius(4)
+                        }
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .foregroundColor(.primary)
+            }
+
             // Saved Variants List (if any exist)
             if !variantManager.savedVariants.isEmpty {
                 Section("Saved Variants") {
@@ -1049,6 +1267,21 @@ struct SettingsTab: View {
                     loadVariant(variant)
                 }
             )
+        }
+        .sheet(isPresented: $showingGlobalYAxisLimitsSettings) {
+            GlobalYAxisLimitsSettingsView(curtainData: $data)
+        }
+        .sheet(isPresented: $showingColumnSizeSettings) {
+            ColumnSizeSettingsView(curtainData: $data)
+        }
+        .sheet(isPresented: $showingMarkerSizeMapSettings) {
+            MarkerSizeMapSettingsView(curtainData: $data)
+        }
+        .sheet(isPresented: $showingViolinPointPositionSettings) {
+            ViolinPointPositionSettingsView(curtainData: $data)
+        }
+        .sheet(isPresented: $showingExtraDataStorageSettings) {
+            ExtraDataStorageSettingsView(curtainData: $data)
         }
         .alert("Delete Variant", isPresented: $showingVariantAlert) {
             Button("Delete", role: .destructive) {

@@ -9,7 +9,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class CurtainEntity {
+final class CurtainEntity: Identifiable, Hashable {
     @Attribute(.unique) var linkId: String
     var created: Date
     var updated: Date
@@ -32,5 +32,17 @@ final class CurtainEntity {
         self.sourceHostname = sourceHostname
         self.frontendURL = frontendURL
         self.isPinned = isPinned
+    }
+    
+    // MARK: - Identifiable conformance
+    var id: String { linkId }
+    
+    // MARK: - Hashable conformance
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(linkId)
+    }
+    
+    static func == (lhs: CurtainEntity, rhs: CurtainEntity) -> Bool {
+        lhs.linkId == rhs.linkId
     }
 }

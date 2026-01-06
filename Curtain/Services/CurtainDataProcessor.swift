@@ -2,7 +2,7 @@
 //  CurtainDataProcessor.swift
 //  Curtain
 //
-//  Created by Claude on 05/08/2025.
+//  Created by Toan Phung on 05/08/2025.
 //
 
 import Foundation

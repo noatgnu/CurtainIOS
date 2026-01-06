@@ -53,15 +53,15 @@ class VolcanoPlotDataService {
                 continue
             }
             
-            guard let id = row[idColumn] as? String, !id.isEmpty else { 
-                if let debugId = row[idColumn] {
-                    print("❌ VolcanoPlotDataService: Invalid primary ID in column '\\(idColumn)': \\(debugId) (\\(type(of: debugId)))")
+            guard let id = row[idColumn] as? String, !id.isEmpty else {
+                if row[idColumn] != nil {
+                    print("❌ VolcanoPlotDataService: Invalid primary ID in column '\(idColumn)': \(row[idColumn] ?? "nil") (type: \(type(of: row[idColumn])))")
                 }
-                continue 
+                continue
             }
-            
+
             // Gene name resolution workflow: UniProt > gene column > ID (like Android)
-            var gene = resolveGeneName(for: id, row: row, geneColumn: geneColumn, curtainData: curtainData)
+            let gene = resolveGeneName(for: id, row: row, geneColumn: geneColumn, curtainData: curtainData)
             
             // Extract and validate numeric values (like Android)
             let fcValue = extractDoubleValue(row[fcColumn])
@@ -92,8 +92,18 @@ class VolcanoPlotDataService {
                 colorMap: colorMap
             )
             
+            // Extract custom text if specified
+            var customText: String? = nil
+            if !settings.customVolcanoTextCol.isEmpty {
+                // Try to get value from custom column
+                if let customValue = row[settings.customVolcanoTextCol] {
+                    customText = String(describing: customValue)
+                    print("🔍 VolcanoPlotDataService: Using custom text column '\(settings.customVolcanoTextCol)': '\(customText ?? "nil")'")
+                }
+            }
+
             // Create data point for Plotly (like Android JSON structure)
-            let dataPoint: [String: Any] = [
+            var dataPoint: [String: Any] = [
                 "x": fcValue,
                 "y": sigValue,
                 "id": id,
@@ -103,6 +113,11 @@ class VolcanoPlotDataService {
                 "colors": selectionColors,
                 "color": selectionColors.first ?? "#808080"
             ]
+
+            // Add custom text if available
+            if let customText = customText {
+                dataPoint["customText"] = customText
+            }
             
             jsonData.append(dataPoint)
         }
@@ -195,7 +210,7 @@ class VolcanoPlotDataService {
         var currentColors: [String] = []
         
         // Collect currently used colors (like Android)
-        for (s, color) in colorMap {
+        for (_, color) in colorMap {
             if defaultColorList.contains(color) {
                 currentColors.append(color)
             }

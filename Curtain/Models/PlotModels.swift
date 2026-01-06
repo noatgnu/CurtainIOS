@@ -23,10 +23,11 @@ struct PlotTrace {
     let name: String
     let marker: PlotMarker?
     let text: [String]?
+    let textposition: String?  // "none" to hide text on bars, but keep for hover
     let hovertemplate: String?
     let customdata: [[String: Any]]?
     let error_y: PlotErrorBar?
-    
+
     // Violin plot specific properties (Android-compatible)
     let violinmode: String?
     let box_visible: Bool?
@@ -36,7 +37,7 @@ struct PlotTrace {
     let jitter: Double?
     let fillcolor: String?
     let line_color: String?
-    
+
     // Additional Android violin plot properties
     let spanmode: String?      // "soft" for smooth kernel density estimation
     let bandwidth: String?     // "auto" for automatic bandwidth selection
@@ -44,7 +45,7 @@ struct PlotTrace {
     let selected: PlotMarker?  // Selection state marker
     let unselected: PlotMarker? // Unselected state marker
     
-    init(x: Any, y: [Double], mode: String, type: String, name: String, marker: PlotMarker? = nil, text: [String]? = nil, hovertemplate: String? = nil, customdata: [[String: Any]]? = nil, error_y: PlotErrorBar? = nil, violinmode: String? = nil, box_visible: Bool? = nil, meanline_visible: Bool? = nil, points: String? = nil, pointpos: Double? = nil, jitter: Double? = nil, fillcolor: String? = nil, line_color: String? = nil, spanmode: String? = nil, bandwidth: String? = nil, scalemode: String? = nil, selected: PlotMarker? = nil, unselected: PlotMarker? = nil) {
+    init(x: Any, y: [Double], mode: String, type: String, name: String, marker: PlotMarker? = nil, text: [String]? = nil, textposition: String? = nil, hovertemplate: String? = nil, customdata: [[String: Any]]? = nil, error_y: PlotErrorBar? = nil, violinmode: String? = nil, box_visible: Bool? = nil, meanline_visible: Bool? = nil, points: String? = nil, pointpos: Double? = nil, jitter: Double? = nil, fillcolor: String? = nil, line_color: String? = nil, spanmode: String? = nil, bandwidth: String? = nil, scalemode: String? = nil, selected: PlotMarker? = nil, unselected: PlotMarker? = nil) {
         self.x = x
         self.y = y
         self.mode = mode
@@ -52,6 +53,7 @@ struct PlotTrace {
         self.name = name
         self.marker = marker
         self.text = text
+        self.textposition = textposition
         self.hovertemplate = hovertemplate
         self.customdata = customdata
         self.error_y = error_y
@@ -115,8 +117,10 @@ struct PlotLayout {
     let annotations: [PlotAnnotation]?
     let legend: PlotLegend?
     let margin: PlotMargin?
-    
-    init(title: PlotTitle? = nil, xaxis: PlotAxis, yaxis: PlotAxis, hovermode: String? = nil, showlegend: Bool, plot_bgcolor: String? = nil, paper_bgcolor: String? = nil, font: PlotFont? = nil, shapes: [PlotShape]? = nil, annotations: [PlotAnnotation]? = nil, legend: PlotLegend? = nil, margin: PlotMargin? = nil) {
+    let width: Int?  // Optional plot width (for column size feature)
+    let height: Int?  // Optional plot height
+
+    init(title: PlotTitle? = nil, xaxis: PlotAxis, yaxis: PlotAxis, hovermode: String? = nil, showlegend: Bool, plot_bgcolor: String? = nil, paper_bgcolor: String? = nil, font: PlotFont? = nil, shapes: [PlotShape]? = nil, annotations: [PlotAnnotation]? = nil, legend: PlotLegend? = nil, margin: PlotMargin? = nil, width: Int? = nil, height: Int? = nil) {
         self.title = title
         self.xaxis = xaxis
         self.yaxis = yaxis
@@ -129,6 +133,8 @@ struct PlotLayout {
         self.annotations = annotations
         self.legend = legend
         self.margin = margin
+        self.width = width
+        self.height = height
     }
 }
 
@@ -153,8 +159,9 @@ struct PlotAxis {
     let tickmode: String?
     let tickvals: [Double]?
     let ticktext: [String]?
-    
-    init(title: PlotAxisTitle, zeroline: Bool? = nil, zerolinecolor: String? = nil, gridcolor: String? = nil, range: [Double]? = nil, font: PlotFont? = nil, dtick: Double? = nil, ticklen: Int? = nil, showgrid: Bool? = nil, tickangle: Int? = nil, type: String? = nil, automargin: Bool? = nil, tickmode: String? = nil, tickvals: [Double]? = nil, ticktext: [String]? = nil) {
+    let side: String?  // Y-axis position: "left" or "right" (middle uses default behavior)
+
+    init(title: PlotAxisTitle, zeroline: Bool? = nil, zerolinecolor: String? = nil, gridcolor: String? = nil, range: [Double]? = nil, font: PlotFont? = nil, dtick: Double? = nil, ticklen: Int? = nil, showgrid: Bool? = nil, tickangle: Int? = nil, type: String? = nil, automargin: Bool? = nil, tickmode: String? = nil, tickvals: [Double]? = nil, ticktext: [String]? = nil, side: String? = nil) {
         self.title = title
         self.zeroline = zeroline
         self.zerolinecolor = zerolinecolor
@@ -170,6 +177,7 @@ struct PlotAxis {
         self.tickmode = tickmode
         self.tickvals = tickvals
         self.ticktext = ticktext
+        self.side = side
     }
 }
 
@@ -209,6 +217,8 @@ struct PlotAnnotation {
     let text: String
     let x: Double
     let y: Double
+    let xref: String?  // "x" for data coordinates (default), "paper" for paper coordinates
+    let yref: String?  // "y" for data coordinates (default), "paper" for paper coordinates
     let showarrow: Bool
     let arrowhead: Int?
     let arrowsize: Double?
@@ -355,7 +365,8 @@ struct PlotGenerationContext {
     let selections: [SelectionOperation]
     let searchFilter: String?
     let editMode: Bool
-    
+    let isDarkMode: Bool  // Add dark mode detection
+
     var filteredProteins: [ProteinPoint] {
         var proteins = convertToProteinPoints()
         
@@ -974,43 +985,52 @@ extension PlotAnnotation {
             "y": y,
             "showarrow": showarrow
         ]
-        
+
+        // Add coordinate reference system (paper vs data coordinates)
+        if let xref = xref {
+            dict["xref"] = xref
+        }
+
+        if let yref = yref {
+            dict["yref"] = yref
+        }
+
         if let arrowhead = arrowhead {
             dict["arrowhead"] = arrowhead
         }
-        
+
         if let arrowsize = arrowsize {
             dict["arrowsize"] = arrowsize
         }
-        
+
         if let arrowwidth = arrowwidth {
             dict["arrowwidth"] = arrowwidth
         }
-        
+
         if let arrowcolor = arrowcolor {
             dict["arrowcolor"] = arrowcolor
         }
-        
+
         if let ax = ax {
             dict["ax"] = ax
         }
-        
+
         if let ay = ay {
             dict["ay"] = ay
         }
-        
+
         if let xanchor = xanchor {
             dict["xanchor"] = xanchor
         }
-        
+
         if let yanchor = yanchor {
             dict["yanchor"] = yanchor
         }
-        
+
         if let font = font {
             dict["font"] = font.toDictionary()
         }
-        
+
         return dict
     }
 }

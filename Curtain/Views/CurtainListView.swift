@@ -26,6 +26,118 @@ struct CurtainListView: View {
     @State private var curtainToDownload: CurtainEntity?
     
     var body: some View {
+        Group {
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                // iPadOS Split View Layout
+                iPadSplitView
+            } else {
+                // iPhone Layout
+                iPhoneNavigationView
+            }
+        }
+    }
+    
+    // MARK: - iPad Split View Layout
+    
+    private var iPadSplitView: some View {
+        NavigationSplitView {
+            // Sidebar - Dataset List
+            sidebarContent
+                .navigationTitle("Curtain Datasets")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Menu {
+                            Button("Sync All", action: syncAllCurtains)
+                            Button("Refresh", action: refreshCurtains)
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                    }
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: {
+                            showingAddCurtainSheet = true
+                        }) {
+                            Image(systemName: "plus")
+                        }
+                    }
+                }
+        } detail: {
+            // Detail View - Selected Dataset
+            if let curtain = curtainForDetails {
+                CurtainDetailsView(curtain: curtain)
+                    .navigationTitle(curtain.dataDescription)
+                    .navigationBarTitleDisplayMode(.inline)
+            } else {
+                iPadEmptyDetailView
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .sheet(isPresented: $showingAddCurtainSheet) {
+            AddCurtainSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingEditDescriptionSheet) {
+            if let curtain = selectedCurtain {
+                EditDescriptionSheet(curtain: curtain, viewModel: viewModel)
+            }
+        }
+        .alert("Delete Curtain", isPresented: $showingDeleteConfirmation, presenting: curtainToDelete) { curtain in
+            Button("Delete", role: .destructive) {
+                viewModel.deleteCurtain(curtain)
+                showToast("Curtain deleted")
+                // Clear selection if deleted curtain was selected
+                if curtainForDetails?.linkId == curtain.linkId {
+                    curtainForDetails = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { curtain in
+            Text("Are you sure you want to delete this curtain?\n\nID: \(curtain.linkId)\nDescription: \(curtain.dataDescription.isEmpty ? "No description" : curtain.dataDescription)")
+        }
+        .alert("Download Data", isPresented: $showingDownloadConfirmation, presenting: curtainToDownload) { curtain in
+            Button("Download") {
+                Task {
+                    do {
+                        print("🔄 CurtainListView: Starting download...")
+                        _ = try await viewModel.downloadCurtainData(curtain)
+                        print("✅ CurtainListView: Download completed successfully")
+                        await MainActor.run {
+                            viewModel.loadCurtains()
+                            if let refreshedCurtain = viewModel.curtains.first(where: { $0.linkId == curtain.linkId }) {
+                                curtainForDetails = refreshedCurtain
+                                print("🟢 CurtainListView: Updated iPad detail view after download for: \(refreshedCurtain.linkId)")
+                            }
+                        }
+                    } catch {
+                        print("❌ CurtainListView: Download failed with error: \(error)")
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: { curtain in
+            Text("This dataset needs to be downloaded to view its details.\n\nDataset: \(curtain.dataDescription)\nID: \(curtain.linkId)\nHost: \(curtain.sourceHostname)\n\nWould you like to download it now?")
+        }
+        .overlay(alignment: .top) {
+            if showingToast, let message = toastMessage {
+                ToastView(message: message)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            withAnimation {
+                                showingToast = false
+                            }
+                        }
+                    }
+            }
+        }
+        .onAppear {
+            print("🟢 CurtainListView: iPad split view appeared")
+            viewModel.setupWithModelContext(modelContext)
+        }
+    }
+    
+    // MARK: - iPhone Navigation View Layout
+    
+    private var iPhoneNavigationView: some View {
         NavigationView {
             ZStack {
                 VStack(spacing: 0) {
@@ -217,6 +329,198 @@ struct CurtainListView: View {
         }
     }
     
+    // MARK: - Sidebar Content (Shared between iPad and iPhone)
+    
+    private var sidebarContent: some View {
+        VStack(spacing: 0) {
+            // Search Bar
+            SearchBar(text: $searchText)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            
+            // Download Progress Indicator
+            if viewModel.isDownloading {
+                DownloadProgressView(
+                    progress: viewModel.downloadProgress,
+                    speed: viewModel.downloadSpeed,
+                    onCancel: {
+                        viewModel.cancelDownload()
+                    }
+                )
+                .padding()
+                .background(Color(.systemGray6))
+            }
+            
+            // Error Message
+            if let error = viewModel.error {
+                ErrorView(message: error) {
+                    viewModel.clearError()
+                }
+                .padding()
+            }
+            
+            // Main Content
+            if viewModel.isLoading && viewModel.curtains.isEmpty {
+                ProgressView("Loading curtains...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if viewModel.curtains.isEmpty && !viewModel.isLoading {
+                EmptyStateView(onLoadExample: {
+                    Task {
+                        await viewModel.loadExampleCurtain()
+                    }
+                })
+            } else {
+                iPadCurtainListContent
+                
+                // Pagination Info
+                if !viewModel.curtains.isEmpty {
+                    Text(viewModel.getPaginationInfo())
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding()
+                }
+            }
+        }
+        .refreshable {
+            viewModel.loadCurtains()
+        }
+    }
+    
+    // MARK: - iPad-specific Curtain List Content
+    
+    private var iPadCurtainListContent: some View {
+        List(filteredCurtains, id: \.linkId, selection: $curtainForDetails) { curtain in
+            iPadCurtainRowView(curtain: curtain)
+                .tag(curtain)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
+    
+    // MARK: - iPad Curtain Row View
+    
+    @ViewBuilder
+    private func iPadCurtainRowView(curtain: CurtainEntity) -> some View {
+        HStack(spacing: 12) {
+            // Download Status Icon
+            Group {
+                if let filePath = curtain.file {
+                    if FileManager.default.fileExists(atPath: filePath) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                    } else {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                    }
+                } else {
+                    Image(systemName: "icloud.and.arrow.down")
+                        .foregroundColor(.blue)
+                }
+            }
+            .font(.body)
+            .frame(width: 18)
+            
+            // Content
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(curtain.dataDescription)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .lineLimit(2)
+                    
+                    Spacer()
+                    
+                    // Pin Status
+                    if curtain.isPinned {
+                        Image(systemName: "pin.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption2)
+                    }
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ID: \(curtain.linkId.prefix(12))...")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    Text(curtain.created, format: .dateTime.day().month().year())
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                    
+                    Text(curtain.sourceHostname.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: ""))
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemBackground))
+        .contentShape(Rectangle())
+            .onTapGesture {
+                handleiPadCurtainTap(curtain)
+            }
+            .contextMenu {
+                Button("Edit Description") {
+                    selectedCurtain = curtain
+                    showingEditDescriptionSheet = true
+                }
+                Button(curtain.isPinned ? "Unpin" : "Pin") {
+                    viewModel.updatePinStatus(curtain, isPinned: !curtain.isPinned)
+                    showToast(curtain.isPinned ? "Unpinned curtain" : "Pinned curtain")
+                }
+                if curtain.file != nil {
+                    Button("Redownload") {
+                        Task {
+                            do {
+                                _ = try await viewModel.redownloadCurtainData(curtain)
+                            } catch {
+                                // Error handled by viewModel
+                            }
+                        }
+                    }
+                }
+                Button("Delete", role: .destructive) {
+                    curtainToDelete = curtain
+                    showingDeleteConfirmation = true
+                }
+            }
+            .overlay(
+                Rectangle()
+                    .fill(Color(.separator))
+                    .frame(height: 0.5)
+                    .opacity(0.3),
+                alignment: .bottom
+            )
+    }
+    
+    // MARK: - iPad Empty Detail View
+    
+    private var iPadEmptyDetailView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 60))
+                .foregroundColor(.secondary)
+            
+            Text("Select a Dataset")
+                .font(.title2)
+                .fontWeight(.medium)
+            
+            Text("Choose a dataset from the sidebar to view its details and analysis tools")
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(.systemGroupedBackground))
+    }
+    
     // MARK: - Computed Properties
     
     private var filteredCurtains: [CurtainEntity] {
@@ -293,6 +597,56 @@ struct CurtainListView: View {
         }
     }
     
+    private func handleiPadCurtainTap(_ curtain: CurtainEntity) {
+        print("🟡 CurtainListView: iPad handleCurtainTap called for curtain: \(curtain.dataDescription)")
+        print("🟡 CurtainListView: curtain.file = \(curtain.file ?? "nil")")
+        
+        let curtainLinkId = curtain.linkId
+        print("🔍 CurtainListView: iPad - Captured linkId: \(curtainLinkId)")
+        
+        #if targetEnvironment(simulator)
+        let isSimulator = true
+        #else
+        let isSimulator = false
+        #endif
+        
+        let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let curtainDataDir = documentsURL.appendingPathComponent("CurtainData", isDirectory: true)
+        let currentFilePath = curtainDataDir.appendingPathComponent("\(curtainLinkId).json").path
+        
+        let fileExistsAtCurrentPath = FileManager.default.fileExists(atPath: currentFilePath)
+        
+        print("🔍 CurtainListView: iPad - File exists at current path: \(fileExistsAtCurrentPath)")
+        
+        if fileExistsAtCurrentPath {
+            print("🟢 CurtainListView: iPad - File exists, updating detail view")
+            
+            // Update file path if needed
+            if curtain.file != currentFilePath {
+                curtain.file = currentFilePath
+                do {
+                    try modelContext.save()
+                    print("🟢 CurtainListView: iPad - File path updated")
+                } catch {
+                    print("❌ CurtainListView: iPad - Failed to update file path: \(error)")
+                }
+            }
+            
+            // Update detail view selection
+            curtainForDetails = curtain
+            print("🟢 CurtainListView: iPad - Updated detail view selection")
+            
+        } else if isSimulator || curtain.file == nil {
+            print("🔴 CurtainListView: iPad - File not found, asking user to download")
+            curtainToDownload = curtain
+            showingDownloadConfirmation = true
+        } else {
+            print("🔴 CurtainListView: iPad - File path exists but file missing, asking to redownload")
+            curtainToDownload = curtain
+            showingDownloadConfirmation = true
+        }
+    }
+    
     private func syncAllCurtains() {
         // Get active site settings and sync
         let siteSettings = viewModel.getActiveSiteSettings()
@@ -344,6 +698,8 @@ struct CurtainListContent: View {
                         }
                     }
                 )
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
             }
             
             // Load More Button (Like Android pagination)
@@ -356,8 +712,12 @@ struct CurtainListContent: View {
                         viewModel.loadMoreCurtains()
                     }
                 )
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .refreshable {
             viewModel.loadCurtains()
         }
@@ -375,51 +735,68 @@ struct CurtainRowView: View {
     let onRedownload: () -> Void
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(curtain.dataDescription)
-                        .font(.headline)
-                        .lineLimit(2)
-                    
-                    Text("ID: \(curtain.linkId)")
-                        .font(.caption)
-                        .foregroundColor(.primary)
-                    
-                    Text("Created: \(curtain.created, format: .dateTime)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    Text("Host: \(curtain.sourceHostname)")
-                        .font(.caption)
+        HStack(spacing: 12) {
+            // Download Status Icon
+            Group {
+                if let filePath = curtain.file {
+                    if FileManager.default.fileExists(atPath: filePath) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                    } else {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                    }
+                } else {
+                    Image(systemName: "icloud.and.arrow.down")
                         .foregroundColor(.blue)
                 }
-                
-                Spacer()
-                
-                VStack(spacing: 4) {
+            }
+            .font(.title3)
+            .frame(width: 20)
+            
+            // Content
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(curtain.dataDescription)
+                        .font(.body)
+                        .fontWeight(.medium)
+                        .lineLimit(2)
+                    
+                    Spacer()
+                    
                     // Pin Status
                     if curtain.isPinned {
                         Image(systemName: "pin.fill")
                             .foregroundColor(.orange)
+                            .font(.caption)
                     }
                     
-                    // Download Status
-                    if let filePath = curtain.file {
-                        if FileManager.default.fileExists(atPath: filePath) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                        } else {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                        }
-                    } else {
-                        Image(systemName: "cloud.fill")
-                            .foregroundColor(.gray)
-                    }
+                    // Chevron
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("ID: \(curtain.linkId.prefix(12))...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text(curtain.created, format: .dateTime.day().month().year())
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Text(curtain.sourceHostname.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: ""))
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                        .lineLimit(1)
                 }
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemBackground))
         .contentShape(Rectangle())
         .onTapGesture {
             print("🟡 CurtainRowView: Row tapped for curtain: \(curtain.dataDescription)")
@@ -437,6 +814,13 @@ struct CurtainRowView: View {
             Button("Delete", role: .destructive, action: onDelete)
             Button(curtain.isPinned ? "Unpin" : "Pin", action: onTogglePin)
         }
+        .overlay(
+            Rectangle()
+                .fill(Color(.separator))
+                .frame(height: 0.5)
+                .opacity(0.3),
+            alignment: .bottom
+        )
     }
 }
 

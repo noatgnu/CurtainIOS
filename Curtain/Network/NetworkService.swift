@@ -13,6 +13,7 @@ protocol NetworkServiceProtocol {
     func getAllCurtains(hostname: String) async throws -> [Curtain]
     func getCurtainByLinkId(hostname: String, linkId: String) async throws -> Curtain
     func downloadCurtain(hostname: String, downloadPath: String) async throws -> Data
+    func downloadCurtain(hostname: String, downloadPath: String, progressCallback: ((Int, Double) -> Void)?) async throws -> Data
     func getAllDataFilterLists(hostname: String, limit: Int?, offset: Int?) async throws -> PaginatedResponse<DataFilterList>
     func getDataFilterListsByCategory(hostname: String, category: String, limit: Int?, offset: Int?) async throws -> PaginatedResponse<DataFilterList>
 }
@@ -21,6 +22,7 @@ protocol NetworkServiceProtocol {
 
 class NetworkService: NetworkServiceProtocol {
     let session: URLSession
+    let downloadClient: DownloadClient
     
     init() {
         let configuration = URLSessionConfiguration.default
@@ -31,6 +33,7 @@ class NetworkService: NetworkServiceProtocol {
             "Content-Type": "application/json"
         ]
         self.session = URLSession(configuration: configuration)
+        self.downloadClient = DownloadClient.shared
     }
     
     // MARK: - Curtain API Methods (from Android CurtainApi.kt)
@@ -49,6 +52,39 @@ class NetworkService: NetworkServiceProtocol {
         // downloadPath is like "{linkId}/download/token={token}"
         let url = buildURL(hostname: hostname, path: "curtain/\(downloadPath)")
         return try await performDataRequest(url: url)
+    }
+    
+    func downloadCurtain(hostname: String, downloadPath: String, progressCallback: ((Int, Double) -> Void)?) async throws -> Data {
+        // downloadPath is like "{linkId}/download/token={token}"
+        let url = buildURL(hostname: hostname, path: "curtain/\(downloadPath)")
+        
+        // Use a temporary file path for DownloadClient
+        let tempDirectory = FileManager.default.temporaryDirectory
+        let tempFileName = UUID().uuidString + ".json"
+        let tempFilePath = tempDirectory.appendingPathComponent(tempFileName).path
+        
+        do {
+            // Download with progress using DownloadClient
+            _ = try await downloadClient.downloadFileWithStreaming(
+                from: url.absoluteString,
+                to: tempFilePath,
+                progressCallback: progressCallback
+            )
+            
+            // Read the downloaded data
+            let tempFileURL = URL(fileURLWithPath: tempFilePath)
+            let data = try Data(contentsOf: tempFileURL)
+            
+            // Clean up temporary file
+            try? FileManager.default.removeItem(at: tempFileURL)
+            
+            return data
+        } catch {
+            // Clean up temporary file on error
+            let tempFileURL = URL(fileURLWithPath: tempFilePath)
+            try? FileManager.default.removeItem(at: tempFileURL)
+            throw error
+        }
     }
     
     // MARK: - DataFilterList API Methods (from Android DataFilterListApi.kt)

@@ -101,13 +101,13 @@ class CurtainRepository {
         let entities = curtains.map { curtain in
             curtain.toCurtainEntity(hostname: hostname)
         }
-        
+
         // Insert all entities on main thread
-        await MainActor.run {
+        performDatabaseOperation {
             for entity in entities {
                 modelContext.insert(entity)
             }
-            
+
             try? modelContext.save()
         }
         return entities
@@ -126,15 +126,14 @@ class CurtainRepository {
         try await ensureSiteSettingsExist(hostname: hostname)
         
         // Convert API response to entity
-        var curtainEntity = curtain.toCurtainEntity(hostname: hostname)
-        curtainEntity.frontendURL = frontendURL
-        
+        let curtainEntity = curtain.toCurtainEntity(hostname: hostname, frontendURL: frontendURL)
+
         // Insert the curtain after site settings have been created
-        await MainActor.run {
+        performDatabaseOperation {
             modelContext.insert(curtainEntity)
             try? modelContext.save()
         }
-        
+
         return curtainEntity
     }
     
@@ -165,17 +164,24 @@ class CurtainRepository {
             frontendURL: frontendURL,
             isPinned: false
         )
-        
+
         // Insert into database on main thread
-        await MainActor.run {
+        performDatabaseOperation {
             modelContext.insert(curtainEntity)
             try? modelContext.save()
         }
-        
+
         return curtainEntity
     }
     
     // MARK: - Download Operations (Based on Android download logic)
+    // Progress mapping for two-level downloads:
+    // 0-5%: Initialization
+    // 5-40%: First download (API metadata) 
+    // 40-45%: Processing first response
+    // 45-90%: Second download (actual file, if needed)
+    // 90-95%: Database update
+    // 95-100%: Completion
     
     func downloadCurtainData(
         linkId: String,
@@ -203,12 +209,21 @@ class CurtainRepository {
             "\(linkId)/download/token="
         }
         
-        progressCallback?(10, 0.0) // API request started
-        let responseData = try await networkManager.downloadCurtain(hostname: hostname, downloadPath: downloadEndpoint)
+        progressCallback?(5, 0.0) // API request started
         
-        progressCallback?(20, 0.0)
+        // Create a wrapper callback that maps first network progress (0-100) to our range (5-40)
+        let firstNetworkProgressCallback: ((Int, Double) -> Void)? = progressCallback != nil ? { networkProgress, speed in
+            let adjustedProgress = 5 + (networkProgress * 35 / 100) // Maps 0-100 to 5-40
+            progressCallback?(adjustedProgress, speed)
+        } : nil
+        
+        let responseData = try await networkManager.downloadCurtain(hostname: hostname, downloadPath: downloadEndpoint, progressCallback: firstNetworkProgressCallback)
+        
+        progressCallback?(40, 0.0) // First download complete, processing response
         let responseString = String(data: responseData, encoding: .utf8) ?? ""
         var filePath: String? = nil
+        
+        print("CurtainRepository: First download complete, analyzing response...")
         
         do {
             // Try to parse as JSON to check for "url" field (like Android)
@@ -216,7 +231,7 @@ class CurtainRepository {
                let jsonMap = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                let downloadUrl = jsonMap["url"] as? String {
                 
-                progressCallback?(30, 0.0)
+                progressCallback?(45, 0.0) // Found download URL, starting second download
                 
                 // Ensure we have an absolute URL (like Android)
                 let absoluteUrl: String
@@ -228,40 +243,43 @@ class CurtainRepository {
                     absoluteUrl = baseUrl + downloadUrl
                 }
                 
-                print("CurtainRepository: Using download client for URL: \(absoluteUrl)")
+                print("CurtainRepository: Starting second download from URL: \(absoluteUrl)")
+                
+                // Create a wrapper callback for second download that maps (0-100) to (45-90)
+                let secondDownloadProgressCallback: ((Int, Double) -> Void)? = { progress, speed in
+                    let mappedProgress = 45 + (progress * 45 / 100) // Maps 0-100 to 45-90
+                    progressCallback?(mappedProgress, speed)
+                }
                 
                 // Download file using DownloadClient (like Android)
                 let fileURL = try await downloadClient.downloadFile(
                     from: absoluteUrl,
                     to: getLocalFilePath(linkId: linkId),
-                    progressCallback: { progress, speed in
-                        // Map progress from 40-90% (like Android)
-                        let mappedProgress = min((progress * 50 / 100) + 40, 90)
-                        progressCallback?(mappedProgress, speed)
-                    }
+                    progressCallback: secondDownloadProgressCallback
                 )
                 
                 filePath = fileURL.path
                 
             } else {
                 // Direct response data (like Android fallback)
-                progressCallback?(40, 0.0) // Writing direct response to file
+                progressCallback?(50, 0.0) // Writing direct response to file
                 try responseString.write(toFile: localFilePath, atomically: true, encoding: .utf8)
-                progressCallback?(70, 0.0)
+                progressCallback?(80, 0.0)
                 filePath = localFilePath
             }
         } catch {
             // Fallback to raw response (like Android)
-            progressCallback?(40, 0.0)
+            progressCallback?(50, 0.0)
             try responseString.write(toFile: localFilePath, atomically: true, encoding: .utf8)
-            progressCallback?(70, 0.0)
+            progressCallback?(80, 0.0)
             filePath = localFilePath
         }
         
         if let filePath = filePath {
-            progressCallback?(90, 0.0) // Updating database
+            progressCallback?(95, 0.0) // Updating database
             try await updateCurtainEntityWithLocalFilePath(linkId: linkId, filePath: filePath)
             progressCallback?(100, 0.0) // Complete
+            print("CurtainRepository: Download completed successfully - \(filePath)")
             return filePath
         }
         
@@ -325,7 +343,12 @@ class CurtainRepository {
     
     private func getLocalFilePath(linkId: String) -> String {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return documentsPath.appendingPathComponent("\(linkId).json").path
+        let curtainDataDir = documentsPath.appendingPathComponent("CurtainData", isDirectory: true)
+        
+        // Create CurtainData directory if it doesn't exist
+        try? FileManager.default.createDirectory(at: curtainDataDir, withIntermediateDirectories: true)
+        
+        return curtainDataDir.appendingPathComponent("\(linkId).json").path
     }
     
     private func updateCurtainEntityWithLocalFilePath(linkId: String, filePath: String) async throws {
@@ -369,11 +392,11 @@ class CurtainRepository {
     /// Download curtain data and save to local persistent storage (NOT synced to iCloud)
     func downloadCurtainData(_ curtain: CurtainEntity, progressCallback: @escaping (Double) -> Void) async throws -> String {
         print("🔄 CurtainRepository: Starting download for curtain: \(curtain.linkId)")
-        
-        guard let hostname = getSiteSettingsByHostname(curtain.sourceHostname) else {
+
+        guard getSiteSettingsByHostname(curtain.sourceHostname) != nil else {
             throw CurtainError.invalidResponse
         }
-        
+
         // Create URL for downloading the curtain data
         let downloadURL = "\(curtain.sourceHostname)/api/curtain/\(curtain.linkId)"
         
@@ -392,13 +415,13 @@ class CurtainRepository {
             
             // Exclude from iCloud backup to keep it local only
             try excludeFromiCloudBackup(path: localFilePath)
-            
+
             // Update the curtain entity with the file path
-            await MainActor.run {
+            performDatabaseOperation {
                 curtain.file = localFilePath
                 try? modelContext.save()
             }
-            
+
             print("✅ CurtainRepository: Download completed, saved to: \(localFilePath)")
             
             return localFilePath
@@ -449,7 +472,7 @@ class CurtainRepository {
 // MARK: - Extension for Converting API Models to Entities (Like Android toCurtainEntity)
 
 private extension Curtain {
-    func toCurtainEntity(hostname: String) -> CurtainEntity {
+    func toCurtainEntity(hostname: String, frontendURL: String? = nil) -> CurtainEntity {
         return CurtainEntity(
             linkId: self.linkId,
             created: parseCreatedDate(self.created),
@@ -458,7 +481,8 @@ private extension Curtain {
             dataDescription: self.description,
             enable: self.enable,
             curtainType: self.curtainType,
-            sourceHostname: hostname
+            sourceHostname: hostname,
+            frontendURL: frontendURL
         )
     }
     

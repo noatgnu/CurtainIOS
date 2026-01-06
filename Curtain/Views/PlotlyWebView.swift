@@ -41,10 +41,16 @@ struct PlotlyWebView: UIViewRepresentable {
     let pointInteractionViewModel: PointInteractionViewModel
     let selectionManager: SelectionManager
     let annotationManager: AnnotationManager
-    
+
     // Refresh trigger for coordinate recalculation
     @Binding var coordinateRefreshTrigger: Int
-    
+
+    // Plot export functionality
+    let exportService: PlotExportService?
+
+    // Color scheme detection for dark mode support
+    @Environment(\.colorScheme) var colorScheme
+
     enum PlotType {
         case volcano
         case scatter
@@ -72,6 +78,10 @@ struct PlotlyWebView: UIViewRepresentable {
         contentController.add(context.coordinator, name: "annotationMoved")
         contentController.add(context.coordinator, name: "plotDimensions")
         contentController.add(context.coordinator, name: "annotationCoordinates")
+        // Export message handlers
+        contentController.add(context.coordinator, name: "plotExported")
+        contentController.add(context.coordinator, name: "plotExportError")
+        contentController.add(context.coordinator, name: "plotInfo")
         configuration.userContentController = contentController
         
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -95,6 +105,123 @@ struct PlotlyWebView: UIViewRepresentable {
         } else {
             print("🔄 PlotlyWebView: HTML already loaded, skipping regeneration but maintaining webView reference")
         }
+    }
+    
+    // MARK: - Export Methods
+    
+    /// Export the current plot as PNG with specified options
+    func exportAsPNG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
+        guard let webView = Coordinator.getCurrentWebView() else {
+            print("❌ PlotlyWebView: Cannot export PNG - WebView not available")
+            return
+        }
+        
+        let finalFilename = filename ?? generateDefaultFilename(format: "png")
+        let jsCode = "window.CurtainVisualization.exportAsPNG('\(finalFilename)', \(width), \(height));"
+        
+        print("📤 PlotlyWebView: Exporting PNG - \(finalFilename) (\(width)x\(height))")
+        webView.evaluateJavaScript(jsCode) { result, error in
+            if let error = error {
+                print("❌ PlotlyWebView: PNG export JavaScript failed: \(error)")
+            }
+        }
+    }
+    
+    /// Export the current plot as SVG with specified options
+    func exportAsSVG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
+        guard let webView = Coordinator.getCurrentWebView() else {
+            print("❌ PlotlyWebView: Cannot export SVG - WebView not available")
+            return
+        }
+        
+        let finalFilename = filename ?? generateDefaultFilename(format: "svg")
+        let jsCode = "window.CurtainVisualization.exportAsSVG('\(finalFilename)', \(width), \(height));"
+        
+        print("📤 PlotlyWebView: Exporting SVG - \(finalFilename) (\(width)x\(height))")
+        webView.evaluateJavaScript(jsCode) { result, error in
+            if let error = error {
+                print("❌ PlotlyWebView: SVG export JavaScript failed: \(error)")
+            }
+        }
+    }
+    
+    /// Get information about the current plot for export purposes
+    func getCurrentPlotInfo() {
+        guard let webView = Coordinator.getCurrentWebView() else {
+            print("❌ PlotlyWebView: Cannot get plot info - WebView not available")
+            return
+        }
+        
+        let jsCode = "window.CurtainVisualization.getCurrentPlotInfo();"
+        webView.evaluateJavaScript(jsCode) { result, error in
+            if let error = error {
+                print("❌ PlotlyWebView: Get plot info JavaScript failed: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Private Helper Methods
+    
+    private func generateDefaultFilename(format: String) -> String {
+        let plotTypeString = plotTypeToString()
+        let timestamp = DateFormatter.filenameSafe.string(from: Date())
+        return "\(plotTypeString)_\(timestamp).\(format)"
+    }
+    
+    private func plotTypeToString() -> String {
+        switch plotType {
+        case .volcano:
+            return "volcano_plot"
+        case .scatter:
+            return "scatter_plot"
+        case .heatmap:
+            return "heatmap"
+        case .custom:
+            return "custom_plot"
+        }
+    }
+    
+    // MARK: - Static Export Methods
+    
+    /// Export the currently active plot as PNG (static method for global access)
+    static func exportCurrentPlotAsPNG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
+        guard let webView = Coordinator.getCurrentWebView() else {
+            print("❌ PlotlyWebView: Cannot export PNG - No active WebView")
+            return
+        }
+        
+        let finalFilename = filename ?? "plot_\(DateFormatter.filenameSafe.string(from: Date())).png"
+        let jsCode = "window.CurtainVisualization.exportAsPNG('\(finalFilename)', \(width), \(height));"
+        
+        print("📤 PlotlyWebView: Static PNG export - \(finalFilename) (\(width)x\(height))")
+        webView.evaluateJavaScript(jsCode) { result, error in
+            if let error = error {
+                print("❌ PlotlyWebView: Static PNG export failed: \(error)")
+            }
+        }
+    }
+    
+    /// Export the currently active plot as SVG (static method for global access)
+    static func exportCurrentPlotAsSVG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
+        guard let webView = Coordinator.getCurrentWebView() else {
+            print("❌ PlotlyWebView: Cannot export SVG - No active WebView")
+            return
+        }
+        
+        let finalFilename = filename ?? "plot_\(DateFormatter.filenameSafe.string(from: Date())).svg"
+        let jsCode = "window.CurtainVisualization.exportAsSVG('\(finalFilename)', \(width), \(height));"
+        
+        print("📤 PlotlyWebView: Static SVG export - \(finalFilename) (\(width)x\(height))")
+        webView.evaluateJavaScript(jsCode) { result, error in
+            if let error = error {
+                print("❌ PlotlyWebView: Static SVG export failed: \(error)")
+            }
+        }
+    }
+    
+    /// Check if there's an active plot available for export
+    static func canExportCurrentPlot() -> Bool {
+        return Coordinator.getCurrentWebView() != nil
     }
     
     func makeCoordinator() -> Coordinator {
@@ -347,6 +474,18 @@ struct PlotlyWebView: UIViewRepresentable {
                         self.annotationCoordinates = coordinates
                     }
                     
+                case "plotExported":
+                    print("📤 PlotlyWebView: Plot export success message received")
+                    self.handlePlotExported(message.body)
+                    
+                case "plotExportError":
+                    print("❌ PlotlyWebView: Plot export error message received")
+                    self.handlePlotExportError(message.body)
+                    
+                case "plotInfo":
+                    print("📊 PlotlyWebView: Plot info message received")
+                    self.handlePlotInfo(message.body)
+                    
                 default:
                     break
                 }
@@ -389,7 +528,8 @@ struct PlotlyWebView: UIViewRepresentable {
                 settings: parent.curtainData.settings,
                 selections: parent.selections,
                 searchFilter: parent.searchFilter,
-                editMode: parent.editMode
+                editMode: parent.editMode,
+                isDarkMode: parent.colorScheme == .dark
             )
             
             print("🔄 PlotlyWebView: Generating HTML for volcano plot")
@@ -583,6 +723,58 @@ struct PlotlyWebView: UIViewRepresentable {
             // Handle annotation movement if needed
         }
         
+        // MARK: - Export Handler Methods
+        
+        private func handlePlotExported(_ messageBody: Any?) {
+            guard let exportData = messageBody as? [String: Any] else {
+                print("❌ PlotlyWebView: Invalid export data received")
+                return
+            }
+            
+            print("📤 PlotlyWebView: Processing export data: \(exportData.keys)")
+            
+            // Process the export using the export service
+            if let exportService = parent.exportService {
+                Task {
+                    let result = await exportService.processExportData(exportData)
+                    await MainActor.run {
+                        if result.success {
+                            print("✅ PlotlyWebView: Export completed successfully - \(result.filename)")
+                            // Could show a success toast here
+                        } else {
+                            print("❌ PlotlyWebView: Export failed - \(result.error ?? "Unknown error")")
+                            // Could show an error toast here
+                        }
+                    }
+                }
+            } else {
+                print("❌ PlotlyWebView: Export service not available")
+            }
+        }
+        
+        private func handlePlotExportError(_ messageBody: Any?) {
+            if let errorData = messageBody as? [String: Any],
+               let format = errorData["format"] as? String,
+               let errorMessage = errorData["error"] as? String {
+                print("❌ PlotlyWebView: \(format.uppercased()) export failed: \(errorMessage)")
+                
+                if let exportService = parent.exportService {
+                    Task { @MainActor in
+                        exportService.exportError = "Export failed: \(errorMessage)"
+                    }
+                }
+            } else {
+                print("❌ PlotlyWebView: Unknown export error: \(messageBody ?? "nil")")
+            }
+        }
+        
+        private func handlePlotInfo(_ messageBody: Any?) {
+            if let plotInfo = messageBody as? [String: Any] {
+                print("📊 PlotlyWebView: Plot info received: \(plotInfo)")
+                // Store plot info for future export filename generation
+            }
+        }
+        
         // MARK: - Helper Methods
         
         /// Determine protein color based on selection groups and significance (like Android)
@@ -741,6 +933,7 @@ struct InteractiveVolcanoPlotView: View {
     @StateObject private var selectionManager = SelectionManager()
     @StateObject private var annotationManager = AnnotationManager()
     @StateObject private var proteinSearchManager = ProteinSearchManager()
+    @StateObject private var plotExportService = PlotExportService.shared
     
     var body: some View {
         VStack(spacing: 0) {
@@ -1381,7 +1574,8 @@ struct InteractiveVolcanoPlotView: View {
                 pointInteractionViewModel: annotationEditMode ? PointInteractionViewModel() : pointInteractionViewModel, // Disable interactions in edit mode
                 selectionManager: selectionManager,
                 annotationManager: annotationManager,
-                coordinateRefreshTrigger: $coordinateRefreshTrigger
+                coordinateRefreshTrigger: $coordinateRefreshTrigger,
+                exportService: plotExportService
             )
             .id("\(plotId)-\(refreshTrigger)") // Force refresh when selections change
             .frame(minHeight: 400) // Ensure WebView has proper size
@@ -2496,9 +2690,7 @@ struct JavaScriptAnnotationView: View {
         GeometryReader { geometry in
             // FIXED: Since the outer annotationIndicators view already applies frame/offset positioning,
             // we should NOT adjust coordinates here to avoid double adjustment that causes clipping
-            let coordinator = PlotlyWebView.Coordinator.sharedCoordinator
-            let plotDimensions = coordinator?.plotDimensions
-            
+
             // Use JavaScript coordinates directly since the outer frame/offset handles positioning
             let adjustedX = jsResult.screenX
             let adjustedY = jsResult.screenY

@@ -9,11 +9,11 @@ import Foundation
 
 // MARK: - Download Client (Based on Android DownloadClient.kt)
 
-class DownloadClient {
+class DownloadClient: @unchecked Sendable {
     private let session: URLSession
     private var currentTask: URLSessionDataTask?
     private let bufferSize = 8192 // 8KB buffer like Android
-    
+
     static let shared = DownloadClient()
     
     private init() {
@@ -129,79 +129,60 @@ class DownloadClient {
         )
         
         return try await withCheckedThrowingContinuation { continuation in
-            var receivedData = Data()
-            var totalBytesReceived: Int64 = 0
-            var expectedContentLength: Int64 = 0
             let startTime = Date()
-            var lastSpeedUpdate = startTime
             var hasCompleted = false
             
-            currentTask = session.dataTask(with: downloadURL) { [weak self] data, response, error in
-                
-                // Prevent multiple completion calls
-                guard !hasCompleted else { return }
-                
-                if let error = error {
+            // Use async/await with URLSession.data(from:) for simpler handling
+            Task {
+                do {
+                    progressCallback?(5, 0.0)
+                    let (data, response) = try await session.data(from: downloadURL)
+                    
+                    guard !hasCompleted else { return }
+                    
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        hasCompleted = true
+                        continuation.resume(throwing: DownloadError.invalidResponse)
+                        return
+                    }
+                    
+                    guard 200...299 ~= httpResponse.statusCode else {
+                        hasCompleted = true
+                        continuation.resume(throwing: DownloadError.serverError(httpResponse.statusCode))
+                        return
+                    }
+                    
+                    // Simulate progress updates for downloaded data
+                    let totalSize = data.count
+
+                    for i in 1...10 {
+                        let progress = 10 + (i * 80 / 10) // Map to 10-90%
+                        let elapsedSeconds = Date().timeIntervalSince(startTime)
+                        let speedKBps = elapsedSeconds > 0 ? Double(totalSize) / 1024.0 / elapsedSeconds : 0.0
+                        progressCallback?(progress, speedKBps)
+                        
+                        // Small delay to show progress updates
+                        try await Task.sleep(nanoseconds: 10_000_000) // 10ms
+                    }
+                    
+                    // Write data to file
+                    try data.write(to: destinationURL)
+                    progressCallback?(100, 0.0)
+                    
                     hasCompleted = true
-                    self?.currentTask = nil
+                    continuation.resume(returning: destinationURL)
+                    
+                } catch {
+                    guard !hasCompleted else { return }
+                    hasCompleted = true
+                    
                     if (error as NSError).code == NSURLErrorCancelled {
                         continuation.resume(throwing: DownloadError.cancelled)
                     } else {
                         continuation.resume(throwing: DownloadError.networkError(error))
                     }
-                    return
-                }
-                
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    hasCompleted = true
-                    self?.currentTask = nil
-                    continuation.resume(throwing: DownloadError.invalidResponse)
-                    return
-                }
-                
-                guard 200...299 ~= httpResponse.statusCode else {
-                    hasCompleted = true
-                    self?.currentTask = nil
-                    continuation.resume(throwing: DownloadError.serverError(httpResponse.statusCode))
-                    return
-                }
-                
-                if expectedContentLength == 0 {
-                    expectedContentLength = httpResponse.expectedContentLength
-                    progressCallback?(10, 0.0)
-                }
-                
-                if let data = data {
-                    receivedData.append(data)
-                    totalBytesReceived += Int64(data.count)
-                    
-                    // Calculate progress and speed (like Android - every 500ms)
-                    let currentTime = Date()
-                    if expectedContentLength > 0 && currentTime.timeIntervalSince(lastSpeedUpdate) >= 0.5 {
-                        let progress = min(Int((totalBytesReceived * 90 / expectedContentLength)) + 10, 100)
-                        
-                        let elapsedSeconds = currentTime.timeIntervalSince(startTime)
-                        let speedKBps = elapsedSeconds > 0 ? Double(totalBytesReceived) / 1024.0 / elapsedSeconds : 0.0
-                        
-                        progressCallback?(progress, speedKBps)
-                        lastSpeedUpdate = currentTime
-                    }
-                } else {
-                    // No more data - download complete
-                    hasCompleted = true
-                    self?.currentTask = nil
-                    
-                    do {
-                        try receivedData.write(to: destinationURL)
-                        progressCallback?(100, 0.0)
-                        continuation.resume(returning: destinationURL)
-                    } catch {
-                        continuation.resume(throwing: DownloadError.fileWriteError(error))
-                    }
                 }
             }
-            
-            currentTask?.resume()
         }
     }
     

@@ -100,24 +100,18 @@ class CurtainViewModel {
         allCurtains.removeAll()
         loadedCurtains.removeAll()
         
-        do {
-            // Get all curtains from repository
-            allCurtains = curtainRepository.getAllCurtains()
-            totalCurtains = allCurtains.count
-            print("🔴 CurtainViewModel: Loaded \(totalCurtains) total curtains from repository")
-            
-            // Load initial page
-            loadInitialPage()
-            print("🔴 CurtainViewModel: Initial page loaded, displaying \(curtains.count) curtains")
-            
-            // Database ready for user to add data via + button
-            
-            isLoading = false
-            
-        } catch {
-            self.error = error.localizedDescription
-            isLoading = false
-        }
+        // Get all curtains from repository
+        allCurtains = curtainRepository.getAllCurtains()
+        totalCurtains = allCurtains.count
+        print("🔴 CurtainViewModel: Loaded \(totalCurtains) total curtains from repository")
+
+        // Load initial page
+        loadInitialPage()
+        print("🔴 CurtainViewModel: Initial page loaded, displaying \(curtains.count) curtains")
+
+        // Database ready for user to add data via + button
+
+        isLoading = false
     }
     
     private func loadInitialPage() {
@@ -137,27 +131,22 @@ class CurtainViewModel {
         
         Task {
             defer { isLoadingMore = false }
-            
-            do {
-                currentPage += 1
-                let startIndex = Self.initialPageSize + (currentPage - 1) * Self.pageSize
-                let endIndex = min(startIndex + Self.pageSize, allCurtains.count)
-                
-                guard startIndex < allCurtains.count else {
-                    hasMoreData = false
-                    return
-                }
-                
-                let newCurtains = Array(allCurtains[startIndex..<endIndex])
-                loadedCurtains.append(contentsOf: newCurtains)
-                curtains = loadedCurtains
-                
-                hasMoreData = loadedCurtains.count < allCurtains.count
-                print("CurtainViewModel: Loaded \(newCurtains.count) more curtains, total loaded: \(loadedCurtains.count)/\(allCurtains.count)")
-                
-            } catch {
-                self.error = error.localizedDescription
+
+            currentPage += 1
+            let startIndex = Self.initialPageSize + (currentPage - 1) * Self.pageSize
+            let endIndex = min(startIndex + Self.pageSize, allCurtains.count)
+
+            guard startIndex < allCurtains.count else {
+                hasMoreData = false
+                return
             }
+
+            let newCurtains = Array(allCurtains[startIndex..<endIndex])
+            loadedCurtains.append(contentsOf: newCurtains)
+            curtains = loadedCurtains
+
+            hasMoreData = loadedCurtains.count < allCurtains.count
+            print("CurtainViewModel: Loaded \(newCurtains.count) more curtains, total loaded: \(loadedCurtains.count)/\(allCurtains.count)")
         }
     }
     
@@ -246,7 +235,7 @@ class CurtainViewModel {
         }
         
         // Read the JSON file
-        let jsonString = try String(contentsOfFile: filePath)
+        let jsonString = try String(contentsOfFile: filePath, encoding: .utf8)
         
         // Process using CurtainDataService (like Android)
         try await curtainDataService.restoreSettings(from: jsonString)

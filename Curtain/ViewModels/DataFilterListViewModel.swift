@@ -43,16 +43,11 @@ class DataFilterListViewModel {
     /// Load data filter lists from the local database
     func loadDataFilterLists() {
         Task {
-            do {
-                // Load filter lists
-                filterLists = repository.getAllDataFilterLists()
-                
-                // Load categories directly from database
-                loadCategories()
-                
-            } catch {
-                self.error = "Failed to load filter lists: \(error.localizedDescription)"
-            }
+            // Load filter lists
+            filterLists = repository.getAllDataFilterLists()
+
+            // Load categories directly from database
+            loadCategories()
         }
     }
     

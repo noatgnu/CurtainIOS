@@ -44,88 +44,84 @@ class ProteinSearchManager: ObservableObject {
             searchProgress = "Starting search..."
             proteinsFound = 0
         }
-        
-        do {
-            // Perform batch search (like Android)
+
+        // Perform batch search (like Android)
+        await MainActor.run {
+            searchProgress = "Searching for proteins..."
+        }
+
+        let searchResults = await searchService.performBatchSearch(
+            inputText: searchText,
+            searchType: searchType,
+            curtainData: curtainData
+        )
+
+        // Collect all matched protein IDs with progress updates
+        var allMatchedProteins: Set<String> = []
+        var allSearchTerms: [String] = []
+
+        for (index, result) in searchResults.enumerated() {
+            allMatchedProteins.formUnion(result.matchedProteins)
+            allSearchTerms.append(result.searchTerm)
+
+            // Update progress
+            let count = allMatchedProteins.count
+            let processed = index + 1
+            let total = searchResults.count
             await MainActor.run {
-                searchProgress = "Searching for proteins..."
+                proteinsFound = count
+                searchProgress = "Found \(count) proteins (processed \(processed)/\(total) terms)"
             }
-            
-            let searchResults = await searchService.performBatchSearch(
-                inputText: searchText,
-                searchType: searchType,
-                curtainData: curtainData
-            )
-            
-            // Collect all matched protein IDs with progress updates
-            var allMatchedProteins: Set<String> = []
-            var allSearchTerms: [String] = []
-            
-            for (index, result) in searchResults.enumerated() {
-                allMatchedProteins.formUnion(result.matchedProteins)
-                allSearchTerms.append(result.searchTerm)
-                
-                // Update progress
-                await MainActor.run {
-                    proteinsFound = allMatchedProteins.count
-                    searchProgress = "Found \(allMatchedProteins.count) proteins (processed \(index + 1)/\(searchResults.count) terms)"
-                }
-            }
-            
-            guard !allMatchedProteins.isEmpty else {
-                await MainActor.run {
-                    errorMessage = "No proteins found for the search terms"
-                    searchProgress = ""
-                    proteinsFound = 0
-                    isLoading = false
-                }
-                return nil
-            }
-            
+        }
+
+        let proteinCount = allMatchedProteins.count
+        guard proteinCount > 0 else {
             await MainActor.run {
-                searchProgress = "Creating search list with \(allMatchedProteins.count) proteins..."
-            }
-            
-            // Assign color (like Android color assignment)
-            let assignedColor = color ?? getNextAvailableColor()
-            
-            // Create search list (like Android)
-            let searchList = SearchList(
-                name: name,
-                proteinIds: allMatchedProteins,
-                searchTerms: allSearchTerms,
-                searchType: searchType,
-                color: assignedColor,
-                description: description
-            )
-            
-            // Add to session and save to curtain data (like Android saveSearchListsToCurtainData)
-            await MainActor.run {
-                searchProgress = "Saving search list..."
-                searchSession.searchLists.append(searchList)
-                searchSession.activeFilters.insert(searchList.id)
-                saveSearchListsToCurtainData(curtainData: &curtainData)
-                searchProgress = "Search completed!"
-                isLoading = false
-                
-                // Clear progress after a short delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.searchProgress = ""
-                    self.proteinsFound = 0
-                }
-            }
-            
-            return searchList
-            
-        } catch {
-            await MainActor.run {
-                errorMessage = "Search failed: \(error.localizedDescription)"
+                errorMessage = "No proteins found for the search terms"
                 searchProgress = ""
                 proteinsFound = 0
                 isLoading = false
             }
             return nil
         }
+
+        await MainActor.run {
+            searchProgress = "Creating search list with \(proteinCount) proteins..."
+        }
+
+        // Assign color (like Android color assignment)
+        let assignedColor = color ?? getNextAvailableColor()
+
+        // Create search list (like Android)
+        let searchList = SearchList(
+            name: name,
+            proteinIds: allMatchedProteins,
+            searchTerms: allSearchTerms,
+            searchType: searchType,
+            color: assignedColor,
+            description: description
+        )
+
+        // Save search list to curtain data before updating UI
+        saveSearchListsToCurtainData(curtainData: &curtainData)
+
+        // Add to session and update UI on main actor
+        await MainActor.run {
+            searchProgress = "Saving search list..."
+            searchSession.searchLists.append(searchList)
+            searchSession.activeFilters.insert(searchList.id)
+            searchProgress = "Search completed!"
+            isLoading = false
+        }
+
+        // Clear progress after a short delay
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            searchProgress = ""
+            proteinsFound = 0
+        }
+
+        return searchList
     }
     
     func createSearchListFromProteinIds(
@@ -264,7 +260,7 @@ class ProteinSearchManager: ObservableObject {
                         // Find or create search list for this selection
                         if let existingIndex = restoredSearchLists.firstIndex(where: { $0.name == selectionName }) {
                             // Add protein to existing search list
-                            var existingList = restoredSearchLists[existingIndex]
+                            let existingList = restoredSearchLists[existingIndex]
                             let updatedProteinIds = existingList.proteinIds.union([proteinId])
                             restoredSearchLists[existingIndex] = SearchList(
                                 id: existingList.id,
@@ -518,7 +514,7 @@ class ProteinSearchManager: ObservableObject {
         var currentColors: [String] = []
         
         // Collect currently used colors (like Android)
-        for (s, color) in colorMap {
+        for (_, color) in colorMap {
             if defaultColorList.contains(color) {
                 currentColors.append(color)
             }
