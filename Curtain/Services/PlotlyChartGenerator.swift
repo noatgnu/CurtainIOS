@@ -11,7 +11,10 @@ import UIKit
 class PlotlyChartGenerator {
     private let curtainDataService: CurtainDataService?
     private let volcanoPlotDataService: VolcanoPlotDataService
-    
+
+    // Track the trace names from the last generated plot
+    private(set) var lastGeneratedTraceNames: [String] = []
+
     init(curtainDataService: CurtainDataService? = nil) {
         self.curtainDataService = curtainDataService
         self.volcanoPlotDataService = VolcanoPlotDataService()
@@ -90,19 +93,24 @@ class PlotlyChartGenerator {
         }
         
         print("🔍 PlotlyChartGenerator: Created \(selectionGroups.count) selection groups: \(Array(selectionGroups.keys))")
-        
+
         // Create traces for each selection (like Android)
         var traces: [PlotTrace] = []
-        
-        // First: Add user selection traces (non-background, non-significance)
-        let userSelections = selectionGroups.filter { (selectionName, _) in
-            return selectionName != "Background" && 
+
+        // IMPORTANT: Iterate in DETERMINISTIC order (alphabetically) to ensure consistency with Angular
+        // Angular's object iteration preserves insertion order, we use alphabetical to be consistent
+        let allGroupNames = Array(selectionGroups.keys).sorted()
+
+        // First: Add user selection traces (non-background, non-significance) in alphabetical order
+        let userSelectionNames = allGroupNames.filter { selectionName in
+            return selectionName != "Background" &&
                    selectionName != "Other" &&
                    !selectionName.contains("P-value") &&
                    !selectionName.contains("FC")
         }
-        
-        for (selectionName, groupData) in userSelections {
+
+        for selectionName in userSelectionNames {
+            guard let groupData = selectionGroups[selectionName] else { continue }
             let trace = createAndroidCompatibleTrace(
                 dataPoints: groupData.points,
                 name: selectionName,
@@ -112,15 +120,16 @@ class PlotlyChartGenerator {
             traces.append(trace)
         }
 
-        // Second: Add background and significance group traces
-        let backgroundAndSignificance = selectionGroups.filter { (selectionName, _) in
+        // Second: Add background and significance group traces in alphabetical order
+        let backgroundAndSignificanceNames = allGroupNames.filter { selectionName in
             return selectionName == "Background" ||
                    selectionName == "Other" ||
                    selectionName.contains("P-value") ||
                    selectionName.contains("FC")
         }
 
-        for (selectionName, groupData) in backgroundAndSignificance {
+        for selectionName in backgroundAndSignificanceNames {
+            guard let groupData = selectionGroups[selectionName] else { continue }
             let trace = createAndroidCompatibleTrace(
                 dataPoints: groupData.points,
                 name: selectionName,
@@ -129,16 +138,27 @@ class PlotlyChartGenerator {
             )
             traces.append(trace)
         }
-        
-        // Reverse traces array to match Android/Angular frontend ordering
-        traces.reverse()
 
-        // Apply custom trace order if configured
+        // Apply trace ordering (matching Angular logic at volcano-plot.component.ts:505-509)
+        print("🔍 PlotlyChartGenerator: Before ordering - traces: \(traces.map { $0.name })")
+        print("🔍 PlotlyChartGenerator: volcanoTraceOrder setting: \(settings.volcanoTraceOrder)")
+
         if !settings.volcanoTraceOrder.isEmpty {
+            // If custom trace order is configured, use it exactly as specified
             traces = reorderTraces(traces, accordingTo: settings.volcanoTraceOrder)
+            print("✅ PlotlyChartGenerator: Applied custom trace order")
+        } else {
+            // If no custom order, reverse traces to match Android/Angular default ordering
+            traces.reverse()
+            print("✅ PlotlyChartGenerator: Using default reversed trace order (no custom order set)")
         }
 
-        print("🔍 PlotlyChartGenerator: Final trace order: \(traces.map { $0.name })")
+        print("🎨 PlotlyChartGenerator: FINAL RENDER ORDER (first=behind, last=on top): \(traces.map { $0.name })")
+
+        // Store trace names for UI access (e.g., trace order settings)
+        lastGeneratedTraceNames = traces.map { $0.name }
+        print("📝 PlotlyChartGenerator: Stored \(lastGeneratedTraceNames.count) trace names for later access")
+
         return traces
     }
     
@@ -263,11 +283,11 @@ class PlotlyChartGenerator {
         for (key, value) in settings.textAnnotation {
             print("🔍 PlotlyChartGenerator: textAnnotation key '\(key)': \(value)")
         }
-        var annotations = convertTextAnnotations(settings.textAnnotation)
+        var annotations = convertTextAnnotations(settings.textAnnotation, isDarkMode: context.isDarkMode)
         print("🔍 PlotlyChartGenerator: Initial annotations count: \(annotations.count)")
 
         // Add volcano condition labels if enabled
-        let conditionLabelAnnotations = createVolcanoConditionLabelAnnotations(settings)
+        let conditionLabelAnnotations = createVolcanoConditionLabelAnnotations(settings, isDarkMode: context.isDarkMode)
         annotations.append(contentsOf: conditionLabelAnnotations)
         print("🔍 PlotlyChartGenerator: Final annotations count after adding condition labels: \(annotations.count)")
 
@@ -354,19 +374,23 @@ class PlotlyChartGenerator {
         let customText: String?  // Optional custom text from user-specified column
     }
     
-    private func convertTextAnnotations(_ textAnnotations: [String: Any]) -> [PlotAnnotation] {
+    private func convertTextAnnotations(_ textAnnotations: [String: Any], isDarkMode: Bool) -> [PlotAnnotation] {
         var annotations: [PlotAnnotation] = []
-        
+
+        // Default colors for better dark mode contrast
+        let defaultFontColor = isDarkMode ? "#FFFFFF" : "#000000"
+        let defaultArrowColor = isDarkMode ? "#FFFFFF" : "#000000"
+
         for (key, value) in textAnnotations {
             print("🔍 PlotlyChartGenerator: Processing annotation key '\(key)'")
             print("🔍 PlotlyChartGenerator: Value type: \(type(of: value))")
             print("🔍 PlotlyChartGenerator: Value: \(value)")
-            
+
             if let annotationData = value as? [String: Any] {
                 print("🔍 PlotlyChartGenerator: Annotation data keys: \(annotationData.keys)")
                 if let dataSection = annotationData["data"] as? [String: Any] {
                     print("🔍 PlotlyChartGenerator: Data section keys: \(dataSection.keys)")
-                    
+
                     // Extract values from the nested "data" section (Android format)
                     guard let text = dataSection["text"] as? String,
                           let x = dataSection["x"] as? Double,
@@ -375,30 +399,30 @@ class PlotlyChartGenerator {
                         print("❌ PlotlyChartGenerator: text=\(dataSection["text"] ?? "nil"), x=\(dataSection["x"] ?? "nil"), y=\(dataSection["y"] ?? "nil")")
                         continue
                     }
-                    
+
                     // Extract title - the unique stable identifier (gene name(primary id) or primary id)
                     let title = annotationData["title"] as? String ?? key
                     print("🔍 PlotlyChartGenerator: Extracted x=\(x), y=\(y), text='\(text)'")
-                    
+
                     // Extract additional properties with Android defaults
                     let showarrow = dataSection["showarrow"] as? Bool ?? true
                     let arrowhead = dataSection["arrowhead"] as? Int ?? 1
                     let arrowsize = dataSection["arrowsize"] as? Double ?? 1.0
                     let arrowwidth = dataSection["arrowwidth"] as? Double ?? 1.0
-                    let arrowcolor = dataSection["arrowcolor"] as? String ?? "#000000"
+                    let arrowcolor = dataSection["arrowcolor"] as? String ?? defaultArrowColor
                     let ax = dataSection["ax"] as? Double ?? -20
                     let ay = dataSection["ay"] as? Double ?? -20
                     let xanchor = dataSection["xanchor"] as? String ?? "center"
                     let yanchor = dataSection["yanchor"] as? String ?? "bottom"
-                    
+
                     // Extract font properties
                     var fontSize: Double = 15
-                    var fontColor: String = "#000000"
+                    var fontColor: String = defaultFontColor
                     var fontFamily: String = "Arial, sans-serif"
-                    
+
                     if let fontData = dataSection["font"] as? [String: Any] {
                         fontSize = fontData["size"] as? Double ?? 15
-                        fontColor = fontData["color"] as? String ?? "#000000"
+                        fontColor = fontData["color"] as? String ?? defaultFontColor
                         fontFamily = fontData["family"] as? String ?? "Arial, sans-serif"
                     }
                     
@@ -440,7 +464,7 @@ class PlotlyChartGenerator {
     
     // MARK: - Volcano Condition Label Annotations
 
-    private func createVolcanoConditionLabelAnnotations(_ settings: CurtainSettings) -> [PlotAnnotation] {
+    private func createVolcanoConditionLabelAnnotations(_ settings: CurtainSettings, isDarkMode: Bool) -> [PlotAnnotation] {
         var conditionAnnotations: [PlotAnnotation] = []
 
         // Check if condition labels are enabled
@@ -467,6 +491,16 @@ class PlotlyChartGenerator {
         print("🏷️ PlotlyChartGenerator: Left condition: '\(leftCondition)'")
         print("🏷️ PlotlyChartGenerator: Right condition: '\(rightCondition)'")
 
+        // Use dark mode appropriate color: if saved color is black (#000000), replace with white in dark mode
+        let savedColor = settings.volcanoConditionLabels.fontColor
+        let labelColor: String
+        if isDarkMode && (savedColor == "#000000" || savedColor.lowercased() == "#000" || savedColor.lowercased() == "black") {
+            labelColor = "#FFFFFF"  // Use white in dark mode for better contrast
+            print("🏷️ PlotlyChartGenerator: Adjusted label color from black to white for dark mode")
+        } else {
+            labelColor = savedColor  // Use saved color
+        }
+
         // Create left condition label
         let leftLabel = PlotAnnotation(
             id: "volcanoConditionLabel_left",
@@ -488,7 +522,7 @@ class PlotlyChartGenerator {
             font: PlotFont(
                 family: settings.plotFontFamily,
                 size: Double(settings.volcanoConditionLabels.fontSize),
-                color: settings.volcanoConditionLabels.fontColor
+                color: labelColor
             )
         )
         conditionAnnotations.append(leftLabel)
@@ -515,7 +549,7 @@ class PlotlyChartGenerator {
             font: PlotFont(
                 family: settings.plotFontFamily,
                 size: Double(settings.volcanoConditionLabels.fontSize),
-                color: settings.volcanoConditionLabels.fontColor
+                color: labelColor
             )
         )
         conditionAnnotations.append(rightLabel)
@@ -1284,8 +1318,12 @@ class PlotlyChartGenerator {
         return settings.scatterPlotMarkerSize
     }
 
-    /// Reorder traces according to volcanoTraceOrder setting
+    /// Reorder traces according to volcanoTraceOrder setting (matches Angular sortGraphDataByOrder)
     private func reorderTraces(_ traces: [PlotTrace], accordingTo order: [String]) -> [PlotTrace] {
+        print("🔄 PlotlyChartGenerator: Reordering traces...")
+        print("   Input order from settings: \(order)")
+        print("   Available traces: \(traces.map { $0.name })")
+
         // Create a dictionary for quick lookup
         var tracesByName: [String: PlotTrace] = [:]
         for trace in traces {
@@ -1294,22 +1332,28 @@ class PlotlyChartGenerator {
 
         var reorderedTraces: [PlotTrace] = []
 
-        // Add traces in the specified order
+        // Add traces in the specified order (matching Angular's orderedTraces)
         for traceName in order {
             if let trace = tracesByName[traceName] {
                 reorderedTraces.append(trace)
                 tracesByName.removeValue(forKey: traceName)
+                print("   ✓ Placed '\(traceName)' at position \(reorderedTraces.count)")
+            } else {
+                print("   ⚠️ Trace '\(traceName)' in order list not found in available traces")
             }
         }
 
-        // Add any remaining traces that weren't in the order (to preserve them)
+        // Add any remaining traces that weren't in the order (matching Angular's unorderedTraces)
         for trace in traces {
             if tracesByName[trace.name] != nil {
                 reorderedTraces.append(trace)
+                print("   + Added remaining trace '\(trace.name)' at position \(reorderedTraces.count)")
             }
         }
 
-        print("🔄 PlotlyChartGenerator: Reordered traces from \(traces.map { $0.name }) to \(reorderedTraces.map { $0.name })")
+        print("🔄 PlotlyChartGenerator: Reordering complete")
+        print("   Before: \(traces.map { $0.name })")
+        print("   After:  \(reorderedTraces.map { $0.name })")
         return reorderedTraces
     }
 

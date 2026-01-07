@@ -80,54 +80,62 @@ struct VolcanoYAxisPositionSettingsView: View {
                                 .fill(Color.gray.opacity(0.1))
                                 .frame(height: 150)
 
-                            HStack(spacing: 0) {
-                                // Left axis (visible only when left position selected)
-                                if yAxisPosition == "left" {
-                                    VStack {
-                                        Text("Y")
-                                            .font(.caption)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(.blue)
-                                        Rectangle()
-                                            .fill(Color.blue)
-                                            .frame(width: 2)
-                                    }
-                                    .frame(width: 20)
-                                    .padding(.leading, 8)
-                                }
-
+                            VStack(spacing: 0) {
                                 Spacer()
 
-                                // Middle axis (visible only when middle position selected)
-                                if yAxisPosition == "middle" {
-                                    VStack {
-                                        Text("Y")
-                                            .font(.caption)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(.blue)
-                                        Rectangle()
-                                            .fill(Color.blue)
-                                            .frame(width: 2)
+                                HStack(spacing: 0) {
+                                    // Left axis (visible only when left position selected)
+                                    if yAxisPosition == "left" {
+                                        VStack(spacing: 2) {
+                                            Text("Y")
+                                                .font(.caption)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(.blue)
+                                            Rectangle()
+                                                .fill(Color.blue)
+                                                .frame(width: 2)
+                                        }
+                                        .frame(width: 30)
+                                        .padding(.leading, 8)
                                     }
-                                    .frame(width: 20)
-                                }
 
-                                Spacer()
+                                    // Plot area with middle axis if selected
+                                    if yAxisPosition == "middle" {
+                                        // Left side of plot
+                                        Spacer()
 
-                                // X axis indicator (always shown)
-                                VStack {
-                                    Spacer()
-                                    HStack {
-                                        Text("X")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                        Rectangle()
-                                            .fill(Color.gray)
-                                            .frame(height: 2)
+                                        // Middle Y-axis
+                                        VStack(spacing: 2) {
+                                            Text("Y")
+                                                .font(.caption)
+                                                .fontWeight(.bold)
+                                                .foregroundColor(.blue)
+                                            Rectangle()
+                                                .fill(Color.blue)
+                                                .frame(width: 2)
+                                        }
+                                        .frame(width: 30)
+
+                                        // Right side of plot
+                                        Spacer()
+                                    } else {
+                                        // Full width plot area when left axis
+                                        Spacer()
                                     }
                                 }
-                                .frame(height: 150)
-                                .padding(.trailing, 8)
+                                .frame(height: 120)
+
+                                // X-axis at bottom (always shown)
+                                HStack(spacing: 4) {
+                                    Rectangle()
+                                        .fill(Color.gray)
+                                        .frame(height: 2)
+                                    Text("X")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                .padding(.horizontal, yAxisPosition == "left" ? 40 : 8)
+                                .padding(.bottom, 8)
                             }
                         }
                         .frame(maxWidth: .infinity)

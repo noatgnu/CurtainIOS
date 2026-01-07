@@ -15,8 +15,6 @@ struct VolcanoTraceOrderSettingsView: View {
 
     // Local state for editing
     @State private var traceOrder: [String] = []
-    @State private var availableTraces: [String] = []
-    @State private var isEditing: Bool = false
 
     var body: some View {
         NavigationView {
@@ -30,10 +28,10 @@ struct VolcanoTraceOrderSettingsView: View {
                             Text("Control the rendering order of traces in the volcano plot")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            Text("Traces at the top of the list are rendered first (appear behind)")
+                            Text("Includes user selections and significance groups (P-value/FC)")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
-                            Text("Traces at the bottom appear on top of other traces")
+                            Text("Traces at the top are rendered first (behind), bottom traces appear on top")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
@@ -42,45 +40,92 @@ struct VolcanoTraceOrderSettingsView: View {
 
                 // Trace Order Section
                 if !traceOrder.isEmpty {
-                    Section("Trace Rendering Order") {
-                        List {
-                            ForEach(traceOrder, id: \.self) { traceName in
-                                HStack {
-                                    Image(systemName: "line.3.horizontal")
-                                        .foregroundColor(.secondary)
+                    Section {
+                        ForEach(traceOrder, id: \.self) { traceName in
+                            HStack {
+                                Text(traceName)
+                                    .font(.subheadline)
+
+                                Spacer()
+
+                                // Position indicator
+                                if let index = traceOrder.firstIndex(of: traceName) {
+                                    Text("#\(index + 1)")
                                         .font(.caption)
-
-                                    Text(traceName)
-                                        .font(.subheadline)
-
-                                    Spacer()
-
-                                    // Position indicator
-                                    if let index = traceOrder.firstIndex(of: traceName) {
-                                        Text("#\(index + 1)")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 4)
-                                            .background(Color.secondary.opacity(0.2))
-                                            .cornerRadius(4)
-                                    }
+                                        .foregroundColor(.secondary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color.secondary.opacity(0.2))
+                                        .cornerRadius(4)
                                 }
                             }
-                            .onMove { source, destination in
-                                traceOrder.move(fromOffsets: source, toOffset: destination)
-                            }
                         }
+                        .onMove { source, destination in
+                            traceOrder.move(fromOffsets: source, toOffset: destination)
+                        }
+                    } header: {
+                        Text("Trace Rendering Order (Drag to Reorder)")
                     }
+                    .environment(\.editMode, .constant(.active))
 
                     // Instructions Section
                     Section {
-                        HStack {
-                            Image(systemName: "hand.draw")
-                                .foregroundColor(.orange)
-                            Text("Tap 'Edit' to drag and reorder traces")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "info.circle.fill")
+                                    .foregroundColor(.blue)
+                                Text("Rendering Order")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8) {
+                                    Text("•")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text("Top of list = renders first (behind other traces)")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("•")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text("Bottom of list = renders last (on top of other traces)")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+
+                            Divider()
+
+                            HStack {
+                                Image(systemName: "hand.draw")
+                                    .foregroundColor(.orange)
+                                Text("How to reorder:")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8) {
+                                    Text("1.")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    Text("Drag traces using ≡ handles")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                                HStack(spacing: 8) {
+                                    Text("2.")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                    Text("Tap 'Save' to apply changes")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                         }
                     }
 
@@ -118,21 +163,13 @@ struct VolcanoTraceOrderSettingsView: View {
                 }
 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 12) {
-                        // Edit button
-                        if !traceOrder.isEmpty {
-                            EditButton()
-                                .environment(\.editMode, $isEditing.wrappedValue ? .constant(.active) : .constant(.inactive))
-                        }
+                    // Save button
+                    Button("Save") {
+                        saveChanges()
+                        dismiss()
 
-                        // Save button
-                        Button("Save") {
-                            saveChanges()
-                            dismiss()
-
-                            // Trigger plot refresh
-                            NotificationCenter.default.post(name: NSNotification.Name("VolcanoPlotRefresh"), object: nil)
-                        }
+                        // Trigger plot refresh
+                        NotificationCenter.default.post(name: NSNotification.Name("VolcanoPlotRefresh"), object: nil)
                     }
                 }
             }
@@ -145,36 +182,54 @@ struct VolcanoTraceOrderSettingsView: View {
     // MARK: - Helper Methods
 
     private func loadSettings() {
-        // Get available traces from selectionsName
-        if let selections = curtainData.selectionsName {
-            availableTraces = selections.sorted()
+        // Get available traces from the actual rendered plot (matching Angular behavior)
+        // Angular passes this.graphData to the modal, which contains the actual plotted traces
+        let allTraces: [String]
+        if let renderedTraces = PlotlyCoordinator.sharedCoordinator?.renderedTraceNames {
+            allTraces = renderedTraces
+            print("📋 VolcanoTraceOrder: Using \(allTraces.count) traces from actual rendered plot")
         } else {
-            availableTraces = []
+            // Fallback to colorMap if coordinator data not available yet
+            allTraces = Array(curtainData.settings.colorMap.keys).sorted()
+            print("⚠️ VolcanoTraceOrder: No rendered trace data available, using colorMap keys (\(allTraces.count) traces)")
         }
 
-        // Load existing trace order or use default
+        // Initialize with current custom order if it exists, matching Angular behavior
         if !curtainData.settings.volcanoTraceOrder.isEmpty {
-            // Use configured order
+            print("📋 VolcanoTraceOrder: Using saved custom order: \(curtainData.settings.volcanoTraceOrder)")
+
+            // Start with the configured order
             traceOrder = curtainData.settings.volcanoTraceOrder
 
             // Add any new traces that aren't in the saved order
-            for traceName in availableTraces {
+            for traceName in allTraces {
                 if !traceOrder.contains(traceName) {
                     traceOrder.append(traceName)
+                    print("   + Added new trace '\(traceName)' to end of order")
                 }
             }
 
             // Remove any traces that no longer exist
-            traceOrder = traceOrder.filter { availableTraces.contains($0) }
+            let beforeCount = traceOrder.count
+            traceOrder = traceOrder.filter { allTraces.contains($0) }
+            if traceOrder.count < beforeCount {
+                print("   - Removed \(beforeCount - traceOrder.count) obsolete traces")
+            }
         } else {
-            // Use default order (alphabetical)
-            traceOrder = availableTraces
+            // No custom order - use the CURRENT ACTUAL render order from the plot
+            // (allTraces is already renderedTraceNames which has the correct order)
+            traceOrder = allTraces
+            print("📋 VolcanoTraceOrder: No custom order found, showing current render order: \(traceOrder)")
         }
 
-        print("📋 VolcanoTraceOrder: Loaded \(traceOrder.count) traces in order: \(traceOrder)")
+        print("📋 VolcanoTraceOrder: Final loaded order (\(traceOrder.count) traces): \(traceOrder)")
+        print("💡 VolcanoTraceOrder: This is the CURRENT render order - modify to change plot rendering")
     }
 
     private func saveChanges() {
+        print("💾 VolcanoTraceOrder: Saving trace order: \(traceOrder)")
+        print("💾 VolcanoTraceOrder: This order will be used for rendering (top = rendered first/behind, bottom = rendered last/on top)")
+
         // Create updated settings with the new trace order
         let updatedSettings = CurtainSettings(
             fetchUniprot: curtainData.settings.fetchUniprot,
@@ -267,8 +322,15 @@ struct VolcanoTraceOrderSettingsView: View {
     }
 
     private func resetToDefaultOrder() {
-        // Reset to alphabetical order
-        traceOrder = availableTraces.sorted()
+        // Reset to the default render order (from the current plot)
+        if let renderedTraces = PlotlyCoordinator.sharedCoordinator?.renderedTraceNames {
+            traceOrder = renderedTraces
+            print("🔄 VolcanoTraceOrder: Reset to default render order: \(traceOrder)")
+        } else {
+            // Fallback to alphabetical if no render data available
+            traceOrder = Array(curtainData.settings.colorMap.keys).sorted()
+            print("🔄 VolcanoTraceOrder: Reset to alphabetical order (no render data): \(traceOrder)")
+        }
     }
 }
 
