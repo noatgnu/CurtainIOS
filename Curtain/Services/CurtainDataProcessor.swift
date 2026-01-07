@@ -12,20 +12,17 @@ class CurtainDataProcessor {
     /// Process raw CSV data to create essential metadata structures
     /// This is the iOS equivalent of Android's processRawData() method
     static func processRawData(_ curtainData: CurtainData) -> CurtainSettings {
-        print("🔄 CurtainDataProcessor: Starting raw data processing")
-        
+        let startTime = Date()
+
         guard let rawCSV = curtainData.raw, !rawCSV.isEmpty else {
-            print("❌ CurtainDataProcessor: No raw CSV data available")
             return curtainData.settings
         }
-        
+
         let samples = curtainData.rawForm.samples
         guard !samples.isEmpty else {
-            print("❌ CurtainDataProcessor: No samples defined in rawForm")
             return curtainData.settings
         }
-        
-        print("🔄 CurtainDataProcessor: Processing \(samples.count) samples")
+
         
         var conditions = [String]()
         var colorMap = [String: String]()
@@ -36,7 +33,6 @@ class CurtainDataProcessor {
         
         // Process each sample to extract condition information
         for sample in samples {
-            print("🔄 CurtainDataProcessor: Processing sample: \(sample)")
             
             // Extract condition from sample name (Android logic: split on "." and take all but last part)
             let parts = sample.components(separatedBy: ".")
@@ -46,7 +42,6 @@ class CurtainDataProcessor {
             // Use existing condition mapping if available, otherwise use extracted condition
             let actualCondition = curtainData.settings.sampleMap[sample]?["condition"] ?? condition
             
-            print("🔄 CurtainDataProcessor: Sample \(sample) -> condition: '\(actualCondition)', replicate: '\(replicate)'")
             
             // Add new conditions to the list and assign colors
             if !actualCondition.isEmpty && !conditions.contains(actualCondition) {
@@ -59,7 +54,6 @@ class CurtainDataProcessor {
                 colorMap[actualCondition] = curtainData.settings.defaultColorList[colorPosition]
                 colorPosition += 1
                 
-                print("🔄 CurtainDataProcessor: Added condition '\(actualCondition)' with color \(colorMap[actualCondition] ?? "none")")
             }
             
             // Build sample order for this condition
@@ -83,13 +77,9 @@ class CurtainDataProcessor {
             ]
         }
         
-        print("🔄 CurtainDataProcessor: Discovered \(conditions.count) conditions: \(conditions)")
-        print("🔄 CurtainDataProcessor: Created sampleMap with \(sampleMap.count) entries")
-        print("🔄 CurtainDataProcessor: Created sampleOrder: \(sampleOrder.mapValues { $0.count })")
-        print("🔄 CurtainDataProcessor: Created sampleVisible with \(sampleVisible.count) entries")
         
         // Merge with existing settings (Android logic)
-        let updatedSettings = mergeWithExistingSettings(
+        let updatedSettings = mergeWithExistingSettingsSync(
             currentSettings: curtainData.settings,
             newConditions: conditions,
             newColorMap: colorMap,
@@ -97,13 +87,16 @@ class CurtainDataProcessor {
             newSampleOrder: sampleOrder,
             newSampleVisible: sampleVisible
         )
-        
-        print("✅ CurtainDataProcessor: Raw data processing complete")
+
+        let duration = Date().timeIntervalSince(startTime)
+        print("⏱️ CurtainDataProcessor.processRawData (sync): \(Int(duration * 1000))ms for \(samples.count) samples")
+
         return updatedSettings
     }
     
-    /// Merge new metadata with existing settings (Android logic)
-    private static func mergeWithExistingSettings(
+    /// Merge new metadata with existing settings (Android logic) - Synchronous version
+    /// Accessible to DataProcessorActor
+    fileprivate static func mergeWithExistingSettingsSync(
         currentSettings: CurtainSettings,
         newConditions: [String],
         newColorMap: [String: String],
@@ -189,11 +182,6 @@ class CurtainDataProcessor {
         let currentSampleKeys = Set(newSampleMap.keys)
         finalSampleVisible = finalSampleVisible.filter { currentSampleKeys.contains($0.key) }
         
-        print("🔄 CurtainDataProcessor: Final conditionOrder: \(finalConditionOrder)")
-        print("🔄 CurtainDataProcessor: Final colorMap: \(finalColorMap)")
-        print("🔄 CurtainDataProcessor: Final sampleMap count: \(finalSampleMap.count)")
-        print("🔄 CurtainDataProcessor: Final sampleOrder: \(finalSampleOrder.mapValues { $0.count })")
-        print("🔄 CurtainDataProcessor: Final sampleVisible count: \(finalSampleVisible.count)")
         
         // Create updated settings
         return CurtainSettings(
@@ -242,7 +230,155 @@ class CurtainDataProcessor {
             imputationMap: currentSettings.imputationMap,
             enableImputation: currentSettings.enableImputation,
             viewPeptideCount: currentSettings.viewPeptideCount,
-            peptideCountData: currentSettings.peptideCountData
+            peptideCountData: currentSettings.peptideCountData,
+            volcanoConditionLabels: currentSettings.volcanoConditionLabels,
+            volcanoTraceOrder: currentSettings.volcanoTraceOrder,
+            volcanoPlotYaxisPosition: currentSettings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: currentSettings.customVolcanoTextCol,
+            barChartConditionBracket: currentSettings.barChartConditionBracket,
+            columnSize: currentSettings.columnSize,
+            chartYAxisLimits: currentSettings.chartYAxisLimits,
+            individualYAxisLimits: currentSettings.individualYAxisLimits,
+            violinPointPos: currentSettings.violinPointPos,
+            networkInteractionData: currentSettings.networkInteractionData,
+            enrichrGeneRankMap: currentSettings.enrichrGeneRankMap,
+            enrichrRunList: currentSettings.enrichrRunList,
+            extraData: currentSettings.extraData,
+            enableMetabolomics: currentSettings.enableMetabolomics,
+            metabolomicsColumnMap: currentSettings.metabolomicsColumnMap,
+            encrypted: currentSettings.encrypted,
+            dataAnalysisContact: currentSettings.dataAnalysisContact,
+            markerSizeMap: currentSettings.markerSizeMap
         )
+    }
+
+    // MARK: - Async Processing API
+
+    /// Shared actor instance for background processing
+    private static let processorActor = DataProcessorActor()
+
+    /// Process raw data asynchronously on background thread
+    /// - Parameters:
+    ///   - curtainData: Data to process
+    ///   - progressCallback: Optional progress updates (0.0 to 1.0)
+    /// - Returns: Processed settings
+    static func processRawDataAsync(
+        _ curtainData: CurtainData,
+        progressCallback: ((Double) -> Void)? = nil
+    ) async -> CurtainSettings {
+        return await processorActor.processRawData(
+            curtainData,
+            progressCallback: progressCallback
+        )
+    }
+}
+
+// MARK: - Background Processing Actor
+
+/// Thread-safe actor for heavy data processing operations
+actor DataProcessorActor {
+
+    /// Process raw CSV data into settings with progress tracking
+    func processRawData(
+        _ curtainData: CurtainData,
+        progressCallback: ((Double) -> Void)?
+    ) async -> CurtainSettings {
+        // Run on detached task to ensure background execution
+        return await Task.detached {
+            await self.processRawDataInternal(curtainData, progressCallback: progressCallback)
+        }.value
+    }
+
+    private func processRawDataInternal(
+        _ curtainData: CurtainData,
+        progressCallback: ((Double) -> Void)?
+    ) async -> CurtainSettings {
+        let startTime = Date()
+
+        guard let rawCSV = curtainData.raw, !rawCSV.isEmpty else {
+            progressCallback?(1.0)
+            return curtainData.settings
+        }
+
+        let samples = curtainData.rawForm.samples
+        guard !samples.isEmpty else {
+            progressCallback?(1.0)
+            return curtainData.settings
+        }
+
+        let totalSteps = Double(samples.count)
+
+        var conditions = [String]()
+        var colorMap = [String: String]()
+        var colorPosition = 0
+        var sampleMap = [String: [String: String]]()
+        var sampleOrder = [String: [String]]()
+        var sampleVisible = [String: Bool]()
+
+        // Process each sample with progress tracking
+        for (index, sample) in samples.enumerated() {
+            // Extract condition from sample name (Android logic: split on "." and take all but last part)
+            let parts = sample.components(separatedBy: ".")
+            let replicate = parts.last ?? ""
+            let condition = parts.count > 1 ? parts.dropLast().joined(separator: ".") : ""
+
+            // Use existing condition mapping if available, otherwise use extracted condition
+            let actualCondition = curtainData.settings.sampleMap[sample]?["condition"] ?? condition
+
+            // Add new conditions to the list and assign colors
+            if !actualCondition.isEmpty && !conditions.contains(actualCondition) {
+                conditions.append(actualCondition)
+
+                // Cycle through default colors (Android logic)
+                if colorPosition >= curtainData.settings.defaultColorList.count {
+                    colorPosition = 0
+                }
+                colorMap[actualCondition] = curtainData.settings.defaultColorList[colorPosition]
+                colorPosition += 1
+            }
+
+            // Build sample order for this condition
+            if sampleOrder[actualCondition] == nil {
+                sampleOrder[actualCondition] = []
+            }
+            if !sampleOrder[actualCondition]!.contains(sample) {
+                sampleOrder[actualCondition]!.append(sample)
+            }
+
+            // Set sample visibility (default to true)
+            if sampleVisible[sample] == nil {
+                sampleVisible[sample] = true
+            }
+
+            // Create sample mapping info
+            sampleMap[sample] = [
+                "replicate": replicate,
+                "condition": actualCondition,
+                "name": sample
+            ]
+
+            // Report progress every 10 samples to reduce overhead
+            if index % 10 == 0 || index == samples.count - 1 {
+                let progress = Double(index + 1) / totalSteps * 0.9  // Reserve 10% for merging
+                progressCallback?(progress)
+            }
+        }
+
+        progressCallback?(0.9)
+
+        let merged = CurtainDataProcessor.mergeWithExistingSettingsSync(
+            currentSettings: curtainData.settings,
+            newConditions: conditions,
+            newColorMap: colorMap,
+            newSampleMap: sampleMap,
+            newSampleOrder: sampleOrder,
+            newSampleVisible: sampleVisible
+        )
+
+        let duration = Date().timeIntervalSince(startTime)
+        print("⏱️ DataProcessorActor.processRawData (async): \(Int(duration * 1000))ms for \(samples.count) samples")
+
+        progressCallback?(1.0)
+        return merged
     }
 }

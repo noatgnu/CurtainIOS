@@ -9,7 +9,6 @@ import SwiftUI
 import WebKit
 import Combine
 
-// MARK: - Annotation Editing Models
 
 struct AnnotationEditCandidate {
     let key: String
@@ -37,18 +36,14 @@ struct PlotlyWebView: UIViewRepresentable {
     @Binding var error: String?
     @Binding var selectedPoints: [ProteinPoint]
     
-    // Point interaction system (like Android)
     let pointInteractionViewModel: PointInteractionViewModel
     let selectionManager: SelectionManager
     let annotationManager: AnnotationManager
 
-    // Refresh trigger for coordinate recalculation
     @Binding var coordinateRefreshTrigger: Int
 
-    // Plot export functionality
     let exportService: PlotExportService?
 
-    // Color scheme detection for dark mode support
     @Environment(\.colorScheme) var colorScheme
 
     enum PlotType {
@@ -64,11 +59,9 @@ struct PlotlyWebView: UIViewRepresentable {
         configuration.allowsInlineMediaPlayback = true
         configuration.suppressesIncrementalRendering = false
         
-        // Disable network requests to avoid WebKit networking issues
         configuration.preferences.isFraudulentWebsiteWarningEnabled = false
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         
-        // Add message handlers for iOS-JavaScript communication
         let contentController = WKUserContentController()
         contentController.add(context.coordinator, name: "plotReady")
         contentController.add(context.coordinator, name: "plotUpdated")
@@ -78,7 +71,6 @@ struct PlotlyWebView: UIViewRepresentable {
         contentController.add(context.coordinator, name: "annotationMoved")
         contentController.add(context.coordinator, name: "plotDimensions")
         contentController.add(context.coordinator, name: "annotationCoordinates")
-        // Export message handlers
         contentController.add(context.coordinator, name: "plotExported")
         contentController.add(context.coordinator, name: "plotExportError")
         contentController.add(context.coordinator, name: "plotInfo")
@@ -86,43 +78,51 @@ struct PlotlyWebView: UIViewRepresentable {
         
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        
-        // Set the current webView in the coordinator
+
+        webView.isOpaque = false
+        if colorScheme == .dark {
+            webView.backgroundColor = UIColor(red: 28/255, green: 28/255, blue: 30/255, alpha: 1.0)  // #1C1C1E
+            webView.scrollView.backgroundColor = UIColor(red: 28/255, green: 28/255, blue: 30/255, alpha: 1.0)
+        } else {
+            webView.backgroundColor = .white
+            webView.scrollView.backgroundColor = .white
+        }
+
         context.coordinator.setCurrentWebView(webView)
-        
+
         return webView
     }
     
     func updateUIView(_ webView: WKWebView, context: Context) {
-        print("🔄 PlotlyWebView: updateUIView called")
         context.coordinator.parent = self
-        // Store webView reference in coordinator with enhanced persistence
         context.coordinator.setCurrentWebView(webView)
-        
-        // Only regenerate if HTML isn't loaded to prevent unnecessary reloads
+
+        if colorScheme == .dark {
+            webView.backgroundColor = UIColor(red: 28/255, green: 28/255, blue: 30/255, alpha: 1.0)  // #1C1C1E
+            webView.scrollView.backgroundColor = UIColor(red: 28/255, green: 28/255, blue: 30/255, alpha: 1.0)
+        } else {
+            webView.backgroundColor = .white
+            webView.scrollView.backgroundColor = .white
+        }
+
         if !context.coordinator.htmlLoaded {
             context.coordinator.generateAndLoadPlot(in: webView)
         } else {
-            print("🔄 PlotlyWebView: HTML already loaded, skipping regeneration but maintaining webView reference")
         }
     }
     
-    // MARK: - Export Methods
     
     /// Export the current plot as PNG with specified options
     func exportAsPNG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
         guard let webView = Coordinator.getCurrentWebView() else {
-            print("❌ PlotlyWebView: Cannot export PNG - WebView not available")
             return
         }
         
         let finalFilename = filename ?? generateDefaultFilename(format: "png")
         let jsCode = "window.CurtainVisualization.exportAsPNG('\(finalFilename)', \(width), \(height));"
         
-        print("📤 PlotlyWebView: Exporting PNG - \(finalFilename) (\(width)x\(height))")
         webView.evaluateJavaScript(jsCode) { result, error in
             if let error = error {
-                print("❌ PlotlyWebView: PNG export JavaScript failed: \(error)")
             }
         }
     }
@@ -130,17 +130,14 @@ struct PlotlyWebView: UIViewRepresentable {
     /// Export the current plot as SVG with specified options
     func exportAsSVG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
         guard let webView = Coordinator.getCurrentWebView() else {
-            print("❌ PlotlyWebView: Cannot export SVG - WebView not available")
             return
         }
         
         let finalFilename = filename ?? generateDefaultFilename(format: "svg")
         let jsCode = "window.CurtainVisualization.exportAsSVG('\(finalFilename)', \(width), \(height));"
         
-        print("📤 PlotlyWebView: Exporting SVG - \(finalFilename) (\(width)x\(height))")
         webView.evaluateJavaScript(jsCode) { result, error in
             if let error = error {
-                print("❌ PlotlyWebView: SVG export JavaScript failed: \(error)")
             }
         }
     }
@@ -148,19 +145,16 @@ struct PlotlyWebView: UIViewRepresentable {
     /// Get information about the current plot for export purposes
     func getCurrentPlotInfo() {
         guard let webView = Coordinator.getCurrentWebView() else {
-            print("❌ PlotlyWebView: Cannot get plot info - WebView not available")
             return
         }
         
         let jsCode = "window.CurtainVisualization.getCurrentPlotInfo();"
         webView.evaluateJavaScript(jsCode) { result, error in
             if let error = error {
-                print("❌ PlotlyWebView: Get plot info JavaScript failed: \(error)")
             }
         }
     }
     
-    // MARK: - Private Helper Methods
     
     private func generateDefaultFilename(format: String) -> String {
         let plotTypeString = plotTypeToString()
@@ -181,22 +175,18 @@ struct PlotlyWebView: UIViewRepresentable {
         }
     }
     
-    // MARK: - Static Export Methods
     
     /// Export the currently active plot as PNG (static method for global access)
     static func exportCurrentPlotAsPNG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
         guard let webView = PlotlyCoordinator.getCurrentWebView() else {
-            print("❌ PlotlyWebView: Cannot export PNG - No active WebView")
             return
         }
         
         let finalFilename = filename ?? "plot_\(DateFormatter.filenameSafe.string(from: Date())).png"
         let jsCode = "window.CurtainVisualization.exportAsPNG('\(finalFilename)', \(width), \(height));"
         
-        print("📤 PlotlyWebView: Static PNG export - \(finalFilename) (\(width)x\(height))")
         webView.evaluateJavaScript(jsCode) { result, error in
             if let error = error {
-                print("❌ PlotlyWebView: Static PNG export failed: \(error)")
             }
         }
     }
@@ -204,17 +194,14 @@ struct PlotlyWebView: UIViewRepresentable {
     /// Export the currently active plot as SVG (static method for global access)
     static func exportCurrentPlotAsSVG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
         guard let webView = PlotlyCoordinator.getCurrentWebView() else {
-            print("❌ PlotlyWebView: Cannot export SVG - No active WebView")
             return
         }
         
         let finalFilename = filename ?? "plot_\(DateFormatter.filenameSafe.string(from: Date())).svg"
         let jsCode = "window.CurtainVisualization.exportAsSVG('\(finalFilename)', \(width), \(height));"
         
-        print("📤 PlotlyWebView: Static SVG export - \(finalFilename) (\(width)x\(height))")
         webView.evaluateJavaScript(jsCode) { result, error in
             if let error = error {
-                print("❌ PlotlyWebView: Static SVG export failed: \(error)")
             }
         }
     }
@@ -229,13 +216,11 @@ struct PlotlyWebView: UIViewRepresentable {
     }
 }
 
-// MARK: - Convenience View
 
 struct InteractiveVolcanoPlotView: View {
     @Binding var curtainData: CurtainData
     @Binding var annotationEditMode: Bool // Now passed from parent
 
-    // MARK: - Grouped State Management
 
     /// Manages plot loading, error states, and selected points
     @State private var loadingState = PlotLoadingViewState()
@@ -252,7 +237,6 @@ struct InteractiveVolcanoPlotView: View {
     /// Manages drag gesture state and performance throttling
     @State private var dragState = DragOperationViewState()
 
-    // MARK: - Initializers
 
     // Default initializer for cases where annotation edit mode is not needed
     init(curtainData: Binding<CurtainData>) {
@@ -266,9 +250,7 @@ struct InteractiveVolcanoPlotView: View {
         self._annotationEditMode = annotationEditMode
     }
 
-    // MARK: - View Models
 
-    // Point interaction system (like Android)
     @StateObject private var pointInteractionViewModel = PointInteractionViewModel()
     @StateObject private var selectionManager = SelectionManager()
     @StateObject private var annotationManager = AnnotationManager()
@@ -278,17 +260,13 @@ struct InteractiveVolcanoPlotView: View {
     var body: some View {
         Group {
             if loadingState.isLoading {
-                let _ = print("🔄 InteractiveVolcanoPlotView: Showing loading view (isLoading=\(loadingState.isLoading))")
                 loadingView
             } else if let error = loadingState.error {
-                let _ = print("❌ InteractiveVolcanoPlotView: Showing error view: \(error)")
                 errorView(error)
             } else {
-                let _ = print("📊 InteractiveVolcanoPlotView: Showing plot content view")
                 plotContentView
             }
         }
-        // Remove navigation title and toolbar since they're handled by parent
         .sheet(isPresented: $modalState.showingProteinSearch) {
             ProteinSearchView(curtainData: $curtainData)
         }
@@ -298,7 +276,6 @@ struct InteractiveVolcanoPlotView: View {
                 curtainData: $curtainData,
                 isPresented: $modalState.showingAnnotationEditor,
                 onAnnotationUpdated: {
-                    // Refresh plot after annotation changes
                     NotificationCenter.default.post(
                         name: NSNotification.Name("VolcanoPlotRefresh"),
                         object: nil,
@@ -306,7 +283,6 @@ struct InteractiveVolcanoPlotView: View {
                     )
                 },
                 onInteractivePositioning: { candidate in
-                    // Extract original offsets for potential revert
                     var originalAx: Double = -20.0
                     var originalAy: Double = -20.0
 
@@ -316,14 +292,12 @@ struct InteractiveVolcanoPlotView: View {
                         originalAy = dataSection["ay"] as? Double ?? -20.0
                     }
 
-                    // Start interactive positioning mode using ViewState
                     positioningState.startPositioning(
                         candidate: candidate,
                         originalAx: originalAx,
                         originalAy: originalAy
                     )
 
-                    // Close the annotation editor modal
                     modalState.hideAnnotationEditor()
                 }
             )
@@ -341,61 +315,39 @@ struct InteractiveVolcanoPlotView: View {
             }
         }
         .onAppear {
-            print("🔵 InteractiveVolcanoPlotView: onAppear called with \(curtainData.proteomicsData.count) proteins")
-            print("🔍 InteractiveVolcanoPlotView: Initial state - isLoading: \(loadingState.isLoading), error: \(loadingState.error ?? "nil")")
-            // Only load plot if it hasn't been loaded yet (initial state)
-            // This prevents unnecessary redraws when app comes back from background
             if loadingState.isLoading && loadingState.error == nil {
-                print("🔄 InteractiveVolcanoPlotView: Loading plot for first time")
                 loadPlot()
             } else {
-                print("⏭️ InteractiveVolcanoPlotView: Skipping load - plot already loaded")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("VolcanoPlotRefresh"))) { notification in
-            print("🔄 InteractiveVolcanoPlotView: Received volcano plot refresh notification")
-            if let reason = notification.userInfo?["reason"] as? String {
-                print("🔄 InteractiveVolcanoPlotView: Refresh reason: \(reason)")
-            }
-            // Force plot regeneration using ViewState methods
             renderState.triggerRefresh()
             renderState.forceUpdate()
-            print("🔄 InteractiveVolcanoPlotView: Updated refreshTrigger to \(renderState.refreshTrigger)")
         }
     }
-    
-    // MARK: - Annotation Editing Methods
+
     
     private func handleAnnotationEditTap(at tapPoint: CGPoint, geometry: GeometryProxy) {
-        print("🎯 Handling annotation edit tap at: \(tapPoint) in view size: \(geometry.size)")
 
-        // Find annotations near the tap point using the actual view geometry
         let nearbyAnnotations = findAnnotationsNearPoint(tapPoint, maxDistance: 150.0, viewSize: geometry.size)
 
         if nearbyAnnotations.isEmpty {
-            print("🎯 No annotations found near tap point")
             return
         }
 
-        // Show annotation editor modal with found candidates using ViewState
         modalState.showAnnotationEditor(with: nearbyAnnotations)
 
-        print("🎯 Found \(nearbyAnnotations.count) annotations near tap point")
     }
 
     private func handleInteractivePositioning(at tapPoint: CGPoint, geometry: GeometryProxy) {
         guard let candidate = positioningState.positioningCandidate else { return }
         
-        print("🎯 Interactive positioning tap at: \(tapPoint)")
         
-        // Convert tap point to annotation offset coordinates
         let settings = curtainData.settings
         let volcanoAxis = settings.volcanoAxis
         
-        // Use the actual view dimensions
         let plotWidth = geometry.size.width
         let plotHeight = geometry.size.height
-        // Plotly.js typical margins with horizontal legend below
         let marginLeft: Double = 70.0    // Y-axis labels and title
         let marginRight: Double = 40.0   // Plot area padding
         let marginTop: Double = 60.0     // Plot title
@@ -404,137 +356,88 @@ struct InteractiveVolcanoPlotView: View {
         let plotAreaWidth = plotWidth - marginLeft - marginRight
         let plotAreaHeight = plotHeight - marginTop - marginBottom
         
-        // Get axis ranges
         let xMin = volcanoAxis.minX ?? -3.0
         let xMax = volcanoAxis.maxX ?? 3.0
         let yMin = volcanoAxis.minY ?? 0.0
         let yMax = volcanoAxis.maxY ?? 5.0
         
-        // Get the annotation's arrow position (data point location)
         let arrowX = candidate.arrowPosition.x
         let arrowY = candidate.arrowPosition.y
         
-        // Convert arrow position to view coordinates
         let viewArrowX = marginLeft + ((arrowX - xMin) / (xMax - xMin)) * plotAreaWidth
         let viewArrowY = plotHeight - marginBottom - ((arrowY - yMin) / (yMax - yMin)) * plotAreaHeight
         
-        // Calculate offset from arrow position to tap point
         let offsetX = Double(tapPoint.x) - viewArrowX
         let offsetY = Double(tapPoint.y) - viewArrowY
         
-        print("🎯 Arrow at view coordinates: (\(viewArrowX), \(viewArrowY))")
-        print("🎯 Tap at view coordinates: (\(tapPoint.x), \(tapPoint.y))")
-        print("🎯 Calculated offset: (\(offsetX), \(offsetY))")
 
-        // Update preview position and enter preview mode using ViewState
         positioningState.updatePreviewOffset(x: offsetX, y: offsetY)
         positioningState.startPreview()
 
-        // Use JavaScript to update annotation position efficiently (no plot reload!)
         updateAnnotationPositionJS(candidate: candidate, offsetX: offsetX, offsetY: offsetY)
     }
     
-    // Handle interactive drag for smooth annotation movement - now with native preview
     private func handleInteractiveDrag(at dragPoint: CGPoint, geometry: GeometryProxy) {
         guard let candidate = positioningState.positioningCandidate else {
-            print("❌ PlotlyWebView: No positioning candidate for drag")
             return
         }
 
-        print("🎯 PlotlyWebView: Interactive drag at \(dragPoint) for candidate \(candidate.title)")
 
-        // Initialize drag state on first drag
         if !dragState.isDragging {
-            print("🎯 PlotlyWebView: Starting drag for \(candidate.title)")
 
-            // Get current annotation text position for the preview line (not the arrow position)
             if let textPos = getCurrentAnnotationTextPosition(candidate, geometry: geometry),
                let arrowPos = getArrowPositionForCandidate(candidate, geometry: geometry) {
-                // Start drag using ViewState
                 dragState.startDrag(at: textPos, arrowPosition: arrowPos)
-                print("✅ PlotlyWebView: Drag state initialized - startPos: \(textPos), arrowPos: \(arrowPos)")
-                print("   dragState.isShowingDragPreview: \(dragState.isShowingDragPreview)")
             } else {
-                print("❌ PlotlyWebView: Failed to get text or arrow position")
             }
 
-            // Enter preview mode on first drag
             if !positioningState.isPreviewingPosition {
                 positioningState.startPreview()
             }
         }
 
-        // Update current drag position for native preview line (with automatic throttling)
         let updateResult = dragState.updateDrag(to: dragPoint)
         if updateResult {
-            print("📍 PlotlyWebView: Updated drag position to \(dragPoint)")
         }
 
-        // Store the calculated offset for final commit
         if let arrowPosition = dragState.cachedArrowPosition {
             let offsetX = Double(dragPoint.x) - arrowPosition.x
-            // FIXED: Direct coordinate mapping - negative y should move up, negative x should move left
-            // Drag left (negative X change) → negative offset (move left)
-            // Drag up (negative Y change) → negative offset (move up)
             let offsetY = Double(dragPoint.y) - arrowPosition.y // Direct mapping, no inversion
 
             positioningState.updatePreviewOffset(x: offsetX, y: offsetY)
             
-            // Debug coordinate calculations
-            print("🔍 DRAG DEBUG (FIXED):")
-            print("   Arrow Position: (\(arrowPosition.x), \(arrowPosition.y))")
-            print("   Drag Point: (\(dragPoint.x), \(dragPoint.y))")
-            print("   Calculated Offset (ax, ay): (\(offsetX), \(offsetY)) - Direct mapping, no inversion")
             if let startPos = dragState.dragStartPosition {
-                print("   Start Position (current text): (\(startPos.x), \(startPos.y))")
             }
         }
     }
     
-    // Get the current annotation text position - back to original calculation with debugging
     private func getCurrentAnnotationTextPosition(_ candidate: AnnotationEditCandidate, geometry: GeometryProxy) -> CGPoint? {
         guard let arrowPos = getArrowPositionForCandidate(candidate, geometry: geometry) else {
             return nil
         }
         
-        // Get current ax/ay offsets from the annotation data
         guard let annotationData = curtainData.settings.textAnnotation[candidate.key] as? [String: Any],
               let dataSection = annotationData["data"] as? [String: Any],
               let ax = dataSection["ax"] as? Double,
               let ay = dataSection["ay"] as? Double else {
-            print("❌ PlotlyWebView: Could not get ax/ay offsets for candidate")
             return arrowPos // Fallback to arrow position
         }
         
-        // Back to original calculation - add both ax and ay directly
         let currentTextPosition = CGPoint(
             x: arrowPos.x + ax,
             y: arrowPos.y + ay  // Back to adding ay directly
         )
         
-        print("🔍 DRAG START POSITION DEBUG:")
-        print("   Arrow Position: (\(arrowPos.x), \(arrowPos.y))")
-        print("   Current Offsets (ax, ay): (\(ax), \(ay))")
-        print("   Calculated Start Position: (\(currentTextPosition.x), \(currentTextPosition.y))")
-        print("   Candidate.textPosition: (\(candidate.textPosition.x), \(candidate.textPosition.y))")
-        print("   Geometry size: \(geometry.size)")
         return currentTextPosition
     }
     
-    // Get the view coordinates of the arrow position for a candidate
     private func getArrowPositionForCandidate(_ candidate: AnnotationEditCandidate, geometry: GeometryProxy) -> CGPoint? {
-        print("🔍 getArrowPositionForCandidate called for \(candidate.title)")
-        print("🔍 Candidate plot position: (\(candidate.arrowPosition.x), \(candidate.arrowPosition.y))")
         
         // Try to use JavaScript-provided coordinates first
         let coordinator = PlotlyWebView.Coordinator.sharedCoordinator
-        print("🔍 sharedCoordinator exists: \(coordinator != nil)")
-        print("🔍 annotationCoordinates exists: \(coordinator?.annotationCoordinates != nil)")
         
         if let jsCoordinates = coordinator?.annotationCoordinates {
-            print("🔍 Searching JavaScript coordinates for candidate: key='\(candidate.key)' title='\(candidate.title)'")
             for coord in jsCoordinates {
-                print("🔍 Checking coordinate: \(coord)")
                 
                 // Try matching by plot coordinates first (most reliable)
                 if let plotX = coord["plotX"] as? Double,
@@ -543,7 +446,6 @@ struct InteractiveVolcanoPlotView: View {
                    abs(plotY - candidate.arrowPosition.y) < 0.0001,
                    let screenX = coord["screenX"] as? Double,
                    let screenY = coord["screenY"] as? Double {
-                    print("🎯 Using JavaScript coordinates for \(candidate.title) by plot coordinates: (\(screenX), \(screenY))")
                     return CGPoint(x: screenX, y: screenY)
                 }
                 
@@ -552,21 +454,16 @@ struct InteractiveVolcanoPlotView: View {
                    (id == candidate.key || id == candidate.title),
                    let screenX = coord["screenX"] as? Double,
                    let screenY = coord["screenY"] as? Double {
-                    print("🎯 Using JavaScript coordinates for \(candidate.title) by ID: (\(screenX), \(screenY))")
                     return CGPoint(x: screenX, y: screenY)
                 }
             }
         }
         
         // Fallback to calculated coordinates if JavaScript data not available
-        print("⚠️ No JavaScript coordinates found for \(candidate.title), using fallback calculation")
-        print("🔍 Available JavaScript coordinates:")
         if let jsCoordinates = PlotlyWebView.Coordinator.sharedCoordinator?.annotationCoordinates {
             for coord in jsCoordinates {
-                print("   - ID: \(coord["id"] as? String ?? "nil"), screenX: \(coord["screenX"] as? Double ?? 0), screenY: \(coord["screenY"] as? Double ?? 0)")
             }
         } else {
-            print("   - No JavaScript coordinates received yet")
         }
         
         // Get the volcano axis settings
@@ -578,10 +475,7 @@ struct InteractiveVolcanoPlotView: View {
         
         let (marginLeft, marginRight, marginTop, marginBottom): (Double, Double, Double, Double)
         
-        print("🔍 DEBUG: sharedCoordinator exists: \(PlotlyWebView.Coordinator.sharedCoordinator != nil)")
-        print("🔍 DEBUG: plotDimensions exists: \(PlotlyWebView.Coordinator.sharedCoordinator?.plotDimensions != nil)")
         if let coord = PlotlyWebView.Coordinator.sharedCoordinator {
-            print("🔍 DEBUG: plotDimensions content: \(coord.plotDimensions ?? [:])")
         }
         
         if let jsDimensions = PlotlyWebView.Coordinator.sharedCoordinator?.plotDimensions,
@@ -594,30 +488,25 @@ struct InteractiveVolcanoPlotView: View {
             marginRight = plotWidth - plotRight
             marginTop = plotTop
             marginBottom = plotHeight - plotBottom
-            print("📏 Using JavaScript plot dimensions: L:\(marginLeft), R:\(marginRight), T:\(marginTop), B:\(marginBottom)")
         } else {
             // Fallback to estimated margins
             marginLeft = 70.0    // Y-axis labels and title
             marginRight = 40.0   // Plot area padding
             marginTop = 60.0     // Plot title
             marginBottom = 120.0 // X-axis labels, title, and horizontal legend
-            print("⚠️ Using estimated margins: L:\(marginLeft), R:\(marginRight), T:\(marginTop), B:\(marginBottom)")
         }
         
         let plotAreaWidth = plotWidth - marginLeft - marginRight
         let plotAreaHeight = plotHeight - marginTop - marginBottom
         
-        // Get axis ranges
         let xMin = volcanoAxis.minX ?? -3.0
         let xMax = volcanoAxis.maxX ?? 3.0
         let yMin = volcanoAxis.minY ?? 0.0
         let yMax = volcanoAxis.maxY ?? 5.0
         
-        // Get the annotation's arrow position (data point location)
         let arrowX = candidate.arrowPosition.x
         let arrowY = candidate.arrowPosition.y
         
-        // Convert arrow position to view coordinates
         let viewArrowX = marginLeft + ((arrowX - xMin) / (xMax - xMin)) * plotAreaWidth
         let viewArrowY = plotHeight - marginBottom - ((arrowY - yMin) / (yMax - yMin)) * plotAreaHeight
         
@@ -631,15 +520,12 @@ struct InteractiveVolcanoPlotView: View {
         updateAnnotationPosition(candidate: candidate, offsetX: offsetX, offsetY: offsetY)
     }
     
-    // Use JavaScript to update annotation position efficiently (no plot reload)
     private func updateAnnotationPositionJS(candidate: AnnotationEditCandidate, offsetX: Double, offsetY: Double) {
-        print("⚡ PlotlyWebView: Sending JavaScript update for \(candidate.title) with Plotly offset \(offsetX), \(offsetY)")
         
         // The offsets are already in Plotly coordinate system, no conversion needed
         let plotlyAx = offsetX
         let plotlyAy = offsetY  // Already in Plotly coordinates
         
-        print("⚡ PlotlyWebView: Plotly coordinates ax=\(plotlyAx), ay=\(plotlyAy)")
         
         // Find the coordinator and call its JavaScript method
         // We need to extract the coordinator from the PlotlyWebView somehow
@@ -693,7 +579,6 @@ struct InteractiveVolcanoPlotView: View {
         
         guard var annotationData = updatedTextAnnotation[candidate.key] as? [String: Any],
               var dataSection = annotationData["data"] as? [String: Any] else {
-            print("❌ Failed to get annotation data for key: \(candidate.key)")
             return
         }
         
@@ -771,7 +656,6 @@ struct InteractiveVolcanoPlotView: View {
             permanent: curtainData.permanent
         )
         
-        print("✅ Updated annotation position: '\(candidate.title)' to offset (\(offsetX), \(offsetY))")
     }
     
     private func findAnnotationsNearPoint(_ tapPoint: CGPoint, maxDistance: Double, viewSize: CGSize) -> [AnnotationEditCandidate] {
@@ -781,13 +665,9 @@ struct InteractiveVolcanoPlotView: View {
         let textAnnotations = settings.textAnnotation
         let volcanoAxis = settings.volcanoAxis
         
-        print("🎯 Tap point in overlay coordinates: (\(tapPoint.x), \(tapPoint.y))")
-        print("🎯 Using actual view size: \(viewSize)")
         
-        // Use the actual view dimensions from the overlay GeometryReader
         let plotWidth = viewSize.width
         let plotHeight = viewSize.height
-        // Plotly.js typical margins with horizontal legend below
         let marginLeft: Double = 70.0    // Y-axis labels and title
         let marginRight: Double = 40.0   // Plot area padding
         let marginTop: Double = 60.0     // Plot title
@@ -796,7 +676,6 @@ struct InteractiveVolcanoPlotView: View {
         let plotAreaWidth = plotWidth - marginLeft - marginRight
         let plotAreaHeight = plotHeight - marginTop - marginBottom
         
-        // Get axis ranges
         let xMin = volcanoAxis.minX ?? -3.0
         let xMax = volcanoAxis.maxX ?? 3.0
         let yMin = volcanoAxis.minY ?? 0.0
@@ -826,19 +705,10 @@ struct InteractiveVolcanoPlotView: View {
             let viewTextY = viewArrowY + ay  // Back to original - add ay directly
             
             // EXTENSIVE DEBUG: Let's see what's happening
-            print("🔍 ANNOTATION CALCULATION DEBUG for '\(title)':")
-            print("   Plot coordinates (x,y): (\(arrowX), \(arrowY))")
-            print("   View arrow position: (\(viewArrowX), \(viewArrowY))")
-            print("   Offsets (ax,ay): (\(ax), \(ay))")
-            print("   Calculated text position: (\(viewTextX), \(viewTextY))")
-            print("   View size: \(viewSize)")
-            print("   Plot area: \(plotAreaWidth) x \(plotAreaHeight)")
-            print("   Margins: L:\(marginLeft) R:\(marginRight) T:\(marginTop) B:\(marginBottom)")
             
             // Calculate distance from tap point in view coordinates
             let distance = sqrt(pow(Double(tapPoint.x) - viewTextX, 2) + pow(Double(tapPoint.y) - viewTextY, 2))
             
-            print("🎯 Annotation '\(title)': plot(\(arrowX), \(arrowY)) -> view(\(viewArrowX), \(viewArrowY)) + offset(\(ax), \(ay)) = text(\(viewTextX), \(viewTextY)) | tap(\(tapPoint.x), \(tapPoint.y)) | distance: \(distance)")
             
             if distance <= maxDistance {
                 let candidate = AnnotationEditCandidate(
@@ -853,13 +723,11 @@ struct InteractiveVolcanoPlotView: View {
             }
         }
         
-        print("🎯 Found \(candidates.count) annotation candidates within \(maxDistance)px of tap point (\(tapPoint.x), \(tapPoint.y))")
         
         // Sort by distance (closest first)
         return candidates.sorted { $0.distance < $1.distance }
     }
     
-    // MARK: - Subviews
     
     private var loadingView: some View {
         VStack {
@@ -920,14 +788,11 @@ struct InteractiveVolcanoPlotView: View {
             .frame(minHeight: 400) // Ensure WebView has proper size
             .clipped()
             .onAppear {
-                print("🔵 PlotlyWebView: onAppear called")
                 // Don't force update on every appear - only update when renderState changes via .id()
-                // This prevents unnecessary redraws when app comes back from background
 
                 // Trigger plot dimensions request when entering annotation edit mode
                 if annotationEditMode {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        print("🔍 Requesting plot dimensions due to annotation edit mode")
                         // Use the shared coordinator to request dimensions
                         PlotlyCoordinator.sharedCoordinator?.requestPlotDimensions()
                     }
@@ -963,7 +828,6 @@ struct InteractiveVolcanoPlotView: View {
                     onDragEnded: {
                         // Complete drag - keeps preview visible for accept/reject decision
                         dragState.completeDrag()
-                        print("✅ PlotlyWebView: Drag completed - preview still visible for accept/reject")
                     }
                 )
                 .allowsHitTesting(true)
@@ -1058,19 +922,15 @@ struct InteractiveVolcanoPlotView: View {
     
     
     private func loadPlot() {
-        print("🔵 InteractiveVolcanoPlotView: Loading plot with \(curtainData.proteomicsData.count) proteins")
 
         if curtainData.proteomicsData.isEmpty {
-            print("❌ InteractiveVolcanoPlotView: No protein data available")
             loadingState.setError("No protein data available for volcano plot")
         } else {
-            print("🔵 InteractiveVolcanoPlotView: Protein data available, forcing plot view to show")
             // Force the plot to show by setting to ready state immediately
             loadingState.setReady()
 
             // Add a small delay to ensure UI updates
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                print("🔄 InteractiveVolcanoPlotView: Ensuring plot view is visible")
             }
         }
     }
@@ -1156,10 +1016,8 @@ struct ProteinDetailRow: View {
     }
 }
 
-// MARK: - Annotation Editing Components
 
 
-// MARK: - Helper Views
 
 struct AnnotationIndicatorView: View {
     let annotationKey: String
@@ -1207,14 +1065,6 @@ struct JavaScriptAnnotationView: View {
             let adjustedY = jsResult.screenY
             
             let _ = {
-                print("🎯 Direct JavaScript coordinate usage for annotation at (\(plotX), \(plotY))")
-                print("📐 SwiftUI GeometryReader size: \(geometry.size)")
-                print("📐 SwiftUI GeometryReader frame: \(geometry.frame(in: .global))")
-                print("🌐 JS screen position: (\(jsResult.screenX), \(jsResult.screenY))")
-                print("✅ Direct coordinates (no adjustment): (\(adjustedX), \(adjustedY))")
-                print("🌐 JS annotation text position: (\(jsResult.screenX + jsResult.ax), \(jsResult.screenY + jsResult.ay))")
-                print("✅ Direct annotation text position: (\(adjustedX + jsResult.ax), \(adjustedY + jsResult.ay))")
-                print("📱 Device screen bounds: \(UIScreen.main.bounds)")
             }()
             
             // Only show the pencil icon at the annotation text position
@@ -1239,7 +1089,6 @@ struct CalculatedAnnotationView: View {
         // Convert plot coordinates to view coordinates
         let plotWidth = geometry.size.width
         let plotHeight = geometry.size.height
-        // Plotly.js typical margins with horizontal legend below
         let marginLeft: Double = 70.0    // Y-axis labels and title
         let marginRight: Double = 40.0   // Plot area padding
         let marginTop: Double = 60.0     // Plot title
@@ -1263,15 +1112,6 @@ struct CalculatedAnnotationView: View {
         let textY = viewY + ay
         
         let _ = {
-            print("🔍 PENCIL POSITION DEBUG:")
-            print("   Plot coordinates (x,y): (\(x), \(y))")
-            print("   View arrow position: (\(viewX), \(viewY))")
-            print("   Offsets (ax,ay): (\(ax), \(ay))")
-            print("   Calculated pencil position: (\(textX), \(textY))")
-            print("   Geometry size: \(geometry.size)")
-            print("   Axis ranges - X: (\(xMin), \(xMax)), Y: (\(yMin), \(yMax))")
-            print("   Plot area - Width: \(plotAreaWidth), Height: \(plotAreaHeight)")
-            print("   Margins - L:\(marginLeft), R:\(marginRight), T:\(marginTop), B:\(marginBottom)")
         }()
         
         return ZStack {
@@ -1304,7 +1144,6 @@ struct CalculatedAnnotationView: View {
 }
 
 
-// MARK: - Preview
 
 #Preview {
     NavigationView {

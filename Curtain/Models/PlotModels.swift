@@ -147,7 +147,9 @@ struct PlotAxis {
     let title: PlotAxisTitle
     let zeroline: Bool?
     let zerolinecolor: String?
+    let showline: Bool?
     let gridcolor: String?
+    let linecolor: String?
     let range: [Double]?
     let font: PlotFont?
     let dtick: Double?
@@ -159,13 +161,15 @@ struct PlotAxis {
     let tickmode: String?
     let tickvals: [Double]?
     let ticktext: [String]?
-    let side: String?  // Y-axis position: "left" or "right" (middle uses default behavior)
+    let side: String?
 
-    init(title: PlotAxisTitle, zeroline: Bool? = nil, zerolinecolor: String? = nil, gridcolor: String? = nil, range: [Double]? = nil, font: PlotFont? = nil, dtick: Double? = nil, ticklen: Int? = nil, showgrid: Bool? = nil, tickangle: Int? = nil, type: String? = nil, automargin: Bool? = nil, tickmode: String? = nil, tickvals: [Double]? = nil, ticktext: [String]? = nil, side: String? = nil) {
+    init(title: PlotAxisTitle, zeroline: Bool? = nil, zerolinecolor: String? = nil, showline: Bool? = nil, gridcolor: String? = nil, linecolor: String? = nil, range: [Double]? = nil, font: PlotFont? = nil, dtick: Double? = nil, ticklen: Int? = nil, showgrid: Bool? = nil, tickangle: Int? = nil, type: String? = nil, automargin: Bool? = nil, tickmode: String? = nil, tickvals: [Double]? = nil, ticktext: [String]? = nil, side: String? = nil) {
         self.title = title
         self.zeroline = zeroline
         self.zerolinecolor = zerolinecolor
+        self.showline = showline
         self.gridcolor = gridcolor
+        self.linecolor = linecolor
         self.range = range
         self.font = font
         self.dtick = dtick
@@ -209,6 +213,7 @@ struct PlotShape {
     let xref: String?
     let yref: String?
     let line: PlotLine
+    let isYAxisLine: Bool?
 }
 
 struct PlotAnnotation {
@@ -870,7 +875,15 @@ extension PlotAxis {
         if let gridcolor = gridcolor {
             dict["gridcolor"] = gridcolor
         }
-        
+
+        if let showline = showline {
+            dict["showline"] = showline
+        }
+
+        if let linecolor = linecolor {
+            dict["linecolor"] = linecolor
+        }
+
         if let range = range {
             dict["range"] = range
         }
@@ -914,7 +927,11 @@ extension PlotAxis {
         if let ticktext = ticktext {
             dict["ticktext"] = ticktext
         }
-        
+
+        if let side = side {
+            dict["side"] = side
+        }
+
         return dict
     }
 }
@@ -969,14 +986,15 @@ extension PlotShape {
             "type": type,
             "line": line.toDictionary()
         ]
-        
+
         if let x0 = x0 { dict["x0"] = x0 }
         if let x1 = x1 { dict["x1"] = x1 }
         if let y0 = y0 { dict["y0"] = y0 }
         if let y1 = y1 { dict["y1"] = y1 }
         if let xref = xref { dict["xref"] = xref }
         if let yref = yref { dict["yref"] = yref }
-        
+        if let isYAxisLine = isYAxisLine { dict["isYAxisLine"] = isYAxisLine }
+
         return dict
     }
 }

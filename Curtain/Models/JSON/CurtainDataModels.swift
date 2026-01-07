@@ -34,19 +34,39 @@ struct CurtainData {
     // Method to get processed settings when needed (e.g., for protein charts)
     func getProcessedSettings() -> CurtainSettings {
         // Only process if we have the necessary data and are missing metadata
-        guard let rawData = raw, 
-              !rawData.isEmpty, 
+        guard let rawData = raw,
+              !rawData.isEmpty,
               !rawForm.samples.isEmpty,
               (_settings.conditionOrder.isEmpty || _settings.sampleMap.isEmpty) else {
             return _settings
         }
-        
-        print("🔄 CurtainData: Processing raw data to create metadata...")
+
         let processedSettings = CurtainDataProcessor.processRawData(self)
-        print("🔄 CurtainData: Processing complete - new conditionOrder count: \(processedSettings.conditionOrder.count)")
         return processedSettings
     }
-    
+
+    /// Async version with progress tracking - processes on background thread
+    /// - Parameter progressCallback: Optional progress updates (0.0 to 1.0)
+    /// - Returns: Processed settings with metadata from raw data
+    func getProcessedSettingsAsync(
+        progressCallback: ((Double) -> Void)? = nil
+    ) async -> CurtainSettings {
+        // Only process if we have the necessary data and are missing metadata
+        guard let rawData = raw,
+              !rawData.isEmpty,
+              !rawForm.samples.isEmpty,
+              (_settings.conditionOrder.isEmpty || _settings.sampleMap.isEmpty) else {
+            progressCallback?(1.0)
+            return _settings
+        }
+
+        let processedSettings = await CurtainDataProcessor.processRawDataAsync(
+            self,
+            progressCallback: progressCallback
+        )
+        return processedSettings
+    }
+
     // Computed properties for easier access
     var proteomicsData: [String: Any] {
         // Priority 1: Use processed differential data (like Android)
@@ -57,7 +77,6 @@ struct CurtainData {
             
             // Check if we have processedDifferentialData (like Android)
             if let processedData = convertedDataMap["processedDifferentialData"] as? [[String: Any]] {
-                print("🔍 CurtainData: Using processedDifferentialData with \(processedData.count) entries")
                 
                 // Convert array to dictionary with protein IDs as keys
                 var result: [String: Any] = [:]
@@ -67,12 +86,10 @@ struct CurtainData {
                     result[proteinId] = row
                 }
                 
-                print("🔍 CurtainData: Converted to \(result.count) protein entries")
                 return result
             }
             
             // Fallback: Use raw dataMap conversion
-            print("🔍 CurtainData: Using raw dataMap with \(convertedDataMap.count) entries")
             return convertedDataMap
         }
         
@@ -83,16 +100,13 @@ struct CurtainData {
     private func findProteinId(in row: [String: Any]) -> String? {
         // CRITICAL: Use ONLY the user-specified primary ID column from differential form
         guard !differentialForm.primaryIDs.isEmpty else {
-            print("❌ CurtainData: Primary ID column not specified by user")
             return nil
         }
         
         let primaryIdColumn = differentialForm.primaryIDs
         guard let id = row[primaryIdColumn] as? String, !id.isEmpty else {
             if let debugValue = row[primaryIdColumn] {
-                print("❌ CurtainData: Invalid primary ID in column '\(primaryIdColumn)': \(debugValue) (\(type(of: debugValue)))")
             } else {
-                print("❌ CurtainData: Primary ID column '\(primaryIdColumn)' not found in row")
             }
             return nil
         }
@@ -166,30 +180,22 @@ struct CurtainData {
     
     // Helper method to convert JavaScript Map serialization formats
     private func convertDataMapToDict(_ dataMap: Any) -> [String: Any] {
-        print("🔍 CurtainData: convertDataMapToDict called")
-        print("🔍 CurtainData: dataMap type: \(type(of: dataMap))")
         
         // Use the same logic as CurtainDataService.convertToMutableMap
         guard let dataDict = dataMap as? [String: Any] else {
-            print("🔍 CurtainData: dataMap is not dictionary, checking if it's array format")
             if let arrayData = dataMap as? [[Any]] {
-                print("🔍 CurtainData: dataMap is array format with \(arrayData.count) pairs")
                 return convertArrayToDict(arrayData)
             }
-            print("🔍 CurtainData: dataMap is not convertible, returning empty dict")
             return [:]
         }
         
-        print("🔍 CurtainData: dataMap keys: \(dataDict.keys)")
         
         // Check for JavaScript Map serialization format: {value: [[key, value], ...]}
         if let mapValue = dataDict["value"] as? [[Any]] {
-            print("🔍 CurtainData: Found 'value' key with array format (\(mapValue.count) pairs)")
             return convertArrayToDict(mapValue)
         }
         
         // Return the dictionary as-is if it's not in the special format
-        print("🔍 CurtainData: Dictionary doesn't have 'value' key, returning as-is")
         return dataDict
     }
     
@@ -202,18 +208,14 @@ struct CurtainData {
                 
                 // Debug first few pairs to understand data structure
                 if index < 3 {
-                    print("🔍 CurtainData: Pair \(index): key=\(key), value=\(pair[1]) (\(type(of: pair[1])))")
                     if let dict = pair[1] as? [String: Any] {
-                        print("🔍 CurtainData: Value is dict with keys: \(dict.keys.sorted())")
                         // Show first few key-value pairs from the protein data
                         for (dictKey, dictValue) in dict.prefix(3) {
-                            print("🔍 CurtainData:   \(dictKey): \(dictValue) (\(type(of: dictValue)))")
                         }
                     }
                 }
             }
         }
-        print("🔍 CurtainData: Converted \(arrayData.count) pairs to \(result.count) dictionary entries")
         return result
     }
 }

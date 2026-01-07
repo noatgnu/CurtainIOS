@@ -14,7 +14,8 @@ struct VolcanoYAxisPositionSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     // Local state for editing
-    @State private var yAxisPosition: String = "middle"
+    @State private var showLeft: Bool = false
+    @State private var showMiddle: Bool = true
 
     var body: some View {
         NavigationView {
@@ -28,10 +29,7 @@ struct VolcanoYAxisPositionSettingsView: View {
                             Text("Control the position of the Y-axis in volcano plots")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            Text("Left: Y-axis positioned on the left side of the plot")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            Text("Middle: Y-axis positioned in the center (default)")
+                            Text("You can enable one, both, or neither axis")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         }
@@ -40,24 +38,47 @@ struct VolcanoYAxisPositionSettingsView: View {
 
                 // Position Selection Section
                 Section("Y-Axis Position") {
-                    Picker("Position", selection: $yAxisPosition) {
-                        Text("Left").tag("left")
-                        Text("Middle").tag("middle")
+                    Toggle(isOn: $showLeft) {
+                        HStack {
+                            Image(systemName: "arrow.left.square.fill")
+                                .foregroundColor(showLeft ? .blue : .gray)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Left")
+                                    .fontWeight(.medium)
+                                Text("Y-axis at left edge")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.vertical, 8)
+                    .tint(.blue)
 
-                    // Current selection indicator
+                    Toggle(isOn: $showMiddle) {
+                        HStack {
+                            Image(systemName: "arrow.up.arrow.down.square.fill")
+                                .foregroundColor(showMiddle ? .blue : .gray)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Middle")
+                                    .fontWeight(.medium)
+                                Text("Y-axis at center (x=0)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.blue)
+
+                    // Current selection summary
                     HStack {
-                        Image(systemName: yAxisPosition == "left" ? "arrow.left.square.fill" : "arrow.up.arrow.down.square.fill")
-                            .foregroundColor(.blue)
-                            .font(.title2)
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                            .font(.title3)
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Current Position:")
+                            Text("Active:")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
-                            Text(yAxisPosition.capitalized)
+                            Text(currentPositionText())
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                         }
@@ -75,7 +96,6 @@ struct VolcanoYAxisPositionSettingsView: View {
                             .foregroundColor(.secondary)
 
                         ZStack {
-                            // Plot area background
                             RoundedRectangle(cornerRadius: 8)
                                 .fill(Color.gray.opacity(0.1))
                                 .frame(height: 150)
@@ -84,8 +104,7 @@ struct VolcanoYAxisPositionSettingsView: View {
                                 Spacer()
 
                                 HStack(spacing: 0) {
-                                    // Left axis (visible only when left position selected)
-                                    if yAxisPosition == "left" {
+                                    if showLeft {
                                         VStack(spacing: 2) {
                                             Text("Y")
                                                 .font(.caption)
@@ -99,33 +118,29 @@ struct VolcanoYAxisPositionSettingsView: View {
                                         .padding(.leading, 8)
                                     }
 
-                                    // Plot area with middle axis if selected
-                                    if yAxisPosition == "middle" {
-                                        // Left side of plot
+                                    if showMiddle {
                                         Spacer()
 
-                                        // Middle Y-axis
                                         VStack(spacing: 2) {
                                             Text("Y")
                                                 .font(.caption)
                                                 .fontWeight(.bold)
-                                                .foregroundColor(.blue)
+                                                .foregroundColor(.green)
                                             Rectangle()
-                                                .fill(Color.blue)
+                                                .fill(Color.green)
                                                 .frame(width: 2)
                                         }
                                         .frame(width: 30)
 
-                                        // Right side of plot
+                                        Spacer()
+                                    } else if !showLeft {
                                         Spacer()
                                     } else {
-                                        // Full width plot area when left axis
                                         Spacer()
                                     }
                                 }
                                 .frame(height: 120)
 
-                                // X-axis at bottom (always shown)
                                 HStack(spacing: 4) {
                                     Rectangle()
                                         .fill(Color.gray)
@@ -134,13 +149,13 @@ struct VolcanoYAxisPositionSettingsView: View {
                                         .font(.caption)
                                         .foregroundColor(.gray)
                                 }
-                                .padding(.horizontal, yAxisPosition == "left" ? 40 : 8)
+                                .padding(.horizontal, showLeft ? 40 : 8)
                                 .padding(.bottom, 8)
                             }
                         }
                         .frame(maxWidth: .infinity)
 
-                        Text(yAxisPosition == "left" ? "Y-axis on the left side" : "Y-axis in the middle (default)")
+                        Text(previewText())
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -186,16 +201,50 @@ struct VolcanoYAxisPositionSettingsView: View {
     // MARK: - Helper Methods
 
     private func loadSettings() {
-        if let position = curtainData.settings.volcanoPlotYaxisPosition.first {
-            yAxisPosition = position
-        } else {
-            yAxisPosition = "middle"  // Default
+        let positions = curtainData.settings.volcanoPlotYaxisPosition
+        showLeft = positions.contains("left")
+        showMiddle = positions.contains("middle")
+
+        if positions.isEmpty {
+            showMiddle = true
         }
-        print("📋 VolcanoYAxisPosition: Loaded position: \(yAxisPosition)")
+
+        print("📋 VolcanoYAxisPosition: Loaded positions: \(positions)")
+    }
+
+    private func currentPositionText() -> String {
+        if showLeft && showMiddle {
+            return "Left + Middle"
+        } else if showLeft {
+            return "Left"
+        } else if showMiddle {
+            return "Middle"
+        } else {
+            return "None"
+        }
+    }
+
+    private func previewText() -> String {
+        if showLeft && showMiddle {
+            return "Both Y-axes active"
+        } else if showLeft {
+            return "Y-axis at left edge only"
+        } else if showMiddle {
+            return "Y-axis at center (x=0) only"
+        } else {
+            return "No Y-axis visible"
+        }
     }
 
     private func saveChanges() {
-        // Create updated settings with the new Y-axis position
+        var positions: [String] = []
+        if showLeft {
+            positions.append("left")
+        }
+        if showMiddle {
+            positions.append("middle")
+        }
+
         let updatedSettings = CurtainSettings(
             fetchUniprot: curtainData.settings.fetchUniprot,
             inputDataCols: curtainData.settings.inputDataCols,
@@ -245,7 +294,7 @@ struct VolcanoYAxisPositionSettingsView: View {
             peptideCountData: curtainData.settings.peptideCountData,
             volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
             volcanoTraceOrder: curtainData.settings.volcanoTraceOrder,
-            volcanoPlotYaxisPosition: [yAxisPosition],  // ← Updated Y-axis position
+            volcanoPlotYaxisPosition: positions,
             customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
             barChartConditionBracket: curtainData.settings.barChartConditionBracket,
             columnSize: curtainData.settings.columnSize,
@@ -263,7 +312,6 @@ struct VolcanoYAxisPositionSettingsView: View {
             markerSizeMap: curtainData.settings.markerSizeMap
         )
 
-        // Update CurtainData
         let updatedCurtainData = CurtainData(
             raw: curtainData.raw,
             rawForm: curtainData.rawForm,
@@ -283,11 +331,12 @@ struct VolcanoYAxisPositionSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ VolcanoYAxisPosition: Saved position: \(yAxisPosition)")
+        print("✅ VolcanoYAxisPosition: Saved positions: \(positions)")
     }
 
     private func resetToDefault() {
-        yAxisPosition = "middle"
+        showLeft = false
+        showMiddle = true
     }
 }
 

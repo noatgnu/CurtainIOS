@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; img-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
+    <title>Volcano Plot</title>
+    <style>
+        html {
+            background-color: {{BACKGROUND_COLOR}};
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: {{BACKGROUND_COLOR}};
+            color: {{TEXT_COLOR}};
+        }
+
+        #plot {
+            width: 100%;
+            height: 100vh;
+            background-color: {{BACKGROUND_COLOR}};
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-size: 18px;
+            color: {{TEXT_COLOR}};
+        }
+
+        .error {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-size: 16px;
+            color: #d32f2f;
+            text-align: center;
+            padding: 20px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body {
+                --background-color: #1c1c1e;
+                --text-color: #ffffff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading">Loading volcano plot...</div>
+    <div id="plot" style="display: none;"></div>
+    <div id="error" class="error" style="display: none;">
+        <div>
+            <h3>Unable to load volcano plot</h3>
+            <p>Please check your data and try again.</p>
+        </div>
+    </div>
+
+    <script>
+    {{PLOTLY_JS}}
+    </script>
+    <script>
+    {{VOLCANO_PLOT_JS}}
+    </script>
+</body>
+</html>

@@ -12,7 +12,6 @@ class PlotlyChartGenerator {
     private let curtainDataService: CurtainDataService?
     private let volcanoPlotDataService: VolcanoPlotDataService
 
-    // Track the trace names from the last generated plot
     private(set) var lastGeneratedTraceNames: [String] = []
 
     init(curtainDataService: CurtainDataService? = nil) {
@@ -20,38 +19,29 @@ class PlotlyChartGenerator {
         self.volcanoPlotDataService = VolcanoPlotDataService()
     }
     
-    // MARK: - Volcano Plot Generation
     
     func createVolcanoPlotHtml(context: PlotGenerationContext) async -> String {
-        print("🔍 PlotlyChartGenerator: createVolcanoPlotHtml called (using Android workflow)")
-        print("🔍 PlotlyChartGenerator: Input protein count: \(context.data.proteomicsData.count)")
         
-        // Use Android workflow for data processing
         let volcanoResult = await volcanoPlotDataService.processVolcanoData(
             curtainData: convertToCurtainData(context.data),
             settings: context.settings
         )
         
-        print("🔍 PlotlyChartGenerator: Processed \(volcanoResult.jsonData.count) data points using Android workflow")
         
         let plotData = createAndroidCompatiblePlotData(volcanoResult, context: context)
         
         do {
             let plotJSON = try plotData.toJSON()
-            print("🔍 PlotlyChartGenerator: Generated Android-compatible plot JSON length: \(plotJSON.count)")
-            return generateVolcanoHtmlTemplate(plotJSON: plotJSON, editMode: context.editMode)
+            return generateVolcanoHtmlTemplate(plotJSON: plotJSON, editMode: context.editMode, isDarkMode: context.isDarkMode)
         } catch {
-            print("❌ PlotlyChartGenerator: Error generating volcano plot JSON: \(error)")
             return generateErrorHtml("Failed to generate volcano plot data")
         }
     }
     
-    // Convert PlotGenerationContext data to CurtainData format for Android workflow
     private func convertToCurtainData(_ data: CurtainData) -> CurtainData {
         return data
     }
     
-    // Create Android-compatible plot data from volcano processing result
     private func createAndroidCompatiblePlotData(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotData {
         let traces = createAndroidCompatibleTraces(volcanoResult.jsonData, settings: context.settings, colorMap: volcanoResult.colorMap)
         let layout = createAndroidCompatibleLayout(volcanoResult, context: context)
@@ -61,11 +51,8 @@ class PlotlyChartGenerator {
     }
     
     
-    // Create traces using Android-compatible data format
     private func createAndroidCompatibleTraces(_ jsonData: [[String: Any]], settings: CurtainSettings, colorMap: [String: String]) -> [PlotTrace] {
-        print("🔍 PlotlyChartGenerator: createAndroidCompatibleTraces called with \(jsonData.count) data points")
         
-        // Group data points by selection like Android (each selection becomes a trace)
         var selectionGroups: [String: (color: String, points: [AndroidDataPoint])] = [:]
         
         for dataPoint in jsonData {
@@ -81,7 +68,6 @@ class PlotlyChartGenerator {
                 customText: dataPoint["customText"] as? String
             )
             
-            // Process each selection for this point (like Android JavaScript)
             for (index, selectionName) in androidPoint.selections.enumerated() {
                 let selectionColor = index < androidPoint.colors.count ? androidPoint.colors[index] : "#808080"
                 
@@ -92,16 +78,11 @@ class PlotlyChartGenerator {
             }
         }
         
-        print("🔍 PlotlyChartGenerator: Created \(selectionGroups.count) selection groups: \(Array(selectionGroups.keys))")
 
-        // Create traces for each selection (like Android)
         var traces: [PlotTrace] = []
 
-        // IMPORTANT: Iterate in DETERMINISTIC order (alphabetically) to ensure consistency with Angular
-        // Angular's object iteration preserves insertion order, we use alphabetical to be consistent
         let allGroupNames = Array(selectionGroups.keys).sorted()
 
-        // First: Add user selection traces (non-background, non-significance) in alphabetical order
         let userSelectionNames = allGroupNames.filter { selectionName in
             return selectionName != "Background" &&
                    selectionName != "Other" &&
@@ -120,7 +101,6 @@ class PlotlyChartGenerator {
             traces.append(trace)
         }
 
-        // Second: Add background and significance group traces in alphabetical order
         let backgroundAndSignificanceNames = allGroupNames.filter { selectionName in
             return selectionName == "Background" ||
                    selectionName == "Other" ||
@@ -139,42 +119,28 @@ class PlotlyChartGenerator {
             traces.append(trace)
         }
 
-        // Apply trace ordering (matching Angular logic at volcano-plot.component.ts:505-509)
-        print("🔍 PlotlyChartGenerator: Before ordering - traces: \(traces.map { $0.name })")
-        print("🔍 PlotlyChartGenerator: volcanoTraceOrder setting: \(settings.volcanoTraceOrder)")
 
         if !settings.volcanoTraceOrder.isEmpty {
-            // If custom trace order is configured, use it exactly as specified
             traces = reorderTraces(traces, accordingTo: settings.volcanoTraceOrder)
-            print("✅ PlotlyChartGenerator: Applied custom trace order")
         } else {
-            // If no custom order, reverse traces to match Android/Angular default ordering
             traces.reverse()
-            print("✅ PlotlyChartGenerator: Using default reversed trace order (no custom order set)")
         }
 
-        print("🎨 PlotlyChartGenerator: FINAL RENDER ORDER (first=behind, last=on top): \(traces.map { $0.name })")
 
-        // Store trace names for UI access (e.g., trace order settings)
         lastGeneratedTraceNames = traces.map { $0.name }
-        print("📝 PlotlyChartGenerator: Stored \(lastGeneratedTraceNames.count) trace names for later access")
 
         return traces
     }
     
-    // Create trace using Android data format
     private func createAndroidCompatibleTrace(dataPoints: [AndroidDataPoint], name: String, color: String, markerSize: Double) -> PlotTrace {
         let x = dataPoints.map { $0.x }
         let y = dataPoints.map { $0.y }
         
-        // Format text like Android: use customText if available, otherwise <genename>(<primaryid>) format
         let text = dataPoints.map { point -> String in
-            // Use custom text if available
             if let customText = point.customText, !customText.isEmpty {
                 return customText
             }
 
-            // Default format: <genename>(<primaryid>) if gene name exists, otherwise just primaryid
             let geneName = point.gene.trimmingCharacters(in: .whitespacesAndNewlines)
             let primaryId = point.id.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -218,15 +184,12 @@ class PlotlyChartGenerator {
         )
     }
     
-    // Create layout using Android volcano axis settings
     private func createAndroidCompatibleLayout(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotLayout {
         let settings = context.settings
         let volcanoAxis = volcanoResult.updatedVolcanoAxis
 
-        // Get colors appropriate for current color scheme
-        let textColor = context.isDarkMode ? "#FFFFFF" : "#000000"
-        let gridColor = context.isDarkMode ? "#404040" : "#e0e0e0"
-        let zeroLineColor = context.isDarkMode ? "#606060" : "#000000"
+        let textColor = context.isDarkMode ? "#E0E0E0" : "#000000"  // Light gray for better contrast than pure white
+        let gridColor = context.isDarkMode ? "#555555" : "#e0e0e0"  // Medium gray for visibility
 
         let title = PlotTitle(
             text: settings.volcanoPlotTitle,
@@ -237,30 +200,29 @@ class PlotlyChartGenerator {
             )
         )
 
+
+        let xaxisZerolineColor: String
+        if settings.volcanoPlotYaxisPosition.contains("middle") {
+            xaxisZerolineColor = context.isDarkMode ? "#E0E0E0" : "#000000"
+        } else {
+            xaxisZerolineColor = "rgba(0,0,0,0)"
+        }
+
         let xaxis = PlotAxis(
             title: PlotAxisTitle(
                 text: volcanoAxis.x,
                 font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor)
             ),
-            zeroline: true,
-            zerolinecolor: zeroLineColor,
+            zeroline: nil,
+            zerolinecolor: xaxisZerolineColor,
             gridcolor: gridColor,
+            linecolor: textColor,
             range: [volcanoAxis.minX ?? -3.0, volcanoAxis.maxX ?? 3.0],
             font: PlotFont(family: settings.plotFontFamily, size: 10, color: textColor),
             dtick: volcanoAxis.dtickX,
             ticklen: volcanoAxis.ticklenX,
             showgrid: settings.volcanoPlotGrid["x"] ?? true
         )
-
-        // Determine Y-axis position from settings
-        let yaxisSide: String? = {
-            if let position = settings.volcanoPlotYaxisPosition.first {
-                // "left" position explicitly sets side to "left"
-                // "middle" or empty uses default (no side specified = middle behavior in Plotly)
-                return position == "left" ? "left" : nil
-            }
-            return nil
-        }()
 
         let yaxis = PlotAxis(
             title: PlotAxisTitle(
@@ -269,27 +231,40 @@ class PlotlyChartGenerator {
             ),
             zeroline: false,
             zerolinecolor: nil,
+            showline: false,
             gridcolor: gridColor,
+            linecolor: textColor,
             range: [volcanoAxis.minY ?? 0.0, volcanoAxis.maxY ?? 5.0],
             font: PlotFont(family: settings.plotFontFamily, size: 10, color: textColor),
             dtick: volcanoAxis.dtickY,
             ticklen: volcanoAxis.ticklenY,
             showgrid: settings.volcanoPlotGrid["y"] ?? true,
-            side: yaxisSide  // Apply Y-axis position setting
+            side: nil
         )
-        
-        let shapes = createAndroidCompatibleThresholdShapes(settings, volcanoAxis)
-        print("🔍 PlotlyChartGenerator: Converting textAnnotation with \(settings.textAnnotation.count) entries")
+
+        var shapes = createAndroidCompatibleThresholdShapes(settings, volcanoAxis)
+
+        if settings.volcanoPlotYaxisPosition.contains("left") {
+            let yAxisShape = PlotShape(
+                type: "line",
+                x0: volcanoAxis.minX ?? -3.0,
+                x1: volcanoAxis.minX ?? -3.0,
+                y0: volcanoAxis.minY ?? 0.0,
+                y1: volcanoAxis.maxY ?? 5.0,
+                xref: "x",
+                yref: "y",
+                line: PlotLine(color: textColor, width: 1, dash: nil),
+                isYAxisLine: true
+            )
+            shapes.append(yAxisShape)
+        } else {
+        }
         for (key, value) in settings.textAnnotation {
-            print("🔍 PlotlyChartGenerator: textAnnotation key '\(key)': \(value)")
         }
         var annotations = convertTextAnnotations(settings.textAnnotation, isDarkMode: context.isDarkMode)
-        print("🔍 PlotlyChartGenerator: Initial annotations count: \(annotations.count)")
 
-        // Add volcano condition labels if enabled
         let conditionLabelAnnotations = createVolcanoConditionLabelAnnotations(settings, isDarkMode: context.isDarkMode)
         annotations.append(contentsOf: conditionLabelAnnotations)
-        print("🔍 PlotlyChartGenerator: Final annotations count after adding condition labels: \(annotations.count)")
 
         return PlotLayout(
             title: title,
@@ -297,8 +272,8 @@ class PlotlyChartGenerator {
             yaxis: yaxis,
             hovermode: "closest",
             showlegend: true,
-            plot_bgcolor: "rgba(0,0,0,0)",
-            paper_bgcolor: "rgba(0,0,0,0)",
+            plot_bgcolor: "rgba(0,0,0,0)",  // Transparent - let HTML background show through
+            paper_bgcolor: "rgba(0,0,0,0)",  // Transparent - let HTML background show through
             font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor),
             shapes: shapes,
             annotations: annotations,
@@ -312,7 +287,6 @@ class PlotlyChartGenerator {
         )
     }
     
-    // Create threshold shapes using Android volcano axis settings
     private func createAndroidCompatibleThresholdShapes(_ settings: CurtainSettings, _ volcanoAxis: VolcanoAxis) -> [PlotShape] {
         let maxY = volcanoAxis.maxY ?? 5.0
         let minX = volcanoAxis.minX ?? -3.0
@@ -320,9 +294,7 @@ class PlotlyChartGenerator {
         
         let pValueThreshold = -log10(settings.pCutoff)
         
-        // Android uses rgb(21,4,4) color with dashed lines
         return [
-            // Vertical line for negative fold change cutoff (like Android)
             PlotShape(
                 type: "line",
                 x0: -settings.log2FCCutoff,
@@ -331,9 +303,9 @@ class PlotlyChartGenerator {
                 y1: maxY,
                 xref: "x",
                 yref: "y",
-                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash")
+                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"),
+                isYAxisLine: nil
             ),
-            // Vertical line for positive fold change cutoff (like Android)
             PlotShape(
                 type: "line",
                 x0: settings.log2FCCutoff,
@@ -342,9 +314,9 @@ class PlotlyChartGenerator {
                 y1: maxY,
                 xref: "x",
                 yref: "y",
-                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash")
+                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"),
+                isYAxisLine: nil
             ),
-            // Horizontal line for p-value cutoff (like Android)
             PlotShape(
                 type: "line",
                 x0: minX,
@@ -353,15 +325,14 @@ class PlotlyChartGenerator {
                 y1: pValueThreshold,
                 xref: "x",
                 yref: "y",
-                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash")
+                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"),
+                isYAxisLine: nil
             )
         ]
     }
     
     
-    // MARK: - Helper Methods
     
-    // Android data point structure
     private struct AndroidDataPoint {
         let x: Double
         let y: Double
@@ -377,44 +348,29 @@ class PlotlyChartGenerator {
     private func convertTextAnnotations(_ textAnnotations: [String: Any], isDarkMode: Bool) -> [PlotAnnotation] {
         var annotations: [PlotAnnotation] = []
 
-        // Default colors for better dark mode contrast
         let defaultFontColor = isDarkMode ? "#FFFFFF" : "#000000"
         let defaultArrowColor = isDarkMode ? "#FFFFFF" : "#000000"
 
         for (key, value) in textAnnotations {
-            print("🔍 PlotlyChartGenerator: Processing annotation key '\(key)'")
-            print("🔍 PlotlyChartGenerator: Value type: \(type(of: value))")
-            print("🔍 PlotlyChartGenerator: Value: \(value)")
 
             if let annotationData = value as? [String: Any] {
-                print("🔍 PlotlyChartGenerator: Annotation data keys: \(annotationData.keys)")
                 if let dataSection = annotationData["data"] as? [String: Any] {
-                    print("🔍 PlotlyChartGenerator: Data section keys: \(dataSection.keys)")
 
-                    // Extract values from the nested "data" section (Android format)
                     guard let text = dataSection["text"] as? String,
                           let x = dataSection["x"] as? Double,
                           let y = dataSection["y"] as? Double else {
-                        print("❌ PlotlyChartGenerator: Invalid annotation data for key: \(key)")
-                        print("❌ PlotlyChartGenerator: text=\(dataSection["text"] ?? "nil"), x=\(dataSection["x"] ?? "nil"), y=\(dataSection["y"] ?? "nil")")
                         continue
                     }
 
-                    // Extract title - the unique stable identifier (gene name(primary id) or primary id)
                     let title = annotationData["title"] as? String ?? key
-                    print("🔍 PlotlyChartGenerator: Extracted x=\(x), y=\(y), text='\(text)'")
 
-                    // Extract additional properties with Android defaults
                     let showarrow = dataSection["showarrow"] as? Bool ?? true
                     let arrowhead = dataSection["arrowhead"] as? Int ?? 1
                     let arrowsize = dataSection["arrowsize"] as? Double ?? 1.0
                     let arrowwidth = dataSection["arrowwidth"] as? Double ?? 1.0
 
-                    // Arrow color with dark mode adjustment
                     var arrowcolor = dataSection["arrowcolor"] as? String ?? defaultArrowColor
-                    // Adjust black arrows to white in dark mode for better contrast
                     if isDarkMode && isBlackColor(arrowcolor) {
-                        print("🎨 PlotlyChartGenerator: Adjusted arrow color from '\(arrowcolor)' to white for dark mode")
                         arrowcolor = "#FFFFFF"
                     }
 
@@ -423,7 +379,6 @@ class PlotlyChartGenerator {
                     let xanchor = dataSection["xanchor"] as? String ?? "center"
                     let yanchor = dataSection["yanchor"] as? String ?? "bottom"
 
-                    // Extract font properties
                     var fontSize: Double = 15
                     var fontColor: String = defaultFontColor
                     var fontFamily: String = "Arial, sans-serif"
@@ -434,9 +389,7 @@ class PlotlyChartGenerator {
                         fontFamily = fontData["family"] as? String ?? "Arial, sans-serif"
                     }
 
-                    // Adjust black text to white in dark mode for better contrast
                     if isDarkMode && isBlackColor(fontColor) {
-                        print("🎨 PlotlyChartGenerator: Adjusted text color from '\(fontColor)' to white for dark mode")
                         fontColor = "#FFFFFF"
                     }
                     
@@ -461,37 +414,29 @@ class PlotlyChartGenerator {
                     )
                     annotations.append(annotation)
                     
-                    print("✅ PlotlyChartGenerator: Created annotation '\(key)' at plot coordinates (\(x), \(y)) with text: '\(text)'")
                 } else {
-                    print("❌ PlotlyChartGenerator: No 'data' section found in annotation: \(annotationData)")
                     continue
                 }
             } else {
-                print("❌ PlotlyChartGenerator: Value is not dictionary: \(value)")
                 continue
             }
         }
         
-        print("📊 PlotlyChartGenerator: Converted \(annotations.count) annotations from textAnnotation data")
         return annotations
     }
 
-    // MARK: - Color Utilities
 
     /// Check if a color string represents black or very dark color
     private func isBlackColor(_ color: String) -> Bool {
         let normalized = color.lowercased().trimmingCharacters(in: .whitespaces)
 
-        // Check common black representations
         if normalized == "#000000" || normalized == "#000" || normalized == "black" {
             return true
         }
 
-        // Check for very dark colors (RGB values all less than 30)
         if normalized.hasPrefix("#") {
             let hex = String(normalized.dropFirst()) // Remove #
 
-            // Handle 6-digit hex (#RRGGBB)
             if hex.count == 6 {
                 let rHex = String(hex.prefix(2))
                 let gHex = String(hex.dropFirst(2).prefix(2))
@@ -500,11 +445,9 @@ class PlotlyChartGenerator {
                 if let r = Int(rHex, radix: 16),
                    let g = Int(gHex, radix: 16),
                    let b = Int(bHex, radix: 16) {
-                    // Consider it black if all RGB values are very low
                     return r < 30 && g < 30 && b < 30
                 }
             }
-            // Handle 3-digit hex (#RGB)
             else if hex.count == 3 {
                 let r = String(hex.prefix(1))
                 let g = String(hex.dropFirst(1).prefix(1))
@@ -525,14 +468,12 @@ class PlotlyChartGenerator {
         return false
     }
 
-    // MARK: - Volcano Condition Label Annotations
 
     private func createVolcanoConditionLabelAnnotations(_ settings: CurtainSettings, isDarkMode: Bool) -> [PlotAnnotation] {
         var conditionAnnotations: [PlotAnnotation] = []
 
         // Check if condition labels are enabled
         guard settings.volcanoConditionLabels.enabled else {
-            print("🏷️ PlotlyChartGenerator: Volcano condition labels disabled")
             return conditionAnnotations
         }
 
@@ -541,25 +482,19 @@ class PlotlyChartGenerator {
 
         // Validate that both conditions are not empty and are different from each other
         guard !leftCondition.isEmpty && !rightCondition.isEmpty else {
-            print("🏷️ PlotlyChartGenerator: One or both conditions are empty")
             return conditionAnnotations
         }
 
         guard leftCondition != rightCondition else {
-            print("🏷️ PlotlyChartGenerator: Left and right conditions are the same - skipping labels")
             return conditionAnnotations
         }
 
-        print("🏷️ PlotlyChartGenerator: Creating volcano condition label annotations")
-        print("🏷️ PlotlyChartGenerator: Left condition: '\(leftCondition)'")
-        print("🏷️ PlotlyChartGenerator: Right condition: '\(rightCondition)'")
 
         // Use dark mode appropriate color: if saved color is black, replace with white in dark mode
         let savedColor = settings.volcanoConditionLabels.fontColor
         let labelColor: String
         if isDarkMode && isBlackColor(savedColor) {
             labelColor = "#FFFFFF"  // Use white in dark mode for better contrast
-            print("🏷️ PlotlyChartGenerator: Adjusted label color from '\(savedColor)' to white for dark mode")
         } else {
             labelColor = savedColor  // Use saved color
         }
@@ -589,7 +524,6 @@ class PlotlyChartGenerator {
             )
         )
         conditionAnnotations.append(leftLabel)
-        print("🏷️ PlotlyChartGenerator: Added left label '\(leftCondition)' at x=\(settings.volcanoConditionLabels.leftX), y=\(settings.volcanoConditionLabels.yPosition)")
 
         // Create right condition label
         let rightLabel = PlotAnnotation(
@@ -616,9 +550,7 @@ class PlotlyChartGenerator {
             )
         )
         conditionAnnotations.append(rightLabel)
-        print("🏷️ PlotlyChartGenerator: Added right label '\(rightCondition)' at x=\(settings.volcanoConditionLabels.rightX), y=\(settings.volcanoConditionLabels.yPosition)")
 
-        print("🏷️ PlotlyChartGenerator: Created \(conditionAnnotations.count) condition label annotations")
         return conditionAnnotations
     }
 
@@ -632,735 +564,37 @@ class PlotlyChartGenerator {
         )
     }
     
-    // MARK: - HTML Template Generation
     
-    private func generateVolcanoHtmlTemplate(plotJSON: String, editMode: Bool) -> String {
-        return """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; img-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
-            <title>Volcano Plot</title>
-            <style>
-                body {
-                    margin: 0;
-                    padding: 0;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    background-color: var(--background-color, #ffffff);
-                    color: var(--text-color, #000000);
-                }
-                
-                #plot {
-                    width: 100%;
-                    height: 100vh;
-                }
-                
-                .loading {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    height: 100vh;
-                    font-size: 18px;
-                    color: var(--text-color, #666);
-                }
-                
-                .error {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    height: 100vh;
-                    font-size: 16px;
-                    color: #d32f2f;
-                    text-align: center;
-                    padding: 20px;
-                }
-                
-                /* Dark mode support */
-                @media (prefers-color-scheme: dark) {
-                    body {
-                        --background-color: #1c1c1e;
-                        --text-color: #ffffff;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div id="loading" class="loading">Loading volcano plot...</div>
-            <div id="plot" style="display: none;"></div>
-            <div id="error" class="error" style="display: none;">
-                <div>
-                    <h3>Unable to load volcano plot</h3>
-                    <p>Please check your data and try again.</p>
-                </div>
-            </div>
+    private func generateVolcanoHtmlTemplate(plotJSON: String, editMode: Bool, isDarkMode: Bool) -> String {
+        let backgroundColor = isDarkMode ? "#1C1C1E" : "#ffffff"
+        let textColor = isDarkMode ? "#E0E0E0" : "#000000"
 
-            <script>
-            // Inline Plotly.js to avoid resource loading issues
-            \(getInlinePlotlyJS())
-            </script>
-            <script>
-                // Check if Plotly loaded successfully
-                if (typeof Plotly === 'undefined') {
-                    console.error('Plotly.js failed to load');
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('error').style.display = 'block';
-                    document.getElementById('error').innerHTML = '<div><h3>Plot Library Error</h3><p>Unable to load plotting library. Please try again.</p></div>';
-                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotError) {
-                        window.webkit.messageHandlers.plotError.postMessage('Plotly.js failed to load');
-                    }
-                } else {
-                    // Global configuration for Plotly
-                    Plotly.setPlotConfig({
-                        displayModeBar: true,
-                        displaylogo: false,
-                        modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
-                    });
+        do {
+            let htmlTemplate = try WebTemplateLoader.shared.loadHTMLTemplate(named: "volcano-plot")
+            var volcanoJS = try WebTemplateLoader.shared.loadJavaScript(named: "volcano-plot")
 
-                    // Plot data from iOS
-                    const plotData = \(plotJSON);
-                    const editMode = \(editMode ? "true" : "false");
-                
-                // State management
-                let currentPlot = null;
-                let selectedPoints = [];
-                let annotations = plotData.layout.annotations || [];
-                
-                // Fast annotation lookup map for drag performance
-                const annotationMap = new Map();
-                
-                // Debug: Log initial annotations
-                console.log('Initial annotations from plotData:', annotations);
-                console.log('Number of annotations:', annotations.length);
-                
-                // iOS WebView communication interface
-                window.VolcanoPlot = {
-                    // Initialize the plot
-                    initialize: function() {
-                        try {
-                            document.getElementById('loading').style.display = 'none';
-                            document.getElementById('error').style.display = 'none';
-                            document.getElementById('plot').style.display = 'block';
-                            
-                            Plotly.newPlot('plot', plotData.data, plotData.layout, plotData.config)
-                                .then(() => {
-                                    currentPlot = document.getElementById('plot');
-                                    this.initializeAnnotationMap();
-                                    this.setupEventHandlers();
-                                    this.notifyReady();
-                                })
-                                .catch(error => {
-                                    console.error('Error creating volcano plot:', error);
-                                    this.showError('Failed to create volcano plot: ' + error.message);
-                                });
-                        } catch (error) {
-                            console.error('Error in initialize:', error);
-                            this.showError('JavaScript error: ' + error.message);
-                        }
-                    },
-                    
-                    // Get complete coordinate hierarchy: parent view -> WebView -> plot element -> plot area
-                    getPlotDimensions: function() {
-                        if (!currentPlot || !currentPlot._fullLayout) {
-                            console.log('📊 No plot or layout available');
-                            return null;
-                        }
-                        
-                        const layout = currentPlot._fullLayout;
-                        const plotDiv = currentPlot;
-                        
-                        // STEP 1: Detect WebView position within parent view hierarchy
-                        const body = document.body || document.documentElement;
-                        const html = document.documentElement;
-                        
-                        // Get WebView content position (accounting for any scrolling)
-                        const webViewRect = body.getBoundingClientRect();
-                        const webViewScrollLeft = html.scrollLeft || body.scrollLeft || 0;
-                        const webViewScrollTop = html.scrollTop || body.scrollTop || 0;
-                        
-                        console.log('🌐 WebView position in parent view:', {
-                            left: webViewRect.left,
-                            top: webViewRect.top,
-                            width: webViewRect.width,
-                            height: webViewRect.height,
-                            scrollLeft: webViewScrollLeft,
-                            scrollTop: webViewScrollTop
-                        });
-                        
-                        // STEP 2: Detect plot element position within WebView
-                        const plotElementRect = plotDiv.getBoundingClientRect();
-                        const plotElementOffsetX = plotElementRect.left - webViewRect.left + webViewScrollLeft;
-                        const plotElementOffsetY = plotElementRect.top - webViewRect.top + webViewScrollTop;
-                        
-                        console.log('📈 Plot element position in WebView:', {
-                            offsetX: plotElementOffsetX,
-                            offsetY: plotElementOffsetY,
-                            width: plotElementRect.width,
-                            height: plotElementRect.height
-                        });
-                        
-                        // STEP 3: Get plot area position within plot element using Plotly's coordinate system
-                        const xaxis = layout.xaxis;
-                        const yaxis = layout.yaxis;
-                        
-                        if (!xaxis || !yaxis || !xaxis.range || !yaxis.range) {
-                            console.log('📊 No axis information available');
-                            return null;
-                        }
-                        
-                        console.log('📊 Axis ranges - X:', xaxis.range, 'Y:', yaxis.range);
-                        
-                        // Use Plotly's l2p functions to get plot area boundaries within plot element
-                        try {
-                            // Get the actual margins from Plotly layout
-                            const margin = layout.margin || {};
-                            const marginLeft = margin.l || 80;
-                            const marginTop = margin.t || 100;
-                            const marginRight = margin.r || 80;
-                            const marginBottom = margin.b || 80;
-                            
-                            console.log('📊 Plotly margins:', margin);
-                            console.log('📊 Calculated margins - L:', marginLeft, 'T:', marginTop, 'R:', marginRight, 'B:', marginBottom);
-                            
-                            // Get corners of the plot area using data coordinates  
-                            const xMin = xaxis.range[0];
-                            const xMax = xaxis.range[1];
-                            const yMin = yaxis.range[0];
-                            const yMax = yaxis.range[1];
-                            
-                            // Convert data coordinates to plot-relative pixel coordinates (within plot element)
-                            const plotRelativeTopLeft = { 
-                                x: xaxis.l2p(xMin), 
-                                y: yaxis.l2p(yMax) 
-                            };
-                            const plotRelativeBottomRight = { 
-                                x: xaxis.l2p(xMax), 
-                                y: yaxis.l2p(yMin) 
-                            };
-                            
-                            console.log('📊 Plot-relative coordinates within element - TopLeft:', plotRelativeTopLeft, 'BottomRight:', plotRelativeBottomRight);
-                            
-                            // Plot area boundaries relative to plot element
-                            const plotAreaLeft = marginLeft + plotRelativeTopLeft.x;
-                            const plotAreaTop = marginTop + plotRelativeTopLeft.y;
-                            const plotAreaRight = marginLeft + plotRelativeBottomRight.x;
-                            const plotAreaBottom = marginTop + plotRelativeBottomRight.y;
-                            
-                            // STEP 4: Calculate final coordinates - complete hierarchy transformation
-                            // Final position = WebView offset + plot element offset + plot area offset
-                            const finalPlotLeft = webViewRect.left + plotElementOffsetX + plotAreaLeft;
-                            const finalPlotTop = webViewRect.top + plotElementOffsetY + plotAreaTop;
-                            const finalPlotRight = webViewRect.left + plotElementOffsetX + plotAreaRight;
-                            const finalPlotBottom = webViewRect.top + plotElementOffsetY + plotAreaBottom;
-                            
-                            console.log('📊 Final plot boundaries in parent view coordinates:');
-                            console.log('   L=' + finalPlotLeft + ', T=' + finalPlotTop + ', R=' + finalPlotRight + ', B=' + finalPlotBottom);
-                            
-                            return {
-                                // Complete coordinate hierarchy results
-                                plotLeft: finalPlotLeft,
-                                plotRight: finalPlotRight,
-                                plotTop: finalPlotTop,
-                                plotBottom: finalPlotBottom,
-                                
-                                // Intermediate coordinate system information for debugging
-                                webView: {
-                                    left: webViewRect.left,
-                                    top: webViewRect.top,
-                                    width: webViewRect.width,
-                                    height: webViewRect.height
-                                },
-                                plotElement: {
-                                    offsetX: plotElementOffsetX,
-                                    offsetY: plotElementOffsetY,
-                                    width: plotElementRect.width,
-                                    height: plotElementRect.height
-                                },
-                                plotArea: {
-                                    left: plotAreaLeft,
-                                    top: plotAreaTop,
-                                    right: plotAreaRight,
-                                    bottom: plotAreaBottom,
-                                    width: plotAreaRight - plotAreaLeft,
-                                    height: plotAreaBottom - plotAreaTop
-                                },
-                                
-                                // Full dimensions
-                                fullWidth: plotDiv.offsetWidth,
-                                fullHeight: plotDiv.offsetHeight,
-                                
-                                // Axis ranges
-                                xRange: xaxis.range,
-                                yRange: yaxis.range,
-                                
-                                // Debug info
-                                method: 'complete_hierarchy_l2p',
-                                hasL2P: !!(xaxis.l2p && yaxis.l2p),
-                                coordinateHierarchy: 'webView->plotElement->plotArea'
-                            };
-                            
-                        } catch (error) {
-                            console.log('📊 Error using Plotly l2p functions:', error);
-                            
-                            // Fallback to domain-based calculation with hierarchy
-                            const xDomain = xaxis.domain || [0, 1];
-                            const yDomain = yaxis.domain || [0, 1];
-                            
-                            // Plot area relative to plot element
-                            const plotAreaLeft = xDomain[0] * plotDiv.offsetWidth;
-                            const plotAreaRight = xDomain[1] * plotDiv.offsetWidth;
-                            const plotAreaTop = (1 - yDomain[1]) * plotDiv.offsetHeight; // Y is flipped
-                            const plotAreaBottom = (1 - yDomain[0]) * plotDiv.offsetHeight;
-                            
-                            // Final position using complete hierarchy
-                            const finalPlotLeft = webViewRect.left + plotElementOffsetX + plotAreaLeft;
-                            const finalPlotTop = webViewRect.top + plotElementOffsetY + plotAreaTop;
-                            const finalPlotRight = webViewRect.left + plotElementOffsetX + plotAreaRight;
-                            const finalPlotBottom = webViewRect.top + plotElementOffsetY + plotAreaBottom;
-                            
-                            console.log('📊 Using domain fallback with complete hierarchy - xDomain:', xDomain, 'yDomain:', yDomain);
-                            console.log('📊 Domain-based boundaries: L=' + finalPlotLeft + ', T=' + finalPlotTop + ', R=' + finalPlotRight + ', B=' + finalPlotBottom);
-                            
-                            return {
-                                plotLeft: finalPlotLeft,
-                                plotRight: finalPlotRight,
-                                plotTop: finalPlotTop,
-                                plotBottom: finalPlotBottom,
-                                
-                                webView: {
-                                    left: webViewRect.left,
-                                    top: webViewRect.top,
-                                    width: webViewRect.width,
-                                    height: webViewRect.height
-                                },
-                                plotElement: {
-                                    offsetX: plotElementOffsetX,
-                                    offsetY: plotElementOffsetY,
-                                    width: plotElementRect.width,
-                                    height: plotElementRect.height
-                                },
-                                plotArea: {
-                                    left: plotAreaLeft,
-                                    top: plotAreaTop,
-                                    right: plotAreaRight,
-                                    bottom: plotAreaBottom,
-                                    width: plotAreaRight - plotAreaLeft,
-                                    height: plotAreaBottom - plotAreaTop
-                                },
-                                
-                                fullWidth: plotDiv.offsetWidth,
-                                fullHeight: plotDiv.offsetHeight,
-                                xRange: xaxis.range,
-                                yRange: yaxis.range,
-                                method: 'complete_hierarchy_domain_fallback',
-                                hasL2P: false,
-                                coordinateHierarchy: 'webView->plotElement->plotArea'
-                            };
-                        }
-                    },
+            volcanoJS = volcanoJS.replacingOccurrences(of: "{{PLOT_DATA}}", with: plotJSON)
+            volcanoJS = volcanoJS.replacingOccurrences(of: "{{EDIT_MODE}}", with: editMode ? "true" : "false")
 
-                    // Convert plot coordinates to screen coordinates using complete coordinate hierarchy
-                    convertPlotToScreen: function(x, y) {
-                        if (!currentPlot || !currentPlot._fullLayout) {
-                            console.log('📊 convertPlotToScreen: No plot available');
-                            return null;
-                        }
-                        
-                        // Use the enhanced getPlotDimensions that includes complete hierarchy
-                        const dims = this.getPlotDimensions();
-                        if (!dims) {
-                            console.log('📊 convertPlotToScreen: No plot dimensions available');
-                            return null;
-                        }
-                        
-                        const layout = currentPlot._fullLayout;
-                        const xaxis = layout.xaxis;
-                        const yaxis = layout.yaxis;
-                        
-                        if (!xaxis || !yaxis) {
-                            console.log('📊 convertPlotToScreen: No axis available');
-                            return null;
-                        }
-                        
-                        try {
-                            // Use Plotly's l2p to get plot-relative coordinates within plot element
-                            const plotRelativeX = xaxis.l2p(x);
-                            const plotRelativeY = yaxis.l2p(y);
-                            
-                            // Get plot area position within plot element
-                            const margin = layout.margin || {};
-                            const marginLeft = margin.l || 80;
-                            const marginTop = margin.t || 100;
-                            
-                            // Position within plot element
-                            const plotElementX = marginLeft + plotRelativeX;
-                            const plotElementY = marginTop + plotRelativeY;
-                            
-                            // Apply complete coordinate hierarchy transformation:
-                            // Final position = WebView position + plot element offset + plot area position
-                            const finalScreenX = dims.webView.left + dims.plotElement.offsetX + plotElementX;
-                            const finalScreenY = dims.webView.top + dims.plotElement.offsetY + plotElementY;
-                            
-                            console.log('📊 convertPlotToScreen complete hierarchy:');
-                            console.log('   Plot coords: (' + x + ',' + y + ')');
-                            console.log('   Plot-relative: (' + plotRelativeX + ',' + plotRelativeY + ')');
-                            console.log('   Plot element: (' + plotElementX + ',' + plotElementY + ')');
-                            console.log('   WebView offset: (' + dims.webView.left + ',' + dims.webView.top + ')');
-                            console.log('   Element offset: (' + dims.plotElement.offsetX + ',' + dims.plotElement.offsetY + ')');
-                            console.log('   Final screen: (' + finalScreenX + ',' + finalScreenY + ')');
-                            
-                            return { 
-                                x: finalScreenX, 
-                                y: finalScreenY,
-                                hierarchy: {
-                                    plotRelative: { x: plotRelativeX, y: plotRelativeY },
-                                    plotElement: { x: plotElementX, y: plotElementY },
-                                    webViewOffset: { x: dims.webView.left, y: dims.webView.top },
-                                    elementOffset: { x: dims.plotElement.offsetX, y: dims.plotElement.offsetY }
-                                }
-                            };
-                            
-                        } catch (error) {
-                            console.log('📊 Error in convertPlotToScreen l2p, using fallback:', error);
-                            
-                            // Fallback to manual calculation with complete hierarchy
-                            if (!dims.plotArea) {
-                                console.log('📊 No plot area information for fallback');
-                                return null;
-                            }
-                            
-                            const plotAreaWidth = dims.plotArea.width;
-                            const plotAreaHeight = dims.plotArea.height;
-                            
-                            // Manual coordinate transformation within plot area
-                            const normalizedX = (x - dims.xRange[0]) / (dims.xRange[1] - dims.xRange[0]);
-                            const normalizedY = (dims.yRange[1] - y) / (dims.yRange[1] - dims.yRange[0]); // Y is flipped
-                            
-                            const plotAreaX = normalizedX * plotAreaWidth;
-                            const plotAreaY = normalizedY * plotAreaHeight;
-                            
-                            // Apply complete hierarchy: WebView + plot element + plot area
-                            const finalScreenX = dims.webView.left + dims.plotElement.offsetX + dims.plotArea.left + plotAreaX;
-                            const finalScreenY = dims.webView.top + dims.plotElement.offsetY + dims.plotArea.top + plotAreaY;
-                            
-                            console.log('📊 convertPlotToScreen fallback with complete hierarchy:');
-                            console.log('   Plot coords: (' + x + ',' + y + ') -> normalized: (' + normalizedX + ',' + normalizedY + ')');
-                            console.log('   Plot area: (' + plotAreaX + ',' + plotAreaY + ')');
-                            console.log('   Final screen: (' + finalScreenX + ',' + finalScreenY + ')');
-                            
-                            return { 
-                                x: finalScreenX, 
-                                y: finalScreenY,
-                                method: 'fallback_with_hierarchy'
-                            };
-                        }
-                    },
+            let substitutions: [String: String] = [
+                "BACKGROUND_COLOR": backgroundColor,
+                "TEXT_COLOR": textColor,
+                "PLOTLY_JS": getInlinePlotlyJS(),
+                "VOLCANO_PLOT_JS": volcanoJS
+            ]
 
-                    // Initialize annotation map for fast lookups during dragging
-                    initializeAnnotationMap: function() {
-                        annotationMap.clear();
-                        
-                        // Get annotations from the current plot layout instead of cached version
-                        if (currentPlot && currentPlot.layout && currentPlot.layout.annotations) {
-                            annotations = currentPlot.layout.annotations;
-                            console.log('Updated annotations from live plot:', annotations.length, 'annotations');
-                        }
-                        
-                        // Debug: Log each annotation structure and plot dimensions
-                        const dims = this.getPlotDimensions();
-                        console.log('Plot dimensions:', dims);
-                        
-                        annotations.forEach((annotation, index) => {
-                            console.log('Annotation', index, ':', JSON.stringify(annotation, null, 2));
-                        });
-                        
-                        // Build fast lookup map from annotation titles to object reference + index
-                        annotations.forEach((annotation, index) => {
-                            const annotationInfo = { 
-                                annotation: annotation, 
-                                index: index 
-                            };
-                            
-                            // Try multiple properties as identifiers
-                            let identifier = null;
-                            if (annotation.title) {
-                                identifier = annotation.title;
-                                console.log('Mapped annotation by title:', identifier, 'at index', index);
-                            } else if (annotation.text) {
-                                // Use text content as identifier if no title
-                                identifier = annotation.text.replace(/<[^>]*>/g, ''); // Remove HTML tags
-                                console.log('Mapped annotation by text:', identifier, 'at index', index);
-                            } else if (annotation.id) {
-                                identifier = annotation.id;
-                                console.log('Mapped annotation by ID:', identifier, 'at index', index);
-                            }
-                            
-                            if (identifier) {
-                                annotationMap.set(identifier, annotationInfo);
-                            } else {
-                                console.warn('No identifier found for annotation at index', index);
-                            }
-                        });
-                        
-                        console.log('Annotation map initialized with', annotationMap.size, 'entries');
-                        console.log('Map keys:', Array.from(annotationMap.keys()));
-                    },
-                    
-                    // Setup event handlers for interactivity
-                    setupEventHandlers: function() {
-                        if (!currentPlot) return;
-                        
-                        // Handle point clicks (like Android)
-                        currentPlot.on('plotly_click', (data) => {
-                            if (data.points && data.points.length > 0) {
-                                const point = data.points[0];
-                                const clickData = {
-                                    proteinId: point.customdata.id,
-                                    id: point.customdata.id, // Also provide as 'id' for compatibility
-                                    primaryID: point.customdata.id, // Use actual protein ID
-                                    proteinName: point.customdata.gene,
-                                    log2FC: point.x,
-                                    pValue: point.customdata.pValue,
-                                    x: point.x, // Also provide as 'x' for compatibility
-                                    y: point.y, // Also provide as 'y' for compatibility
-                                    screenX: data.event.clientX,
-                                    screenY: data.event.clientY
-                                };
-                                
-                                console.log('Point clicked:', clickData);
-                                this.notifyPointClicked(clickData);
-                            }
-                        });
-                        
-                        // Handle annotation drags (if edit mode is enabled)
-                        if (editMode) {
-                            this.enableAnnotationEditing();
-                        }
-                        
-                        // Handle plot hover
-                        currentPlot.on('plotly_hover', (data) => {
-                            if (data.points && data.points.length > 0) {
-                                const point = data.points[0];
-                                this.notifyPointHovered(point.customdata);
-                            }
-                        });
-                    },
-                    
-                    // Enable annotation editing
-                    enableAnnotationEditing: function() {
-                        // Implementation for annotation editing
-                        // This would include drag handlers and coordinate conversion
-                    },
-                    
-                    // Update plot with new data
-                    updatePlot: function(newData) {
-                        try {
-                            if (currentPlot) {
-                                Plotly.react(currentPlot, newData.data, newData.layout, newData.config)
-                                    .then(() => {
-                                        this.notifyUpdated();
-                                    })
-                                    .catch(error => {
-                                        console.error('Error updating plot:', error);
-                                        this.showError('Failed to update plot: ' + error.message);
-                                    });
-                            }
-                        } catch (error) {
-                            console.error('Error in updatePlot:', error);
-                            this.showError('JavaScript error: ' + error.message);
-                        }
-                    },
-                    
-                    // Add annotation
-                    addAnnotation: function(annotation) {
-                        annotations.push(annotation);
-                        this.updateAnnotations();
-                    },
-                    
-                    // Update annotations
-                    updateAnnotations: function() {
-                        if (currentPlot) {
-                            const update = { 'annotations': annotations };
-                            Plotly.relayout(currentPlot, update);
-                        }
-                    },
-                    
-                    // Update single annotation position efficiently (for dragging)
-                    updateAnnotationPosition: function(annotationTitle, ax, ay) {
-                        if (!currentPlot) {
-                            console.error('No current plot available');
-                            return;
-                        }
-                        
-                        // Fast direct lookup using stable title - O(1) performance!
-                        const annotationInfo = annotationMap.get(annotationTitle);
-                        
-                        if (annotationInfo) {
-                            // Update the ax and ay values directly on the object reference
-                            annotationInfo.annotation.ax = ax;
-                            annotationInfo.annotation.ay = ay;
-                            
-                            // Use extremely efficient relayout with cached index - no indexOf() needed!
-                            const update = { 
-                                ['annotations[' + annotationInfo.index + '].ax']: ax,
-                                ['annotations[' + annotationInfo.index + '].ay']: ay
-                            };
-                            
-                            // Use synchronous approach for ultra-low latency
-                            try {
-                                Plotly.relayout(currentPlot, update);
-                            } catch (error) {
-                                console.error('Plotly.relayout failed:', error);
-                            }
-                        } else {
-                            // Fallback: search by text content without verbose logging
-                            for (let [key, info] of annotationMap.entries()) {
-                                if (info.annotation.text && info.annotation.text.includes(annotationTitle)) {
-                                    return this.updateAnnotationPosition(key, ax, ay);
-                                }
-                            }
-                            
-                            console.warn('No annotation found for title:', annotationTitle);
-                        }
-                    },
-                    
-                    // Batch update multiple annotation positions (for preview mode)
-                    updateAnnotationPositions: function(updates) {
-                        if (!currentPlot || !updates || updates.length === 0) return;
-                        
-                        const batchUpdate = {};
-                        let hasChanges = false;
-                        
-                        for (const update of updates) {
-                            // Fast direct lookup using stable title - O(1) performance!
-                            const annotationInfo = annotationMap.get(update.title);
-                            
-                            if (annotationInfo) {
-                                // Update the object reference directly
-                                annotationInfo.annotation.ax = update.ax;
-                                annotationInfo.annotation.ay = update.ay;
-                                
-                                // Add to batch update for Plotly with cached index - no indexOf() needed!
-                                batchUpdate['annotations[' + annotationInfo.index + '].ax'] = update.ax;
-                                batchUpdate['annotations[' + annotationInfo.index + '].ay'] = update.ay;
-                                hasChanges = true;
-                            }
-                        }
-                        
-                        if (hasChanges) {
-                            // Batch update only the changed annotation positions
-                            Plotly.relayout(currentPlot, batchUpdate);
-                        }
-                    },
-                    
-                    // Show error message
-                    showError: function(message) {
-                        document.getElementById('loading').style.display = 'none';
-                        document.getElementById('plot').style.display = 'none';
-                        const errorDiv = document.getElementById('error');
-                        errorDiv.innerHTML = '<div><h3>Volcano Plot Error</h3><p>' + message + '</p></div>';
-                        errorDiv.style.display = 'flex';
-                        this.notifyError(message);
-                    },
-                    
-                    // Communication with iOS
-                    notifyReady: function() {
-                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotReady) {
-                            window.webkit.messageHandlers.plotReady.postMessage('ready');
-                        }
-                    },
-                    
-                    notifyPointClicked: function(pointData) {
-                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pointClicked) {
-                            window.webkit.messageHandlers.pointClicked.postMessage(JSON.stringify(pointData));
-                        }
-                    },
-                    
-                    notifyPointHovered: function(pointData) {
-                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.pointHovered) {
-                            window.webkit.messageHandlers.pointHovered.postMessage(JSON.stringify(pointData));
-                        }
-                    },
-                    
-                    notifyUpdated: function() {
-                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotUpdated) {
-                            window.webkit.messageHandlers.plotUpdated.postMessage('updated');
-                        }
-                    },
-                    
-                    notifyError: function(message) {
-                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotError) {
-                            window.webkit.messageHandlers.plotError.postMessage(message);
-                        }
-                    },
-                    
-                    // Send plot dimensions to iOS
-                    sendPlotDimensions: function() {
-                        const dims = this.getPlotDimensions();
-                        if (dims && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotDimensions) {
-                            window.webkit.messageHandlers.plotDimensions.postMessage(JSON.stringify(dims));
-                        }
-                    },
-                    
-                    // Convert plot coordinates to screen and send to iOS
-                    convertAndSendCoordinates: function(annotations) {
-                        const results = [];
-                        const dims = this.getPlotDimensions();
-                        
-                        console.log('🎯 convertAndSendCoordinates called with', annotations.length, 'annotations');
-                        console.log('🎯 Plot dimensions:', dims);
-                        
-                        if (dims) {
-                            for (const annotation of annotations) {
-                                const screenPos = this.convertPlotToScreen(annotation.x, annotation.y);
-                                console.log('🎯 Annotation:', annotation.id || annotation.title, 
-                                           'Data coords:', annotation.x, annotation.y, 
-                                           'Screen coords:', screenPos?.x, screenPos?.y,
-                                           'Offsets:', annotation.ax || 0, annotation.ay || 0);
-                                
-                                if (screenPos) {
-                                    results.push({
-                                        id: annotation.id || annotation.title,
-                                        plotX: annotation.x,
-                                        plotY: annotation.y,
-                                        screenX: screenPos.x,
-                                        screenY: screenPos.y,
-                                        ax: annotation.ax || 0,
-                                        ay: annotation.ay || 0
-                                    });
-                                }
-                            }
-                        }
-                        
-                        console.log('🎯 Sending coordinate results:', results);
-                        
-                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.annotationCoordinates) {
-                            window.webkit.messageHandlers.annotationCoordinates.postMessage(JSON.stringify(results));
-                        }
-                    }
-                };
-                
-                // Initialize when page loads
-                document.addEventListener('DOMContentLoaded', function() {
-                    window.VolcanoPlot.initialize();
-                });
-                
-                } // End of Plotly loaded check
-            </script>
-        </body>
-        </html>
-        """
+            return WebTemplateLoader.shared.render(template: htmlTemplate, substitutions: substitutions)
+        } catch {
+            return generateErrorHtml("Failed to load volcano plot template: \(error.localizedDescription)")
+        }
     }
     
     private func getInlinePlotlyJS() -> String {
         // Try to read plotly.min.js from the bundle
         if let plotlyURL = Bundle.main.url(forResource: "plotly.min", withExtension: "js"),
            let plotlyContent = try? String(contentsOf: plotlyURL, encoding: .utf8) {
-            print("📦 PlotlyChartGenerator: Successfully loaded plotly.min.js inline (\(plotlyContent.count) characters)")
             return plotlyContent
         } else {
-            print("❌ PlotlyChartGenerator: Failed to load plotly.min.js from bundle")
             // Return a minimal fallback that will trigger the error handler
             return "console.error('Plotly.js not found in bundle');"
         }
@@ -1370,10 +604,8 @@ class PlotlyChartGenerator {
     private func getMarkerSize(for groupName: String, settings: CurtainSettings) -> Double {
         // Check if there's a custom size for this group in markerSizeMap
         if let customSize = settings.markerSizeMap[groupName] as? Int {
-            print("🎯 PlotlyChartGenerator: Using custom marker size \(customSize) for group '\(groupName)'")
             return Double(customSize)
         } else if let customSize = settings.markerSizeMap[groupName] as? Double {
-            print("🎯 PlotlyChartGenerator: Using custom marker size \(customSize) for group '\(groupName)'")
             return customSize
         }
 
@@ -1383,9 +615,6 @@ class PlotlyChartGenerator {
 
     /// Reorder traces according to volcanoTraceOrder setting (matches Angular sortGraphDataByOrder)
     private func reorderTraces(_ traces: [PlotTrace], accordingTo order: [String]) -> [PlotTrace] {
-        print("🔄 PlotlyChartGenerator: Reordering traces...")
-        print("   Input order from settings: \(order)")
-        print("   Available traces: \(traces.map { $0.name })")
 
         // Create a dictionary for quick lookup
         var tracesByName: [String: PlotTrace] = [:]
@@ -1400,9 +629,7 @@ class PlotlyChartGenerator {
             if let trace = tracesByName[traceName] {
                 reorderedTraces.append(trace)
                 tracesByName.removeValue(forKey: traceName)
-                print("   ✓ Placed '\(traceName)' at position \(reorderedTraces.count)")
             } else {
-                print("   ⚠️ Trace '\(traceName)' in order list not found in available traces")
             }
         }
 
@@ -1410,34 +637,25 @@ class PlotlyChartGenerator {
         for trace in traces {
             if tracesByName[trace.name] != nil {
                 reorderedTraces.append(trace)
-                print("   + Added remaining trace '\(trace.name)' at position \(reorderedTraces.count)")
             }
         }
 
-        print("🔄 PlotlyChartGenerator: Reordering complete")
-        print("   Before: \(traces.map { $0.name })")
-        print("   After:  \(reorderedTraces.map { $0.name })")
         return reorderedTraces
     }
 
     private func generateErrorHtml(_ message: String) -> String {
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Error</title>
-        </head>
-        <body>
-            <div style="display: flex; justify-content: center; align-items: center; height: 100vh; text-align: center;">
-                <div>
-                    <h3>Plot Generation Error</h3>
-                    <p>\(message)</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
+        do {
+            let htmlTemplate = try WebTemplateLoader.shared.loadHTMLTemplate(named: "error")
+            let substitutions: [String: String] = [
+                "ERROR_TITLE": "Plot Generation Error",
+                "ERROR_MESSAGE": message
+            ]
+            return WebTemplateLoader.shared.render(template: htmlTemplate, substitutions: substitutions)
+        } catch {
+            return """
+            <!DOCTYPE html>
+            <html><body><div style="text-align:center;padding:40px;"><h3>Error</h3><p>\(message)</p></div></body></html>
+            """
+        }
     }
 }

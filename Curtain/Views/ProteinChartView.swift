@@ -378,6 +378,7 @@ struct ProteinChartView: View {
     }
     
     private func generateChartHtml() async throws -> String {
+        let startTime = Date()
         print("🔍 ProteinChartView: Starting chart generation for protein: \(currentProteinId)")
         print("🔍 ProteinChartView: Chart type: \(chartType)")
         print("🔍 ProteinChartView: Raw data available: \(curtainData.raw != nil ? "YES" : "NO")")
@@ -397,8 +398,12 @@ struct ProteinChartView: View {
         print("🔍 ProteinChartView: Raw form samples count: \(curtainData.rawForm.samples.count)")
         print("🔍 ProteinChartView: Raw form samples: \(curtainData.rawForm.samples)")
         print("🔍 ProteinChartView: Raw form primaryIDs: '\(curtainData.rawForm.primaryIDs)'")
-        
-        let processedSettings = curtainData.getProcessedSettings()
+
+        let processingStart = Date()
+        let processedSettings = await curtainData.getProcessedSettingsAsync { progress in
+        }
+        let processingDuration = Date().timeIntervalSince(processingStart)
+        print("⏱️ ProteinChartView: Data processing took \(Int(processingDuration * 1000))ms")
         print("🔍 ProteinChartView: Settings conditionOrder: \(processedSettings.conditionOrder)")
         print("🔍 ProteinChartView: Settings sampleMap keys: \(processedSettings.sampleMap.keys.count)")
         print("🔍 ProteinChartView: Settings sampleVisible count: \(processedSettings.sampleVisible.count)")
@@ -411,6 +416,8 @@ struct ProteinChartView: View {
             isDarkMode: colorScheme == .dark
         )
         
+        let duration = Date().timeIntervalSince(startTime)
+        print("⏱️ ProteinChartView: Total chart generation took \(Int(duration * 1000))ms")
         print("🔍 ProteinChartView: Chart HTML generated successfully, length: \(html.count)")
         if html.count < 100 {
             print("⚠️ ProteinChartView: HTML seems too short: \(html)")
@@ -464,7 +471,7 @@ class ProteinChartGenerator {
 
         // Parse the raw CSV data to extract sample-level intensity values
         print("📊 ProteinChartGenerator: Parsing raw CSV data...")
-        let chartData = try parseRawDataForProtein(proteinId: proteinId, rawCSV: rawCSV, curtainData: curtainData)
+        let chartData = try await parseRawDataForProtein(proteinId: proteinId, rawCSV: rawCSV, curtainData: curtainData)
 
         print("📈 ProteinChartGenerator: Extracted data - Protein values count: \(chartData.proteinValues.count)")
         print("📈 ProteinChartGenerator: Condition data: \(chartData.conditionData.mapValues { $0.count })")
@@ -480,12 +487,12 @@ class ProteinChartGenerator {
         return generateChartHtmlTemplate(plotJSON: plotJSON, chartType: chartType)
     }
     
-    private func parseRawDataForProtein(proteinId: String, rawCSV: String, curtainData: CurtainData) throws -> ProteinChartData {
+    private func parseRawDataForProtein(proteinId: String, rawCSV: String, curtainData: CurtainData) async throws -> ProteinChartData {
         print("🔧 parseRawDataForProtein: Parsing CSV for protein \(proteinId)")
-        
+
         let primaryIdColumn = curtainData.rawForm.primaryIDs
         let samples = curtainData.rawForm.samples
-        let processedSettings = curtainData.getProcessedSettings()
+        let processedSettings = await curtainData.getProcessedSettingsAsync()
         let conditionOrder = processedSettings.conditionOrder
         _ = processedSettings.sampleMap
         
@@ -724,7 +731,8 @@ class ProteinChartGenerator {
                         color: "rgba(0,0,0,0.5)",  // Android semi-transparent black
                         width: 1,
                         dash: "dash"  // Android dashed line
-                    )
+                    ),
+                    isYAxisLine: nil
                 ))
             }
         }
@@ -751,7 +759,8 @@ class ProteinChartGenerator {
                     color: curtainData.settings.barChartConditionBracket.bracketColor,
                     width: Double(curtainData.settings.barChartConditionBracket.bracketWidth),
                     dash: nil
-                )
+                ),
+                isYAxisLine: nil
             ))
         }
 
@@ -1065,7 +1074,8 @@ class ProteinChartGenerator {
                 y1: yRange[1] * 1.1,  // Extend slightly above
                 xref: "x",
                 yref: "y",
-                line: PlotLine(color: "#cccccc", width: 1, dash: "dash")
+                line: PlotLine(color: "#cccccc", width: 1, dash: "dash"),
+                isYAxisLine: nil
             ))
         }
         
@@ -1193,7 +1203,7 @@ class ProteinChartGenerator {
             
             // Position divider after the last bar of current condition
             let dividerX = Double(currentRange.end) + 0.5
-            
+
             shapes.append(PlotShape(
                 type: "line",
                 x0: dividerX,
@@ -1202,7 +1212,8 @@ class ProteinChartGenerator {
                 y1: yRange[1],
                 xref: "x",
                 yref: "y",
-                line: PlotLine(color: "#cccccc", width: 1, dash: "dash")
+                line: PlotLine(color: "#cccccc", width: 1, dash: "dash"),
+                isYAxisLine: nil
             ))
         }
         
@@ -1348,7 +1359,8 @@ class ProteinChartGenerator {
                 y1: 1.0,  // Set to top of chart in paper coordinates
                 xref: shape.xref,
                 yref: shape.yref,
-                line: shape.line
+                line: shape.line,
+                isYAxisLine: shape.isYAxisLine
             )
         }
 
@@ -1741,7 +1753,8 @@ class ProteinChartGenerator {
             y1: bracketY,
             xref: "paper",
             yref: "paper",
-            line: bracketLine
+            line: bracketLine,
+            isYAxisLine: nil
         ))
 
         // Horizontal connector: from (leftMidX, bracketY) to (rightMidX, bracketY)
@@ -1753,7 +1766,8 @@ class ProteinChartGenerator {
             y1: bracketY,
             xref: "paper",
             yref: "paper",
-            line: bracketLine
+            line: bracketLine,
+            isYAxisLine: nil
         ))
 
         // Right vertical line: from (rightMidX, bracketY) to (rightMidX, baseY)
@@ -1765,7 +1779,8 @@ class ProteinChartGenerator {
             y1: baseY,
             xref: "paper",
             yref: "paper",
-            line: bracketLine
+            line: bracketLine,
+            isYAxisLine: nil
         ))
 
         print("✅ BarChartBracket: Created bracket connecting '\(leftCondition)' and '\(rightCondition)'")
@@ -1846,7 +1861,8 @@ class ProteinChartGenerator {
             y1: baseY,
             xref: "paper",
             yref: "paper",
-            line: bracketLine
+            line: bracketLine,
+            isYAxisLine: nil
         ))
 
         // Right condition horizontal line
@@ -1860,7 +1876,8 @@ class ProteinChartGenerator {
             y1: baseY,
             xref: "paper",
             yref: "paper",
-            line: bracketLine
+            line: bracketLine,
+            isYAxisLine: nil
         ))
 
         // Left vertical line: from (leftMidX, baseY) to (leftMidX, bracketY)
@@ -1872,7 +1889,8 @@ class ProteinChartGenerator {
             y1: bracketY,
             xref: "paper",
             yref: "paper",
-            line: bracketLine
+            line: bracketLine,
+            isYAxisLine: nil
         ))
 
         // Horizontal connector: from (leftMidX, bracketY) to (rightMidX, bracketY)
@@ -1884,7 +1902,8 @@ class ProteinChartGenerator {
             y1: bracketY,
             xref: "paper",
             yref: "paper",
-            line: bracketLine
+            line: bracketLine,
+            isYAxisLine: nil
         ))
 
         // Right vertical line: from (rightMidX, bracketY) to (rightMidX, baseY)
@@ -1896,7 +1915,8 @@ class ProteinChartGenerator {
             y1: baseY,
             xref: "paper",
             yref: "paper",
-            line: bracketLine
+            line: bracketLine,
+            isYAxisLine: nil
         ))
 
         print("✅ AverageBarChartBracket: Created bracket connecting '\(leftCondition)' and '\(rightCondition)'")
@@ -1915,115 +1935,31 @@ class ProteinChartGenerator {
     }
     
     private func generateChartHtmlTemplate(plotJSON: String, chartType: ProteinChartType) -> String {
-        return """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'none'; img-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
-            <title>\(chartType.displayName)</title>
-            <style>
-                body {
-                    margin: 0;
-                    padding: 0;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    background-color: var(--background-color, #ffffff);
-                    color: var(--text-color, #000000);
-                }
-                
-                #plot {
-                    width: 100%;
-                    height: 100vh;
-                }
-                
-                .loading {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    height: 100vh;
-                    font-size: 18px;
-                    color: var(--text-color, #666);
-                }
-                
-                .error {
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    height: 100vh;
-                    font-size: 16px;
-                    color: #d32f2f;
-                    text-align: center;
-                    padding: 20px;
-                }
-                
-                /* Dark mode support */
-                @media (prefers-color-scheme: dark) {
-                    body {
-                        --background-color: #1c1c1e;
-                        --text-color: #ffffff;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div id="loading" class="loading">Loading \(chartType.displayName.lowercased())...</div>
-            <div id="plot" style="display: none;"></div>
-            <div id="error" class="error" style="display: none;">
-                <div>
-                    <h3>Unable to load chart</h3>
-                    <p>Please check your data and try again.</p>
-                </div>
+        do {
+            let htmlTemplate = try WebTemplateLoader.shared.loadHTMLTemplate(named: "protein-chart")
+            var proteinChartJS = try WebTemplateLoader.shared.loadJavaScript(named: "protein-chart")
+
+            proteinChartJS = proteinChartJS.replacingOccurrences(of: "{{PLOT_DATA}}", with: plotJSON)
+            proteinChartJS = proteinChartJS.replacingOccurrences(of: "{{CHART_TITLE}}", with: chartType.displayName)
+
+            let substitutions: [String: String] = [
+                "CHART_TITLE": chartType.displayName,
+                "LOADING_MESSAGE": "Loading \(chartType.displayName.lowercased())...",
+                "PLOTLY_JS": getInlinePlotlyJS(),
+                "PROTEIN_CHART_JS": proteinChartJS
+            ]
+
+            return WebTemplateLoader.shared.render(template: htmlTemplate, substitutions: substitutions)
+        } catch {
+            return """
+            <!DOCTYPE html>
+            <html><body>
+            <div style="display: flex; justify-content: center; align-items: center; height: 100vh; text-align: center;">
+                <div><h3>Template Error</h3><p>Failed to load chart template: \(error.localizedDescription)</p></div>
             </div>
-
-            <script>
-            // Inline Plotly.js to avoid resource loading issues
-            \(getInlinePlotlyJS())
-            </script>
-            <script>
-                // Check if Plotly loaded successfully
-                if (typeof Plotly === 'undefined') {
-                    console.error('Plotly.js failed to load');
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('error').style.display = 'block';
-                } else {
-                    // Global configuration for Plotly
-                    Plotly.setPlotConfig({
-                        displayModeBar: true,
-                        displaylogo: false,
-                        modeBarButtonsToRemove: ['sendDataToCloud', 'editInChartStudio']
-                    });
-
-                    // Plot data from iOS
-                    const plotData = \(plotJSON);
-                
-                    // Initialize the plot
-                    document.addEventListener('DOMContentLoaded', function() {
-                        try {
-                            document.getElementById('loading').style.display = 'none';
-                            document.getElementById('error').style.display = 'none';
-                            document.getElementById('plot').style.display = 'block';
-                            
-                            Plotly.newPlot('plot', plotData.data, plotData.layout, plotData.config)
-                                .then(() => {
-                                    console.log('\(chartType.displayName) loaded successfully');
-                                })
-                                .catch(error => {
-                                    console.error('Error creating chart:', error);
-                                    document.getElementById('plot').style.display = 'none';
-                                    document.getElementById('error').style.display = 'flex';
-                                });
-                        } catch (error) {
-                            console.error('Error in initialization:', error);
-                            document.getElementById('loading').style.display = 'none';
-                            document.getElementById('error').style.display = 'flex';
-                        }
-                    });
-                }
-            </script>
-        </body>
-        </html>
-        """
+            </body></html>
+            """
+        }
     }
     
     private func getInlinePlotlyJS() -> String {
