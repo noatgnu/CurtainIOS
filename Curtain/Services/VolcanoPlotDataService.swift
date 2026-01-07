@@ -14,7 +14,6 @@ class VolcanoPlotDataService {
     // MARK: - Main Processing Method (Like Android processVolcanoData)
     
     func processVolcanoData(curtainData: CurtainData, settings: CurtainSettings) async -> VolcanoProcessResult {
-        print("🔍 VolcanoPlotDataService: Starting volcano data processing (like Android)")
         
         let diffForm = curtainData.differentialForm
         let fcColumn = diffForm.foldChange
@@ -23,7 +22,6 @@ class VolcanoPlotDataService {
         let geneColumn = diffForm.geneNames
         let comparisonColumn = diffForm.comparison
         
-        print("🔍 VolcanoPlotDataService: Using columns - FC: \(fcColumn), Sig: \(sigColumn), ID: \(idColumn), Gene: \(geneColumn)")
         
         var jsonData: [[String: Any]] = []
         var minFC = Double.greatestFiniteMagnitude
@@ -33,11 +31,9 @@ class VolcanoPlotDataService {
         // Get processed data (like Android)
         guard let processedData = curtainData.extraData?.data?.dataMap as? [String: Any],
               let differentialData = processedData["processedDifferentialData"] as? [[String: Any]] else {
-            print("❌ VolcanoPlotDataService: No processedDifferentialData found")
             return VolcanoProcessResult(jsonData: [], colorMap: [:], updatedVolcanoAxis: settings.volcanoAxis)
         }
         
-        print("🔍 VolcanoPlotDataService: Processing \(differentialData.count) differential data points")
         
         // Color assignment logic (like Android)
         var colorMap = settings.colorMap
@@ -49,13 +45,11 @@ class VolcanoPlotDataService {
         for row in differentialData {
             // CRITICAL: Use exactly the primary ID column specified by user, never guess
             guard !idColumn.isEmpty else {
-                print("❌ VolcanoPlotDataService: Primary ID column not specified by user")  
                 continue
             }
             
             guard let id = row[idColumn] as? String, !id.isEmpty else {
                 if row[idColumn] != nil {
-                    print("❌ VolcanoPlotDataService: Invalid primary ID in column '\(idColumn)': \(row[idColumn] ?? "nil") (type: \(type(of: row[idColumn])))")
                 }
                 continue
             }
@@ -98,7 +92,6 @@ class VolcanoPlotDataService {
                 // Try to get value from custom column
                 if let customValue = row[settings.customVolcanoTextCol] {
                     customText = String(describing: customValue)
-                    print("🔍 VolcanoPlotDataService: Using custom text column '\(settings.customVolcanoTextCol)': '\(customText ?? "nil")'")
                 }
             }
 
@@ -136,7 +129,6 @@ class VolcanoPlotDataService {
             ticklenY: settings.volcanoAxis.ticklenY
         )
         
-        print("🔍 VolcanoPlotDataService: Generated \(jsonData.count) plot points")
         
         return VolcanoProcessResult(
             jsonData: jsonData,

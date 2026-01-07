@@ -68,10 +68,8 @@ struct AnnotationEditOverlay: View {
                     ZStack {
                         // Native drag preview line
                         if isShowingDragPreview, let startPos = dragStartPosition, let currentPos = currentDragPosition {
-                            let _ = print("🎨 AnnotationEditOverlay: Drawing preview line from \(startPos) to \(currentPos)")
                             nativeDragPreviewLine(from: startPos, to: currentPos)
                         } else {
-                            let _ = print("⚠️ AnnotationEditOverlay: Not showing preview - isShowing: \(isShowingDragPreview), start: \(String(describing: dragStartPosition)), current: \(String(describing: currentDragPosition))")
                         }
 
                         // Visual indicators for annotations
@@ -294,7 +292,6 @@ struct AnnotationEditOverlay: View {
         } else {
             // Fallback
             let fallbackBounds = calculatePlotBounds(geometry: geometry)
-            print("🔧 Using fallback plot bounds: \(fallbackBounds)")
             return fallbackBounds
         }
     }

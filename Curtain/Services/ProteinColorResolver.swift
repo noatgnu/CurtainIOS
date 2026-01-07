@@ -77,7 +77,6 @@ class ProteinColorResolver {
            let selectionForId = selectedMap[proteinId] {
             for (selectionName, isSelected) in selectionForId {
                 if isSelected, let selectionColor = colorMap[selectionName] {
-                    print("🎨 ProteinColorResolver: Protein \(proteinId) in selection '\(selectionName)' -> \(selectionColor)")
                     return selectionColor
                 }
             }
@@ -91,7 +90,6 @@ class ProteinColorResolver {
         )
 
         let groupColor = colorMap[significanceGroup] ?? "#cccccc"
-        print("🎨 ProteinColorResolver: Protein \(proteinId) in significance group '\(significanceGroup)' -> \(groupColor)")
         return groupColor
     }
 

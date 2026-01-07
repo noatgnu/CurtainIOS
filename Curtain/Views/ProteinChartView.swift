@@ -167,7 +167,6 @@ struct ProteinChartView: View {
                                     .foregroundColor(.secondary)
                             }
                             .onAppear {
-                                print("🔍 ProteinChartView: Showing loading state")
                             }
                             Spacer()
                         }
@@ -190,14 +189,12 @@ struct ProteinChartView: View {
                                     .padding(.horizontal)
                             }
                             .onAppear {
-                                print("❌ ProteinChartView: Showing error state: \(error)")
                             }
                             Spacer()
                         }
                     } else {
                         ProteinChartWebView(htmlContent: chartHtml)
                             .onAppear {
-                                print("🔍 ProteinChartView: Showing chart content, HTML length: \(chartHtml.count)")
                             }
                             .gesture(
                                 // Add swipe gesture for navigation
@@ -291,23 +288,17 @@ struct ProteinChartView: View {
             BarChartConditionBracketSettingsView(curtainData: $curtainData)
         }
         .onAppear {
-            print("🔍 ProteinChartView: onAppear called for protein: \(currentProteinId)")
             // Only load chart if it hasn't been loaded yet (initial state)
             // This prevents unnecessary redraws when app comes back from background
             if isLoading && error == nil && chartHtml.isEmpty {
-                print("🔄 ProteinChartView: Loading chart for first time")
                 loadChart()
             } else {
-                print("⏭️ ProteinChartView: Skipping load - chart already loaded")
             }
         }
         .onChange(of: chartType) { oldValue, newValue in
-            print("🔍 ProteinChartView: chartType changed from \(oldValue) to \(newValue)")
             loadChart()
         }
         .onChange(of: currentIndex) { oldValue, newValue in
-            print("🔍 ProteinChartView: currentIndex changed from \(oldValue) to \(newValue)")
-            print("🔍 ProteinChartView: Now showing protein: \(currentProteinId)")
             loadChart()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("ProteinChartRefresh"))) { notification in
@@ -317,7 +308,6 @@ struct ProteinChartView: View {
     }
     
     private func loadChart() {
-        print("🔍 ProteinChartView: loadChart() called for protein: \(currentProteinId)")
         isLoading = true
         error = nil
         
@@ -329,10 +319,7 @@ struct ProteinChartView: View {
                     self.isLoading = false
                 }
             } catch {
-                print("❌ ProteinChartView: Error during chart generation: \(error)")
-                print("❌ ProteinChartView: Error type: \(type(of: error))")
                 if let chartError = error as? ChartGenerationError {
-                    print("❌ ProteinChartView: Chart generation error: \(chartError)")
                 }
                 await MainActor.run {
                     self.error = error.localizedDescription
@@ -379,34 +366,20 @@ struct ProteinChartView: View {
     
     private func generateChartHtml() async throws -> String {
         let startTime = Date()
-        print("🔍 ProteinChartView: Starting chart generation for protein: \(currentProteinId)")
-        print("🔍 ProteinChartView: Chart type: \(chartType)")
-        print("🔍 ProteinChartView: Raw data available: \(curtainData.raw != nil ? "YES" : "NO")")
         
         if let rawData = curtainData.raw {
-            print("🔍 ProteinChartView: Raw data length: \(rawData.count)")
             let lines = rawData.components(separatedBy: .newlines).filter { !$0.isEmpty }
-            print("🔍 ProteinChartView: Raw data lines: \(lines.count)")
             if !lines.isEmpty {
                 let header = lines[0].components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                print("🔍 ProteinChartView: Header columns: \(header)")
             }
         } else {
-            print("❌ ProteinChartView: No raw data available!")
         }
         
-        print("🔍 ProteinChartView: Raw form samples count: \(curtainData.rawForm.samples.count)")
-        print("🔍 ProteinChartView: Raw form samples: \(curtainData.rawForm.samples)")
-        print("🔍 ProteinChartView: Raw form primaryIDs: '\(curtainData.rawForm.primaryIDs)'")
 
         let processingStart = Date()
         let processedSettings = await curtainData.getProcessedSettingsAsync { progress in
         }
         let processingDuration = Date().timeIntervalSince(processingStart)
-        print("⏱️ ProteinChartView: Data processing took \(Int(processingDuration * 1000))ms")
-        print("🔍 ProteinChartView: Settings conditionOrder: \(processedSettings.conditionOrder)")
-        print("🔍 ProteinChartView: Settings sampleMap keys: \(processedSettings.sampleMap.keys.count)")
-        print("🔍 ProteinChartView: Settings sampleVisible count: \(processedSettings.sampleVisible.count)")
         
         let generator = ProteinChartGenerator()
         let html = try await generator.generateProteinChart(
@@ -417,10 +390,7 @@ struct ProteinChartView: View {
         )
         
         let duration = Date().timeIntervalSince(startTime)
-        print("⏱️ ProteinChartView: Total chart generation took \(Int(duration * 1000))ms")
-        print("🔍 ProteinChartView: Chart HTML generated successfully, length: \(html.count)")
         if html.count < 100 {
-            print("⚠️ ProteinChartView: HTML seems too short: \(html)")
         }
         return html
     }
@@ -444,12 +414,9 @@ struct ProteinChartWebView: UIViewRepresentable {
     }
     
     func updateUIView(_ webView: WKWebView, context: Context) {
-        print("🔍 ProteinChartWebView: updateUIView called with HTML content length: \(htmlContent.count)")
         if !htmlContent.isEmpty {
-            print("🔍 ProteinChartWebView: Loading HTML content into WebView")
             webView.loadHTMLString(htmlContent, baseURL: nil)
         } else {
-            print("❌ ProteinChartWebView: HTML content is empty!")
         }
     }
 }
@@ -459,25 +426,17 @@ struct ProteinChartWebView: UIViewRepresentable {
 class ProteinChartGenerator {
     
     func generateProteinChart(proteinId: String, curtainData: CurtainData, chartType: ProteinChartType, isDarkMode: Bool) async throws -> String {
-        print("🔍 ProteinChartGenerator: Generating \(chartType.rawValue) for protein: \(proteinId)")
 
         // Check if we have raw CSV data to parse
         guard let rawCSV = curtainData.raw, !rawCSV.isEmpty else {
-            print("❌ ProteinChartGenerator: No raw CSV data available - curtainData.raw is \(curtainData.raw == nil ? "nil" : "empty")")
-            print("❌ ProteinChartGenerator: Raw form samples: \(curtainData.rawForm.samples)")
-            print("❌ ProteinChartGenerator: This dataset only has differential data, not raw sample data")
             throw ChartGenerationError.noRawData
         }
 
         // Parse the raw CSV data to extract sample-level intensity values
-        print("📊 ProteinChartGenerator: Parsing raw CSV data...")
         let chartData = try await parseRawDataForProtein(proteinId: proteinId, rawCSV: rawCSV, curtainData: curtainData)
 
-        print("📈 ProteinChartGenerator: Extracted data - Protein values count: \(chartData.proteinValues.count)")
-        print("📈 ProteinChartGenerator: Condition data: \(chartData.conditionData.mapValues { $0.count })")
 
         guard !chartData.proteinValues.isEmpty else {
-            print("❌ ProteinChartGenerator: No protein values found for \(proteinId)")
             throw ChartGenerationError.invalidProteinData
         }
 
@@ -488,7 +447,6 @@ class ProteinChartGenerator {
     }
     
     private func parseRawDataForProtein(proteinId: String, rawCSV: String, curtainData: CurtainData) async throws -> ProteinChartData {
-        print("🔧 parseRawDataForProtein: Parsing CSV for protein \(proteinId)")
 
         let primaryIdColumn = curtainData.rawForm.primaryIDs
         let samples = curtainData.rawForm.samples
@@ -496,9 +454,6 @@ class ProteinChartGenerator {
         let conditionOrder = processedSettings.conditionOrder
         _ = processedSettings.sampleMap
         
-        print("🔧 parseRawDataForProtein: Primary ID column: \(primaryIdColumn)")
-        print("🔧 parseRawDataForProtein: Samples count: \(samples.count)")
-        print("🔧 parseRawDataForProtein: Conditions: \(conditionOrder)")
         
         // Parse tab-separated data into rows
         let lines = rawCSV.components(separatedBy: .newlines).filter { !$0.isEmpty }
@@ -508,18 +463,13 @@ class ProteinChartGenerator {
         
         // Get header row (tab-separated)
         let header = lines[0].components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        print("🔧 parseRawDataForProtein: Available header columns: \(header)")
         
         // Find column indices
         guard let primaryIdIndex = header.firstIndex(of: primaryIdColumn) else {
-            print("❌ parseRawDataForProtein: Primary ID column '\(primaryIdColumn)' not found in header")
-            print("❌ parseRawDataForProtein: Available columns: \(header)")
-            print("❌ parseRawDataForProtein: Looking for exact match of: '\(primaryIdColumn)'")
             
             // Try to find similar columns
             let similarColumns = header.filter { $0.localizedCaseInsensitiveContains("index") || $0.localizedCaseInsensitiveContains("id") }
             if !similarColumns.isEmpty {
-                print("❌ parseRawDataForProtein: Similar columns found: \(similarColumns)")
             }
             
             throw ChartGenerationError.invalidProteinData
@@ -533,7 +483,6 @@ class ProteinChartGenerator {
             }
         }
         
-        print("🔧 parseRawDataForProtein: Found \(sampleIndices.count) sample columns")
         
         // Find the protein row
         var proteinValues: [String: Double] = [:]
@@ -544,25 +493,20 @@ class ProteinChartGenerator {
             
             guard values.count > primaryIdIndex else { 
                 if lineIndex < 3 {
-                    print("🔧 parseRawDataForProtein: Line \(lineIndex + 1) has insufficient columns: expected > \(primaryIdIndex), got \(values.count)")
                 }
                 continue 
             }
             
             let rowProteinId = values[primaryIdIndex]
             if lineIndex < 3 {
-                print("🔧 parseRawDataForProtein: Line \(lineIndex + 1) protein ID: '\(rowProteinId)' (looking for '\(proteinId)')")
             }
             
             if rowProteinId == proteinId {
-                print("🔧 parseRawDataForProtein: Found protein row at line \(lineIndex + 1)")
                 proteinFound = true
                 
                 // Extract sample values
-                print("🔧 parseRawDataForProtein: Processing protein row with \(values.count) columns")
                 for (sample, index) in sampleIndices {
                     guard values.count > index else { 
-                        print("🔧 parseRawDataForProtein: Sample \(sample) index \(index) out of bounds for line with \(values.count) columns")
                         continue 
                     }
                     
@@ -570,36 +514,26 @@ class ProteinChartGenerator {
                     if let value = Double(valueString), value.isFinite {
                         proteinValues[sample] = value
                         if proteinValues.count <= 5 {
-                            print("🔧 parseRawDataForProtein: Sample '\(sample)': \(value)")
                         }
                     } else {
                         // Treat invalid values as null (don't add to proteinValues)
                         if proteinValues.count <= 5 {
-                            print("🔧 parseRawDataForProtein: Sample '\(sample)' has invalid/null value: '\(valueString)'")
                         }
                     }
                 }
                 
-                print("🔧 parseRawDataForProtein: Total extracted values: \(proteinValues.count) from \(sampleIndices.count) sample columns")
                 break
             }
         }
         
         if !proteinFound {
-            print("❌ parseRawDataForProtein: Protein '\(proteinId)' not found in CSV data!")
         }
         
-        print("🔧 parseRawDataForProtein: Extracted \(proteinValues.count) sample values")
-        print("🔧 parseRawDataForProtein: Sample names in proteinValues: \(Array(proteinValues.keys.sorted()))")
         
         // Organize by conditions, respecting sampleVisible filter
         var conditionData: [String: [Double]] = [:]
         var conditionSamples: [String: [String]] = [:]
         
-        print("🔧 parseRawDataForProtein: Starting condition grouping...")
-        print("🔧 parseRawDataForProtein: sampleMap structure: \(processedSettings.sampleMap)")
-        print("🔧 parseRawDataForProtein: sampleVisible count: \(processedSettings.sampleVisible.count)")
-        print("🔧 parseRawDataForProtein: proteinValues keys: \(Array(proteinValues.keys.prefix(5)))")
         
         for condition in conditionOrder {
             conditionData[condition] = []
@@ -614,23 +548,19 @@ class ProteinChartGenerator {
                 return nil
             }
             
-            print("🔧 parseRawDataForProtein: Condition '\(condition)' has \(samplesForCondition.count) samples: \(samplesForCondition)")
             
             for sample in samplesForCondition {
                 // IMPORTANT: Apply sampleVisible filter (like Android)
                 // Only include samples where sampleVisible[sampleName] == true
                 let isVisible = processedSettings.sampleVisible[sample] ?? true // Default to true if not specified
                 
-                print("🔧 parseRawDataForProtein: Sample '\(sample)' - visible: \(isVisible), hasValue: \(proteinValues[sample] != nil)")
                 
                 if isVisible, let value = proteinValues[sample] {
                     conditionData[condition]?.append(value)
                     conditionSamples[condition]?.append(sample)
-                    print("🔧 parseRawDataForProtein: Added sample '\(sample)' with value \(value) to condition '\(condition)'")
                 }
             }
             
-            print("🔧 parseRawDataForProtein: Condition '\(condition)' final count: \(conditionData[condition]?.count ?? 0)")
         }
         
         return ProteinChartData(
@@ -1369,7 +1299,6 @@ class ProteinChartGenerator {
         let plotWidth: Int?
         if let columnSize = curtainData.settings.columnSize["barChart"], columnSize > 0 {
             plotWidth = 50 + 20 + (columnSize * sampleCount)  // margins + (columnSize × sampleCount)
-            print("📏 BarChart: Applying column size \(columnSize), sampleCount: \(sampleCount), calculated width: \(plotWidth ?? 0)")
         } else {
             plotWidth = nil  // Auto width
         }
@@ -1452,7 +1381,6 @@ class ProteinChartGenerator {
         let plotWidth: Int?
         if let columnSize = curtainData.settings.columnSize["averageBarChart"], columnSize > 0 {
             plotWidth = 50 + 20 + (columnSize * conditionCount)  // margins + (columnSize × conditionCount)
-            print("📏 AverageBarChart: Applying column size \(columnSize), conditionCount: \(conditionCount), calculated width: \(plotWidth ?? 0)")
         } else {
             plotWidth = nil  // Auto width
         }
@@ -1528,7 +1456,6 @@ class ProteinChartGenerator {
         let plotWidth: Int?
         if let columnSize = curtainData.settings.columnSize["violinPlot"], columnSize > 0 {
             plotWidth = 50 + 20 + (columnSize * conditionCount)  // margins + (columnSize × conditionCount)
-            print("📏 ViolinPlot: Applying column size \(columnSize), conditionCount: \(conditionCount), calculated width: \(plotWidth ?? 0)")
         } else {
             plotWidth = nil  // Auto width
         }
@@ -1670,7 +1597,6 @@ class ProteinChartGenerator {
             let minY = chartLimitsDict["min"] ?? defaultRange[0]
             let maxY = chartLimitsDict["max"] ?? defaultRange[1]
 
-            print("✅ ProteinChartGenerator: Applied INDIVIDUAL Y-axis limits for protein '\(proteinId)', chart '\(settingsKey)': [\(minY), \(maxY)]")
             return [minY, maxY]
         }
 
@@ -1681,13 +1607,11 @@ class ProteinChartGenerator {
 
             // Only log if actually using custom limits (not just defaults)
             if globalLimits.min != nil || globalLimits.max != nil {
-                print("✅ ProteinChartGenerator: Applied GLOBAL Y-axis limits for '\(settingsKey)': [\(minY), \(maxY)]")
             }
             return [minY, maxY]
         }
 
         // PRIORITY 3: Use default calculated range (lowest priority)
-        print("🔍 ProteinChartGenerator: No Y-axis limits for '\(settingsKey)', using default range: \(defaultRange)")
         return defaultRange
     }
 
@@ -1709,14 +1633,12 @@ class ProteinChartGenerator {
 
         // Validate conditions are not empty
         guard !leftCondition.isEmpty, !rightCondition.isEmpty else {
-            print("⚠️ BarChartBracket: Left or right condition is empty, skipping bracket")
             return nil
         }
 
         // Get position ranges for both conditions
         guard let leftPos = conditionPositions[leftCondition],
               let rightPos = conditionPositions[rightCondition] else {
-            print("⚠️ BarChartBracket: Could not find positions for '\(leftCondition)' or '\(rightCondition)'")
             return nil
         }
 
@@ -1783,10 +1705,6 @@ class ProteinChartGenerator {
             isYAxisLine: nil
         ))
 
-        print("✅ BarChartBracket: Created bracket connecting '\(leftCondition)' and '\(rightCondition)'")
-        print("   Left condition: [\(leftPos.start)-\(leftPos.end)] -> paper [\(String(format: "%.3f", leftX0))-\(String(format: "%.3f", leftX1))], mid: \(String(format: "%.3f", leftMidX))")
-        print("   Right condition: [\(rightPos.start)-\(rightPos.end)] -> paper [\(String(format: "%.3f", rightX0))-\(String(format: "%.3f", rightX1))], mid: \(String(format: "%.3f", rightMidX))")
-        print("   Bracket Y: \(baseY) to \(bracketY)")
 
         return bracketShapes
     }
@@ -1809,19 +1727,16 @@ class ProteinChartGenerator {
 
         // Validate conditions are not empty
         guard !leftCondition.isEmpty, !rightCondition.isEmpty else {
-            print("⚠️ AverageBarChartBracket: Left or right condition is empty, skipping bracket")
             return nil
         }
 
         // Get indices for both conditions
         guard let leftIndex = conditionIndices[leftCondition],
               let rightIndex = conditionIndices[rightCondition] else {
-            print("⚠️ AverageBarChartBracket: Could not find indices for '\(leftCondition)' or '\(rightCondition)'")
             return nil
         }
 
         guard totalConditions > 0 else {
-            print("⚠️ AverageBarChartBracket: Total conditions is 0")
             return nil
         }
 
@@ -1919,10 +1834,6 @@ class ProteinChartGenerator {
             isYAxisLine: nil
         ))
 
-        print("✅ AverageBarChartBracket: Created bracket connecting '\(leftCondition)' and '\(rightCondition)'")
-        print("   Left condition: index \(leftIndex)/\(totalConditions) -> paper \(String(format: "%.3f", leftMidX))")
-        print("   Right condition: index \(rightIndex)/\(totalConditions) -> paper \(String(format: "%.3f", rightMidX))")
-        print("   Bracket Y: \(baseY) to \(bracketY)")
 
         return bracketShapes
     }

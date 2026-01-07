@@ -412,11 +412,9 @@ struct PlotGenerationContext {
         // Use processed differential data (like Android) instead of raw proteomicsData
         guard let processedData = data.extraData?.data?.dataMap as? [String: Any],
               let differentialData = processedData["processedDifferentialData"] as? [[String: Any]] else {
-            print("❌ PlotGenerationContext: No processedDifferentialData found, falling back to proteomicsData")
             return convertFromProteomicsData()
         }
         
-        print("🔍 PlotGenerationContext: convertToProteinPoints using processedDifferentialData with \(differentialData.count) entries")
         
         // Extract values using user-specified field mapping from differential form
         let diffForm = data.differentialForm
@@ -425,7 +423,6 @@ struct PlotGenerationContext {
         let idColumn = diffForm.primaryIDs
         let geneColumn = diffForm.geneNames
         
-        print("🔍 PlotGenerationContext: DifferentialForm configuration - FC: '\(fcColumn)', Sig: '\(sigColumn)', ID: '\(idColumn)', Gene: '\(geneColumn)'")
         
         var processedCount = 0
         let proteins = differentialData.compactMap { proteinData -> ProteinPoint? in
@@ -433,8 +430,6 @@ struct PlotGenerationContext {
             // CRITICAL: User must specify these columns, don't use defaults that might not exist
             guard !fcColumn.isEmpty && !sigColumn.isEmpty && !idColumn.isEmpty else {
                 if processedCount < 3 {
-                    print("🔍 PlotGenerationContext: Skipping protein \\(key) - required columns not specified by user")
-                    print("🔍 PlotGenerationContext: FC=\\(fcColumn), Sig=\\(sigColumn), ID=\\(idColumn)")
                 }
                 return nil
             }
@@ -444,11 +439,6 @@ struct PlotGenerationContext {
             
             // Debug first few proteins to understand data structure
             if processedCount < 3 {
-                print("🔍 PlotGenerationContext: Protein data keys: \(proteinData.keys.sorted())")
-                print("🔍 PlotGenerationContext: Protein foldChange: \(proteinData[fcColumn] ?? "nil")")
-                print("🔍 PlotGenerationContext: Protein pValue: \(proteinData[sigColumn] ?? "nil")")
-                print("🔍 PlotGenerationContext: Protein geneNames: \(proteinData[geneColumn] ?? "nil")")
-                print("🔍 PlotGenerationContext: Protein primaryID: \(proteinData[idColumn] ?? "nil")")
             }
             
             // Validate significance value - handle both raw p-values and transformed (-log10) values
@@ -463,7 +453,6 @@ struct PlotGenerationContext {
             
             guard isValidSignificance else { 
                 if processedCount < 3 {
-                    print("🔍 PlotGenerationContext: Protein invalid pValue: \(pValue) (transformSignificant: \(data.differentialForm.transformSignificant))")
                 }
                 return nil 
             }
@@ -490,7 +479,6 @@ struct PlotGenerationContext {
             let primaryID = proteinData[idColumn] as? String ?? ""
             guard !primaryID.isEmpty else {
                 if processedCount < 3 {
-                    print("🔍 PlotGenerationContext: Skipping protein - no primary ID in column '\(idColumn)'")
                 }
                 return nil
             }
@@ -524,18 +512,15 @@ struct PlotGenerationContext {
             )
         }
         
-        print("🔍 PlotGenerationContext: Successfully converted \(proteins.count) proteins from \(differentialData.count) total")
         return proteins
     }
     
     // Fallback method using proteomicsData (original implementation)
     private func convertFromProteomicsData() -> [ProteinPoint] {
-        print("🔍 PlotGenerationContext: convertFromProteomicsData called with \(data.proteomicsData.count) proteins")
         
         var processedCount = 0
         let proteins = data.proteomicsData.compactMap { key, value -> ProteinPoint? in
             guard let proteinData = value as? [String: Any] else { 
-                print("🔍 PlotGenerationContext: Protein \(key) data is not dictionary: \(type(of: value))")
                 return nil 
             }
             
@@ -549,8 +534,6 @@ struct PlotGenerationContext {
             // CRITICAL: User must specify these columns, don't use defaults that might not exist
             guard !fcColumn.isEmpty && !sigColumn.isEmpty && !idColumn.isEmpty else {
                 if processedCount < 3 {
-                    print("🔍 PlotGenerationContext: Skipping protein \\(key) - required columns not specified by user")
-                    print("🔍 PlotGenerationContext: FC=\\(fcColumn), Sig=\\(sigColumn), ID=\\(idColumn)")
                 }
                 return nil
             }
@@ -560,11 +543,6 @@ struct PlotGenerationContext {
             
             // Debug first few proteins to understand data structure
             if processedCount < 3 {
-                print("🔍 PlotGenerationContext: Protein data keys: \(proteinData.keys.sorted())")
-                print("🔍 PlotGenerationContext: Protein foldChange: \(proteinData[fcColumn] ?? "nil")")
-                print("🔍 PlotGenerationContext: Protein pValue: \(proteinData[sigColumn] ?? "nil")")
-                print("🔍 PlotGenerationContext: Protein geneNames: \(proteinData[geneColumn] ?? "nil")")
-                print("🔍 PlotGenerationContext: Protein primaryID: \(proteinData[idColumn] ?? "nil")")
             }
             
             // Validate significance value - handle both raw p-values and transformed (-log10) values
@@ -579,7 +557,6 @@ struct PlotGenerationContext {
             
             guard isValidSignificance else { 
                 if processedCount < 3 {
-                    print("🔍 PlotGenerationContext: Protein invalid pValue: \(pValue) (transformSignificant: \(data.differentialForm.transformSignificant))")
                 }
                 return nil 
             }
@@ -606,7 +583,6 @@ struct PlotGenerationContext {
             let primaryID = proteinData[idColumn] as? String ?? ""
             guard !primaryID.isEmpty else {
                 if processedCount < 3 {
-                    print("🔍 PlotGenerationContext: Skipping protein \(key) - no primary ID in column '\(idColumn)'")
                 }
                 return nil
             }
@@ -640,7 +616,6 @@ struct PlotGenerationContext {
             )
         }
         
-        print("🔍 PlotGenerationContext: Successfully converted \(proteins.count) proteins from \(data.proteomicsData.count) total")
         return proteins
     }
 }

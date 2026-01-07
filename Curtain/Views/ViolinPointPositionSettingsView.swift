@@ -172,7 +172,6 @@ struct ViolinPointPositionSettingsView: View {
 
     private func loadSettings() {
         pointPosition = curtainData.settings.violinPointPos
-        print("📋 ViolinPointPosition: Loaded position: \(pointPosition)")
     }
 
     private func saveChanges() {
@@ -264,7 +263,6 @@ struct ViolinPointPositionSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ ViolinPointPosition: Saved position: \(pointPosition)")
     }
 
     private func resetToDefault() {

@@ -161,7 +161,6 @@ struct PlotExportButton: View {
         height: Int? = nil
     ) {
         guard let plotlyWebView = plotlyWebView else {
-            print("❌ PlotExportButton: PlotlyWebView not available")
             return
         }
         
@@ -169,7 +168,6 @@ struct PlotExportButton: View {
         let finalWidth = width ?? dimensions.width
         let finalHeight = height ?? dimensions.height
         
-        print("📤 PlotExportButton: Exporting \(format.rawValue.uppercased()) at \(finalWidth)x\(finalHeight)")
         
         switch format {
         case .png:

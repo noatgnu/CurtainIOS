@@ -39,8 +39,6 @@ struct AnnotationCoordinateCalculator {
     ) -> [AnnotationEditCandidate] {
         var candidates: [AnnotationEditCandidate] = []
 
-        print("🎯 Tap point in overlay coordinates: (\(tapPoint.x), \(tapPoint.y))")
-        print("🎯 Using actual view size: \(viewSize)")
 
         // Use the actual view dimensions from the overlay GeometryReader
         let plotWidth = viewSize.width
@@ -83,16 +81,10 @@ struct AnnotationCoordinateCalculator {
             let viewTextX = viewArrowX + ax
             let viewTextY = viewArrowY + ay
 
-            print("🔍 ANNOTATION CALCULATION DEBUG for '\(title)':")
-            print("   Plot coordinates (x,y): (\(arrowX), \(arrowY))")
-            print("   View arrow position: (\(viewArrowX), \(viewArrowY))")
-            print("   Offsets (ax,ay): (\(ax), \(ay))")
-            print("   Calculated text position: (\(viewTextX), \(viewTextY))")
 
             // Calculate distance from tap point in view coordinates
             let distance = sqrt(pow(Double(tapPoint.x) - viewTextX, 2) + pow(Double(tapPoint.y) - viewTextY, 2))
 
-            print("🎯 Annotation '\(title)': plot(\(arrowX), \(arrowY)) -> view(\(viewArrowX), \(viewArrowY)) + offset(\(ax), \(ay)) = text(\(viewTextX), \(viewTextY)) | tap(\(tapPoint.x), \(tapPoint.y)) | distance: \(distance)")
 
             if distance <= maxDistance {
                 let candidate = AnnotationEditCandidate(
@@ -107,7 +99,6 @@ struct AnnotationCoordinateCalculator {
             }
         }
 
-        print("🎯 Found \(candidates.count) annotation candidates within \(maxDistance)px of tap point (\(tapPoint.x), \(tapPoint.y))")
 
         // Sort by distance (closest first)
         return candidates.sorted { $0.distance < $1.distance }
@@ -124,12 +115,9 @@ struct AnnotationCoordinateCalculator {
         jsCoordinates: [[String: Any]]?,
         jsDimensions: [String: Any]?
     ) -> CGPoint? {
-        print("🔍 getArrowPositionForCandidate called for \(candidate.title)")
-        print("🔍 Candidate plot position: (\(candidate.arrowPosition.x), \(candidate.arrowPosition.y))")
 
         // Try to use JavaScript-provided coordinates first
         if let jsCoordinates = jsCoordinates {
-            print("🔍 Searching JavaScript coordinates for candidate: key='\(candidate.key)' title='\(candidate.title)'")
             for coord in jsCoordinates {
                 // Try matching by plot coordinates first (most reliable)
                 if let plotX = coord["plotX"] as? Double,
@@ -138,7 +126,6 @@ struct AnnotationCoordinateCalculator {
                    abs(plotY - candidate.arrowPosition.y) < 0.0001,
                    let screenX = coord["screenX"] as? Double,
                    let screenY = coord["screenY"] as? Double {
-                    print("🎯 Using JavaScript coordinates for \(candidate.title) by plot coordinates: (\(screenX), \(screenY))")
                     return CGPoint(x: screenX, y: screenY)
                 }
 
@@ -147,14 +134,12 @@ struct AnnotationCoordinateCalculator {
                    (id == candidate.key || id == candidate.title),
                    let screenX = coord["screenX"] as? Double,
                    let screenY = coord["screenY"] as? Double {
-                    print("🎯 Using JavaScript coordinates for \(candidate.title) by ID: (\(screenX), \(screenY))")
                     return CGPoint(x: screenX, y: screenY)
                 }
             }
         }
 
         // Fallback to calculated coordinates if JavaScript data not available
-        print("⚠️ No JavaScript coordinates found for \(candidate.title), using fallback calculation")
 
         let plotWidth = Double(viewSize.width)
         let plotHeight = Double(viewSize.height)
@@ -171,14 +156,12 @@ struct AnnotationCoordinateCalculator {
             marginRight = plotWidth - plotRight
             marginTop = plotTop
             marginBottom = plotHeight - plotBottom
-            print("📏 Using JavaScript plot dimensions: L:\(marginLeft), R:\(marginRight), T:\(marginTop), B:\(marginBottom)")
         } else {
             // Fallback to estimated margins
             marginLeft = 70.0    // Y-axis labels and title
             marginRight = 40.0   // Plot area padding
             marginTop = 60.0     // Plot title
             marginBottom = 120.0 // X-axis labels, title, and horizontal legend
-            print("⚠️ Using estimated margins: L:\(marginLeft), R:\(marginRight), T:\(marginTop), B:\(marginBottom)")
         }
 
         let plotAreaWidth = plotWidth - marginLeft - marginRight
@@ -212,7 +195,6 @@ struct AnnotationCoordinateCalculator {
         guard let dataSection = annotationData["data"] as? [String: Any],
               let ax = dataSection["ax"] as? Double,
               let ay = dataSection["ay"] as? Double else {
-            print("❌ Could not get ax/ay offsets for candidate")
             return arrowPosition // Fallback to arrow position
         }
 
@@ -222,10 +204,6 @@ struct AnnotationCoordinateCalculator {
             y: arrowPosition.y + ay
         )
 
-        print("🔍 DRAG START POSITION DEBUG:")
-        print("   Arrow Position: (\(arrowPosition.x), \(arrowPosition.y))")
-        print("   Current Offsets (ax, ay): (\(ax), \(ay))")
-        print("   Calculated Start Position: (\(currentTextPosition.x), \(currentTextPosition.y))")
 
         return currentTextPosition
     }

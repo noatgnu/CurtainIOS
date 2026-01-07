@@ -115,7 +115,6 @@ struct VolcanoTextColumnSettingsView: View {
 
     private func loadCurrentSettings() {
         selectedColumn = curtainData.settings.customVolcanoTextCol
-        print("📋 VolcanoTextColumnSettings: Loaded current column: '\(selectedColumn)'")
     }
 
     private func loadAvailableColumns() {
@@ -128,11 +127,9 @@ struct VolcanoTextColumnSettingsView: View {
                     .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
                     .sorted()
-                print("📋 VolcanoTextColumnSettings: Loaded \(availableColumns.count) columns")
                 return
             }
         }
-        print("⚠️ VolcanoTextColumnSettings: No raw data available for column extraction")
         availableColumns = []
     }
 
@@ -232,7 +229,6 @@ struct VolcanoTextColumnSettingsView: View {
             userInfo: ["reason": "customTextColumnUpdate"]
         )
 
-        print("✅ VolcanoTextColumnSettings: Updated custom text column to: '\(selectedColumn.isEmpty ? "default" : selectedColumn)'")
     }
 }
 

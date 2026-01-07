@@ -89,7 +89,6 @@ class CurtainDataProcessor {
         )
 
         let duration = Date().timeIntervalSince(startTime)
-        print("⏱️ CurtainDataProcessor.processRawData (sync): \(Int(duration * 1000))ms for \(samples.count) samples")
 
         return updatedSettings
     }
@@ -376,7 +375,6 @@ actor DataProcessorActor {
         )
 
         let duration = Date().timeIntervalSince(startTime)
-        print("⏱️ DataProcessorActor.processRawData (async): \(Int(duration * 1000))ms for \(samples.count) samples")
 
         progressCallback?(1.0)
         return merged

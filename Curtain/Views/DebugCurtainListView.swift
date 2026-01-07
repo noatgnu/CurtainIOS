@@ -33,7 +33,6 @@ struct DebugCurtainListView: View {
                     HStack {
                         Spacer()
                         Button(action: {
-                            print("Debug: + button tapped")
                             tapCount += 1
                             showingAddSheet = true
                         }) {
@@ -72,14 +71,12 @@ struct DebugCurtainListView: View {
                         }
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Button("Add") {
-                                print("Debug: Add button in sheet tapped")
                                 showingAddSheet = false
                             }
                         }
                     }
                 }
                 .onAppear {
-                    print("Debug: Sheet appeared")
                 }
             }
         }

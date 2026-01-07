@@ -152,7 +152,6 @@ struct GlobalYAxisLimitsSettingsView: View {
             }
         }
 
-        print("📋 GlobalYAxisLimitsSettings: Loaded current settings")
     }
 
     private func resetAllToDefaults() {
@@ -285,10 +284,6 @@ struct GlobalYAxisLimitsSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ GlobalYAxisLimitsSettings: Updated global Y-axis limits")
-        print("   - Bar Chart: min=\(barChartLimits.min?.description ?? "auto"), max=\(barChartLimits.max?.description ?? "auto")")
-        print("   - Average Bar Chart: min=\(avgBarChartLimits.min?.description ?? "auto"), max=\(avgBarChartLimits.max?.description ?? "auto")")
-        print("   - Violin Plot: min=\(violinPlotLimits.min?.description ?? "auto"), max=\(violinPlotLimits.max?.description ?? "auto")")
     }
 }
 

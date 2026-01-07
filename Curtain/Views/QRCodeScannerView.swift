@@ -187,7 +187,6 @@ class QRScannerViewController: UIViewController {
         captureSession = AVCaptureSession()
         
         guard let videoCaptureDevice = AVCaptureDevice.default(for: .video) else {
-            print("Failed to get video capture device")
             return
         }
         
@@ -196,14 +195,12 @@ class QRScannerViewController: UIViewController {
         do {
             videoInput = try AVCaptureDeviceInput(device: videoCaptureDevice)
         } catch {
-            print("Failed to create video input: \(error)")
             return
         }
         
         if captureSession.canAddInput(videoInput) {
             captureSession.addInput(videoInput)
         } else {
-            print("Could not add video input to capture session")
             return
         }
         
@@ -215,7 +212,6 @@ class QRScannerViewController: UIViewController {
             metadataOutput.setMetadataObjectsDelegate(self, queue: DispatchQueue.main)
             metadataOutput.metadataObjectTypes = [.qr]
         } else {
-            print("Could not add metadata output to capture session")
             return
         }
         
@@ -286,6 +282,5 @@ extension QRScannerViewController: AVCaptureMetadataOutputObjectsDelegate {
 
 #Preview {
     QRCodeScannerView { code in
-        print("Scanned code: \(code)")
     }
 }

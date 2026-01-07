@@ -171,7 +171,6 @@ struct MarkerSizeMapSettingsView: View {
             }
         }
 
-        print("📋 MarkerSizeMapSettings: Loaded \(availableGroups.count) groups")
     }
 
     private func saveChanges() {
@@ -275,7 +274,6 @@ struct MarkerSizeMapSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ MarkerSizeMapSettings: Saved \(updatedMarkerSizeMap.count) custom marker sizes")
     }
 
     private func clearAllCustomSizes() {

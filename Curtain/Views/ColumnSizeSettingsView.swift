@@ -222,7 +222,6 @@ struct ColumnSizeSettingsView: View {
             violinPlotColumnSize = "0"
         }
 
-        print("📋 ColumnSizeSettings: Loaded - barChart: \(barChartColumnSize), avgBarChart: \(averageBarChartColumnSize), violin: \(violinPlotColumnSize)")
     }
 
     private func saveChanges() {
@@ -335,7 +334,6 @@ struct ColumnSizeSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ ColumnSizeSettings: Saved - barChart: \(updatedColumnSize["barChart"] ?? 0), avgBarChart: \(updatedColumnSize["averageBarChart"] ?? 0), violin: \(updatedColumnSize["violinPlot"] ?? 0)")
     }
 
     private func resetToDefaults() {

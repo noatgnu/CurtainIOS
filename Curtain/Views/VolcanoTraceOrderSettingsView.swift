@@ -187,16 +187,13 @@ struct VolcanoTraceOrderSettingsView: View {
         let allTraces: [String]
         if let renderedTraces = PlotlyCoordinator.sharedCoordinator?.renderedTraceNames {
             allTraces = renderedTraces
-            print("📋 VolcanoTraceOrder: Using \(allTraces.count) traces from actual rendered plot")
         } else {
             // Fallback to colorMap if coordinator data not available yet
             allTraces = Array(curtainData.settings.colorMap.keys).sorted()
-            print("⚠️ VolcanoTraceOrder: No rendered trace data available, using colorMap keys (\(allTraces.count) traces)")
         }
 
         // Initialize with current custom order if it exists, matching Angular behavior
         if !curtainData.settings.volcanoTraceOrder.isEmpty {
-            print("📋 VolcanoTraceOrder: Using saved custom order: \(curtainData.settings.volcanoTraceOrder)")
 
             // Start with the configured order
             traceOrder = curtainData.settings.volcanoTraceOrder
@@ -205,7 +202,6 @@ struct VolcanoTraceOrderSettingsView: View {
             for traceName in allTraces {
                 if !traceOrder.contains(traceName) {
                     traceOrder.append(traceName)
-                    print("   + Added new trace '\(traceName)' to end of order")
                 }
             }
 
@@ -213,22 +209,16 @@ struct VolcanoTraceOrderSettingsView: View {
             let beforeCount = traceOrder.count
             traceOrder = traceOrder.filter { allTraces.contains($0) }
             if traceOrder.count < beforeCount {
-                print("   - Removed \(beforeCount - traceOrder.count) obsolete traces")
             }
         } else {
             // No custom order - use the CURRENT ACTUAL render order from the plot
             // (allTraces is already renderedTraceNames which has the correct order)
             traceOrder = allTraces
-            print("📋 VolcanoTraceOrder: No custom order found, showing current render order: \(traceOrder)")
         }
 
-        print("📋 VolcanoTraceOrder: Final loaded order (\(traceOrder.count) traces): \(traceOrder)")
-        print("💡 VolcanoTraceOrder: This is the CURRENT render order - modify to change plot rendering")
     }
 
     private func saveChanges() {
-        print("💾 VolcanoTraceOrder: Saving trace order: \(traceOrder)")
-        print("💾 VolcanoTraceOrder: This order will be used for rendering (top = rendered first/behind, bottom = rendered last/on top)")
 
         // Create updated settings with the new trace order
         let updatedSettings = CurtainSettings(
@@ -318,18 +308,15 @@ struct VolcanoTraceOrderSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ VolcanoTraceOrder: Saved trace order: \(traceOrder)")
     }
 
     private func resetToDefaultOrder() {
         // Reset to the default render order (from the current plot)
         if let renderedTraces = PlotlyCoordinator.sharedCoordinator?.renderedTraceNames {
             traceOrder = renderedTraces
-            print("🔄 VolcanoTraceOrder: Reset to default render order: \(traceOrder)")
         } else {
             // Fallback to alphabetical if no render data available
             traceOrder = Array(curtainData.settings.colorMap.keys).sorted()
-            print("🔄 VolcanoTraceOrder: Reset to alphabetical order (no render data): \(traceOrder)")
         }
     }
 }

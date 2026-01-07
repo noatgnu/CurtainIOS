@@ -48,30 +48,24 @@ struct DataFrame {
     // MARK: - Static Factory Methods
     
     static func fromTabSeparated(_ content: String) -> DataFrame {
-        print("🔍 DataFrame: Processing tab-separated data (\(content.count) characters)")
         
         guard !content.isEmpty else {
-            print("🔍 DataFrame: Empty content, returning empty DataFrame")
             return DataFrame()
         }
         
         let rows = content.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: .newlines)
         guard !rows.isEmpty else {
-            print("🔍 DataFrame: No rows found, returning empty DataFrame")
             return DataFrame()
         }
         
         // Parse header row
         let header = rows[0].components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespaces) }
-        print("🔍 DataFrame: Header has \(header.count) columns: \(header.prefix(3))")
         
         // Handle duplicate column names (like Android)
         let uniqueHeader = handleDuplicateColumnNames(header)
-        print("🔍 DataFrame: Unique header: \(uniqueHeader.prefix(3))")
         
         // Parse data rows
         let dataRows = Array(rows.dropFirst())
-        print("🔍 DataFrame: Processing \(dataRows.count) data rows")
         
         var columns: [String: [String]] = [:]
         
@@ -91,11 +85,9 @@ struct DataFrame {
             
             // Debug first few rows
             if rowIndex < 3 {
-                print("🔍 DataFrame: Row \(rowIndex): \(cells.prefix(3))")
             }
         }
         
-        print("🔍 DataFrame: Created DataFrame with \(uniqueHeader.count) columns, \(dataRows.count) rows")
         return DataFrame(columns: columns, columnOrder: uniqueHeader)
     }
     

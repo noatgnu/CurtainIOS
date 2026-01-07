@@ -325,7 +325,6 @@ struct AnnotationEditModal: View {
 
         guard var annotationData = updatedTextAnnotation[candidate.key] as? [String: Any],
               var dataSection = annotationData["data"] as? [String: Any] else {
-            print("❌ Failed to get annotation data for key: \(candidate.key)")
             return
         }
 
@@ -336,7 +335,6 @@ struct AnnotationEditModal: View {
             annotationData["data"] = dataSection
             updatedTextAnnotation[candidate.key] = annotationData
 
-            print("🎯 Updated annotation text: '\(editedText)' for key: \(candidate.key)")
         } else if editAction == .moveText {
             // Update the text position offsets
             dataSection["ax"] = textOffsetX
@@ -344,7 +342,6 @@ struct AnnotationEditModal: View {
             annotationData["data"] = dataSection
             updatedTextAnnotation[candidate.key] = annotationData
 
-            print("🎯 Updated annotation position: '\(candidate.key)' to offset (\(textOffsetX), \(textOffsetY))")
         }
 
         // Update the CurtainData with new textAnnotation
@@ -433,8 +430,6 @@ struct AnnotationEditModal: View {
             permanent: curtainData.permanent
         )
 
-        print("✅ Updated CurtainData with modified annotation")
-        print("📊 Total annotations: \(updatedTextAnnotation.count)")
 
         // Trigger plot refresh
         onAnnotationUpdated()

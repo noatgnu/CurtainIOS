@@ -44,7 +44,6 @@ class DownloadClient: @unchecked Sendable {
             throw DownloadError.invalidURL
         }
         
-        print("DownloadClient: Starting download from: \(url)")
         progressCallback?(0, 0.0)
         
         let destinationURL = URL(fileURLWithPath: destinationPath)
@@ -117,7 +116,6 @@ class DownloadClient: @unchecked Sendable {
             throw DownloadError.invalidURL
         }
         
-        print("DownloadClient: Starting streaming download from: \(url)")
         progressCallback?(0, 0.0)
         
         let destinationURL = URL(fileURLWithPath: destinationPath)

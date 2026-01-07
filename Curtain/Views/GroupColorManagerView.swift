@@ -312,7 +312,6 @@ struct GroupColorManagerView: View {
         )
         
         curtainData = updatedCurtainData
-        print("✅ GroupColorManager: Updated colorMap with \(newColorMap.count) groups (volcano plot colors and condition colors)")
     }
 }
 

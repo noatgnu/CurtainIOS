@@ -179,7 +179,6 @@ struct ExtraDataStorageSettingsView: View {
 
     private func loadSettings() {
         extraDataItems = curtainData.settings.extraData
-        print("📋 ExtraDataStorage: Loaded \(extraDataItems.count) items")
     }
 
     private func saveChanges() {
@@ -271,7 +270,6 @@ struct ExtraDataStorageSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ ExtraDataStorage: Saved \(extraDataItems.count) items")
     }
 
     private func deleteItem(at index: Int) {

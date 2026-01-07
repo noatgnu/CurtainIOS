@@ -204,9 +204,7 @@ struct IndividualYAxisLimitsSettingsView: View {
                 }
             }
 
-            print("📋 IndividualYAxisLimitsSettings: Loaded individual limits for protein '\(proteinId)'")
         } else {
-            print("📋 IndividualYAxisLimitsSettings: No individual limits set for protein '\(proteinId)'")
         }
     }
 
@@ -379,7 +377,6 @@ struct IndividualYAxisLimitsSettingsView: View {
             userInfo: ["reason": "individualYAxisLimitsUpdate", "proteinId": proteinId]
         )
 
-        print("✅ IndividualYAxisLimitsSettings: Updated individual Y-axis limits for protein '\(proteinId)'")
     }
 }
 

@@ -209,7 +209,6 @@ struct VolcanoYAxisPositionSettingsView: View {
             showMiddle = true
         }
 
-        print("📋 VolcanoYAxisPosition: Loaded positions: \(positions)")
     }
 
     private func currentPositionText() -> String {
@@ -331,7 +330,6 @@ struct VolcanoYAxisPositionSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ VolcanoYAxisPosition: Saved positions: \(positions)")
     }
 
     private func resetToDefault() {

@@ -60,7 +60,6 @@ class DataFilterListViewModel {
     
     /// Sync data filter lists from the remote API with detailed progress tracking
     func syncDataFilterLists(hostname: String) async {
-        print("🔄 DataFilterListViewModel: Starting sync for hostname: \(hostname)")
         
         isLoading = true
         isSyncing = true
@@ -69,9 +68,7 @@ class DataFilterListViewModel {
         
         do {
             // First get all remote categories (like Android)
-            print("🔄 DataFilterListViewModel: Fetching categories from \(hostname)")
             let remoteCategories = try await repository.getAllCategories(hostname: hostname)
-            print("🔄 DataFilterListViewModel: Found \(remoteCategories.count) categories: \(remoteCategories)")
             syncTotal = remoteCategories.count
             
             var processedCount = 0
@@ -80,40 +77,34 @@ class DataFilterListViewModel {
             for category in remoteCategories {
                 currentSyncCategory = category
                 syncProgress = processedCount
-                print("🔄 DataFilterListViewModel: Processing category: \(category)")
                 
                 // Fetch filter lists for this category (like Android)
                 let categoryFilterLists = try await repository.fetchDataFilterListsByCategory(
                     hostname: hostname,
                     category: category
                 )
-                print("🔄 DataFilterListViewModel: Found \(categoryFilterLists.count) filter lists for category: \(category)")
                 
                 allFilterLists.append(contentsOf: categoryFilterLists)
                 processedCount += 1
                 syncProgress = processedCount
             }
             
-            print("🔄 DataFilterListViewModel: Total filter lists collected: \(allFilterLists.count)")
             
             // Convert to entities and save to local database (like Android)
             let entityFilterLists = allFilterLists.map { (category, filterList) in
                 repository.mapApiToEntity(filterList, category: category)
             }
             
-            print("🔄 DataFilterListViewModel: Saving \(entityFilterLists.count) entities to database")
             try repository.saveDataFilterLists(entityFilterLists)
             
             // Refresh local data
             loadDataFilterLists()
-            print("🔄 DataFilterListViewModel: Sync completed successfully. Local lists count: \(filterLists.count)")
             
             isSyncing = false
             isLoading = false
             currentSyncCategory = nil
             
         } catch {
-            print("❌ DataFilterListViewModel: Sync failed with error: \(error)")
             self.error = "Failed to sync filter lists: \(error.localizedDescription)"
             isSyncing = false
             isLoading = false

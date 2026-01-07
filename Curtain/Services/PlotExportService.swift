@@ -146,7 +146,6 @@ class PlotExportService: ObservableObject {
             )
             
             lastExportResult = result
-            print("✅ PlotExportService: Successfully exported \(format.rawValue.uppercased()) plot to \(filePath)")
             return result
             
         } catch {
@@ -154,7 +153,6 @@ class PlotExportService: ObservableObject {
             exportError = errorMessage
             let result = PlotExportResult(success: false, filename: filename, filePath: nil, format: format, error: errorMessage, fileSize: nil)
             lastExportResult = result
-            print("❌ PlotExportService: Export failed - \(errorMessage)")
             return result
         }
     }

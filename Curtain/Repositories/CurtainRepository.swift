@@ -223,7 +223,6 @@ class CurtainRepository {
         let responseString = String(data: responseData, encoding: .utf8) ?? ""
         var filePath: String? = nil
         
-        print("CurtainRepository: First download complete, analyzing response...")
         
         do {
             // Try to parse as JSON to check for "url" field (like Android)
@@ -243,7 +242,6 @@ class CurtainRepository {
                     absoluteUrl = baseUrl + downloadUrl
                 }
                 
-                print("CurtainRepository: Starting second download from URL: \(absoluteUrl)")
                 
                 // Create a wrapper callback for second download that maps (0-100) to (45-90)
                 let secondDownloadProgressCallback: ((Int, Double) -> Void)? = { progress, speed in
@@ -279,7 +277,6 @@ class CurtainRepository {
             progressCallback?(95, 0.0) // Updating database
             try await updateCurtainEntityWithLocalFilePath(linkId: linkId, filePath: filePath)
             progressCallback?(100, 0.0) // Complete
-            print("CurtainRepository: Download completed successfully - \(filePath)")
             return filePath
         }
         
@@ -338,7 +335,21 @@ class CurtainRepository {
             return (try? modelContext.fetch(descriptor)) ?? []
         }
     }
-    
+
+    func insertCurtain(_ curtain: CurtainEntity) {
+        performDatabaseOperation {
+            modelContext.insert(curtain)
+            try? modelContext.save()
+        }
+    }
+
+    func insertSiteSettings(_ siteSettings: CurtainSiteSettings) {
+        performDatabaseOperation {
+            modelContext.insert(siteSettings)
+            try? modelContext.save()
+        }
+    }
+
     // MARK: - Private Helper Methods (Like Android)
     
     private func getLocalFilePath(linkId: String) -> String {
@@ -391,7 +402,6 @@ class CurtainRepository {
     
     /// Download curtain data and save to local persistent storage (NOT synced to iCloud)
     func downloadCurtainData(_ curtain: CurtainEntity, progressCallback: @escaping (Double) -> Void) async throws -> String {
-        print("🔄 CurtainRepository: Starting download for curtain: \(curtain.linkId)")
 
         guard getSiteSettingsByHostname(curtain.sourceHostname) != nil else {
             throw CurtainError.invalidResponse
@@ -422,12 +432,10 @@ class CurtainRepository {
                 try? modelContext.save()
             }
 
-            print("✅ CurtainRepository: Download completed, saved to: \(localFilePath)")
             
             return localFilePath
             
         } catch {
-            print("❌ CurtainRepository: Download failed: \(error)")
             // Clean up partial file if it exists
             try? FileManager.default.removeItem(atPath: localFilePath)
             throw CurtainError.downloadFailed
@@ -452,14 +460,12 @@ class CurtainRepository {
         var resourceValues = URLResourceValues()
         resourceValues.isExcludedFromBackup = true
         try url.setResourceValues(resourceValues)
-        print("🚫 CurtainRepository: Excluded from iCloud backup: \(path)")
     }
     
     /// Update curtain entity with file path and save
     func updateCurtain(_ curtain: CurtainEntity) throws {
         performDatabaseOperation {
             try? modelContext.save()
-            print("💾 CurtainRepository: Updated curtain entity: \(curtain.linkId)")
         }
     }
     

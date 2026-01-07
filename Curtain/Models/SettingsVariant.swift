@@ -36,12 +36,10 @@ struct SettingsVariant: Codable, Identifiable {
     private var storedSettingsDict: [String: Any] {
         do {
             guard let dict = try JSONSerialization.jsonObject(with: settingsData) as? [String: Any] else {
-                print("❌ SettingsVariant: Failed to deserialize settings dictionary")
                 return [:]
             }
             return dict
         } catch {
-            print("❌ SettingsVariant: Failed to deserialize stored settings: \(error)")
             return [:]
         }
     }
@@ -221,9 +219,7 @@ struct SettingsVariant: Codable, Identifiable {
                 settingsDict["selectionsName"] = selectionsName
             }
             self.settingsData = try JSONSerialization.data(withJSONObject: settingsDict, options: [])
-            print("✅ SettingsVariant: Serialized settings with \(selectedMap?.count ?? 0) selected proteins and \(selectionsName?.count ?? 0) selection groups")
         } catch {
-            print("❌ SettingsVariant: Failed to serialize CurtainSettings: \(error)")
             // Fallback to empty data
             self.settingsData = Data()
         }
@@ -233,7 +229,6 @@ struct SettingsVariant: Codable, Identifiable {
     /// Preserves data-specific properties while applying variant settings
     func appliedTo(_ settings: CurtainSettings) -> CurtainSettings {
         guard let variantSettings = storedSettings else {
-            print("❌ SettingsVariant: Could not decode stored settings, returning current settings")
             return settings
         }
         
@@ -335,13 +330,11 @@ class SettingsVariantManager: ObservableObject {
         }
         
         persistVariants()
-        print("✅ SettingsVariantManager: Saved variant '\(variant.name)' (ID: \(variant.id))")
     }
     
     func deleteVariant(withId id: String) {
         savedVariants.removeAll { $0.id == id }
         persistVariants()
-        print("🗑️ SettingsVariantManager: Deleted variant with ID: \(id)")
     }
     
     func deleteVariant(_ variant: SettingsVariant) {
@@ -376,15 +369,12 @@ class SettingsVariantManager: ObservableObject {
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(savedVariants)
             userDefaults.set(data, forKey: variantsKey)
-            print("💾 SettingsVariantManager: Persisted \(savedVariants.count) variants")
         } catch {
-            print("❌ SettingsVariantManager: Failed to persist variants: \(error)")
         }
     }
     
     private func loadVariants() {
         guard let data = userDefaults.data(forKey: variantsKey) else {
-            print("📂 SettingsVariantManager: No saved variants found")
             return
         }
         
@@ -392,9 +382,7 @@ class SettingsVariantManager: ObservableObject {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             savedVariants = try decoder.decode([SettingsVariant].self, from: data)
-            print("📂 SettingsVariantManager: Loaded \(savedVariants.count) variants")
         } catch {
-            print("❌ SettingsVariantManager: Failed to load variants: \(error)")
             savedVariants = []
         }
     }
@@ -408,7 +396,6 @@ class SettingsVariantManager: ObservableObject {
             encoder.dateEncodingStrategy = .iso8601
             return try encoder.encode(variant)
         } catch {
-            print("❌ SettingsVariantManager: Failed to export variant: \(error)")
             return nil
         }
     }
@@ -429,7 +416,6 @@ class SettingsVariantManager: ObservableObject {
             saveVariant(importedVariant)
             return importedVariant
         } catch {
-            print("❌ SettingsVariantManager: Failed to import variant: \(error)")
             return nil
         }
     }

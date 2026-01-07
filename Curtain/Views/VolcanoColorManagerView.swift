@@ -210,7 +210,6 @@ struct VolcanoColorManagerView: View {
         }
         
         self.volcanoGroups = groups.sorted { $0.name < $1.name }
-        print("🎨 VolcanoColorManager: Loaded \(groups.count) volcano plot groups (\(significanceGroups.count) significance + \(allTraceGroups.count - significanceGroups.count) selection groups)")
     }
     
     // Generate significance groups using the same logic as VolcanoPlotDataService
@@ -251,7 +250,6 @@ struct VolcanoColorManagerView: View {
     private func getProcessedDifferentialData() -> [[String: Any]] {
         guard let processedData = curtainData.extraData?.data?.dataMap as? [String: Any],
               let differentialData = processedData["processedDifferentialData"] as? [[String: Any]] else {
-            print("❌ VolcanoColorManager: No processedDifferentialData found")
             return []
         }
         return differentialData
@@ -377,7 +375,6 @@ struct VolcanoColorManagerView: View {
             userInfo: ["reason": "colorUpdate"]
         )
         
-        print("✅ VolcanoColorManager: Updated colors for \(volcanoGroups.count) volcano plot groups")
     }
 }
 

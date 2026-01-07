@@ -80,17 +80,12 @@ struct CurtainDetailsView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Remove conditional toolbar - let each tab handle its own toolbar
         .onAppear {
-            print("🟢 CurtainDetailsView: onAppear called for curtain: \(curtain.linkId)")
             loadCurtainData()
         }
         // Protein search sheet is now handled by individual tabs
     }
     
     private func loadCurtainData() {
-        print("🔄 CurtainDetailsView: Starting to load curtain data")
-        print("🔄 CurtainDetailsView: curtain.file = \(curtain.file ?? "nil")")
-        print("🔄 CurtainDetailsView: curtain.linkId = \(curtain.linkId)")
-        print("🔄 CurtainDetailsView: curtain.dataDescription = \(curtain.dataDescription)")
         
         isLoading = true
         error = nil
@@ -103,12 +98,9 @@ struct CurtainDetailsView: View {
                 let curtainDataDir = documentsURL.appendingPathComponent("CurtainData", isDirectory: true)
                 let currentFilePath = curtainDataDir.appendingPathComponent("\(curtain.linkId).json").path
                 
-                print("🔄 CurtainDetailsView: Using current path: \(currentFilePath)")
-                print("🔄 CurtainDetailsView: Database path: \(curtain.file ?? "nil")")
                 
                 // Check if file actually exists at current path
                 guard FileManager.default.fileExists(atPath: currentFilePath) else {
-                    print("❌ CurtainDetailsView: File does not exist at current path: \(currentFilePath)")
                     await MainActor.run {
                         self.error = "Data file not found. Please re-download the dataset."
                         self.isLoading = false
@@ -118,30 +110,24 @@ struct CurtainDetailsView: View {
                 
                 let filePath = currentFilePath
                 
-                print("✅ CurtainDetailsView: File exists, loading data")
                 
                 // Load data from file using CurtainDataService
                 let fileURL = URL(fileURLWithPath: filePath)
                 let jsonData = try Data(contentsOf: fileURL)
                 
-                print("🔄 CurtainDetailsView: Loaded \(jsonData.count) bytes from file")
                 
                 let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: [])
                 
-                print("🔄 CurtainDetailsView: Parsed JSON object, calling restoreSettings")
                 
                 // Parse using CurtainDataService
                 try await dataService.restoreSettings(from: jsonObject)
                 
-                print("🔄 CurtainDetailsView: Settings restored, converting to CurtainData")
                 
                 // Convert to CurtainData model
                 await MainActor.run {
                     self.curtainData = convertToCurtainData(from: dataService)
-                    print("✅ CurtainDetailsView: Data loaded successfully with \(self.curtainData?.proteomicsData.count ?? 0) proteins")
                 }
             } catch {
-                print("❌ CurtainDetailsView: Error loading data: \(error)")
                 await MainActor.run {
                     self.error = "Failed to load data: \(error.localizedDescription)"
                 }
@@ -149,23 +135,13 @@ struct CurtainDetailsView: View {
             
             await MainActor.run {
                 self.isLoading = false
-                print("🔄 CurtainDetailsView: Loading completed, isLoading = false")
             }
         }
     }
     
     private func convertToCurtainData(from service: CurtainDataService) -> CurtainData {
-        print("🔄 convertToCurtainData: Converting CurtainDataService to CurtainData")
-        print("🔄 convertToCurtainData: Raw data available: \(service.curtainData.raw?.originalFile.isEmpty == false)")
-        print("🔄 convertToCurtainData: Raw data length: \(service.curtainData.raw?.originalFile.count ?? 0)")
-        print("🔄 convertToCurtainData: Samples count: \(service.curtainData.rawForm?.samples.count ?? 0)")
-        print("🔄 convertToCurtainData: Service selectedMap is empty: \(service.curtainData.selectedMap.isEmpty)")
-        print("🔄 convertToCurtainData: Service selectedMap count: \(service.curtainData.selectedMap.count)")
-        print("🔄 convertToCurtainData: Service dataMap exists: \(service.curtainData.dataMap != nil)")
-        print("🔄 convertToCurtainData: Service dataMap count: \(service.curtainData.dataMap?.count ?? 0)")
         
         let transformedSelectedMap = transformSelectionsMapToSelectedMap(service.curtainData.selectedMap.isEmpty ? nil : service.curtainData.selectedMap)
-        print("🔄 convertToCurtainData: Transformed selectedMap count: \(transformedSelectedMap?.count ?? 0)")
         
         return CurtainData(
             raw: service.curtainData.raw?.originalFile, // CRITICAL: Add the raw CSV data!
@@ -231,7 +207,6 @@ struct CurtainDetailsView: View {
             }
         }
         
-        print("🔄 CurtainDetailsView: Transformed selectedMap with \(cleanedSelectedMap.count) proteins and \(cleanedSelectedMap.values.flatMap { $0.keys }.count) total selections")
         
         return cleanedSelectedMap.isEmpty ? nil : cleanedSelectedMap
     }
@@ -606,7 +581,6 @@ struct VolcanoPlotTab: View {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     annotationEditMode.toggle()
                                 }
-                                print("🎯 FAB button - Annotation edit mode: \(annotationEditMode ? "ENABLED" : "DISABLED")")
                             }) {
                                 Image(systemName: annotationEditMode ? "pencil.circle.fill" : "pencil.circle")
                                     .font(.title2)
@@ -697,13 +671,9 @@ struct ProteinDetailsTab: View {
     
     private var filteredProteins: [String] {
         guard let curtainData = data else { 
-            print("🔍 filteredProteins: No curtainData available")
             return [] 
         }
         
-        print("🔍 filteredProteins: selectedSelectionGroup = '\(selectedSelectionGroup)'")
-        print("🔍 filteredProteins: selectedMap exists: \(curtainData.selectedMap != nil)")
-        print("🔍 filteredProteins: selectedMap count: \(curtainData.selectedMap?.count ?? 0)")
         
         // Get proteins based on selection group
         var allProteins: [String] = []
@@ -712,9 +682,7 @@ struct ProteinDetailsTab: View {
             // For "All", show only proteins that are in ANY selection (not all proteins from dataframe)
             if let selectedMap = curtainData.selectedMap, !selectedMap.isEmpty {
                 allProteins = Array(selectedMap.keys)
-                print("🔍 filteredProteins: Found \(allProteins.count) proteins in selectedMap for 'All'")
             } else {
-                print("❌ filteredProteins: No selectedMap available - this should not happen if proteins are visible!")
             }
         } else {
             // For specific selection group, get only proteins from selectedMap
@@ -726,9 +694,7 @@ struct ProteinDetailsTab: View {
                     }
                     return nil
                 }
-                print("🔍 filteredProteins: Found \(allProteins.count) proteins for selection group '\(selectedSelectionGroup)'")
             } else {
-                print("❌ filteredProteins: No selectedMap available for selection group '\(selectedSelectionGroup)'")
             }
         }
         
@@ -743,9 +709,7 @@ struct ProteinDetailsTab: View {
         }
         
         let finalProteins = allProteins.sorted()
-        print("🔍 filteredProteins: Final result: \(finalProteins.count) proteins")
         if finalProteins.count > 0 && finalProteins.count <= 5 {
-            print("🔍 filteredProteins: Sample proteins: \(finalProteins)")
         }
         return finalProteins
     }
@@ -1302,25 +1266,21 @@ struct SettingsTab: View {
         
         // Circuit breaker: prevent all loads if tripped
         guard !circuitBreakerTripped else {
-            print("🚫 SettingsTab: Circuit breaker tripped, all variant loading disabled")
             return
         }
         
         // Enhanced loop prevention with multiple checks
         guard !isLoadingVariant else { 
-            print("⚠️ SettingsTab: Already loading variant, skipping to prevent loop")
             return 
         }
         
         guard !suppressDataUpdates else {
-            print("⚠️ SettingsTab: Data updates suppressed, skipping to prevent loop")
             return
         }
         
         // Track load attempts and prevent excessive attempts
         let currentAttempts = loadAttempts[variant.id, default: 0]
         if currentAttempts >= 3 {
-            print("🚫 SettingsTab: Variant '\(variant.name)' has failed 3+ times, activating circuit breaker")
             circuitBreakerTripped = true
             return
         }
@@ -1329,14 +1289,12 @@ struct SettingsTab: View {
         if let lastLoadTime = loadingStartTime, 
            lastLoadedVariantId == variant.id,
            currentTime.timeIntervalSince(lastLoadTime) < 5.0 {
-            print("⚠️ SettingsTab: Same variant '\(variant.name)' loaded recently, skipping")
             return
         }
         
         // Increment load attempts
         loadAttempts[variant.id] = currentAttempts + 1
         
-        print("🔄 SettingsTab: Starting to load variant '\(variant.name)' (ID: \(variant.id))")
         
         // Set loading state with timestamp
         isLoadingVariant = true
@@ -1391,8 +1349,6 @@ struct SettingsTab: View {
                 self.loadAttempts[variant.id] = 0
                 self.circuitBreakerTripped = false
                 
-                print("✅ SettingsTab: Applied variant '\(variant.name)' - pCutoff: \(variant.pCutoff), log2FCCutoff: \(variant.log2FCCutoff)")
-                print("✅ SettingsTab: Restored \(variantSelectedMap?.count ?? 0) selected proteins, \(variantSelectionsName?.count ?? 0) selection groups, \(updatedSettings.textAnnotation.count) annotations")
                 
                 // Clean up loading state after the update is complete
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -1411,7 +1367,6 @@ struct SettingsTab: View {
                             userInfo: ["reason": "settings_variant_loaded"]
                         )
                         
-                        print("🔄 SettingsTab: Sent volcano plot refresh notification for variant '\(variant.name)'")
                         
                         // Clear the loaded variant ID after an extended period
                         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
@@ -1435,7 +1390,6 @@ struct SettingsTab: View {
         suppressDataUpdates = false
         lastLoadedVariantId = nil
         loadingStartTime = nil
-        print("🔄 SettingsTab: Circuit breaker and all loading state reset")
     }
 }
 
@@ -1943,7 +1897,6 @@ struct ProteinDetailRowView: View {
         
         // Check if annotation already exists
         if hasAnnotation(for: proteinId) {
-            print("Annotation already exists for: \(title)")
             return
         }
         
@@ -1953,7 +1906,6 @@ struct ProteinDetailRowView: View {
         
         guard let foldChange = proteinData[fcColumn] as? Double,
               let pValue = proteinData[sigColumn] as? Double else {
-            print("Failed to get protein coordinates for annotation")
             return
         }
         
@@ -1997,7 +1949,6 @@ struct ProteinDetailRowView: View {
         // Update CurtainData with new annotation
         updateCurtainDataWithNewAnnotations(updatedTextAnnotation)
         
-        print("✅ Added annotation: '\(title)' for protein: \(proteinId)")
     }
     
     /// Remove annotation for protein
@@ -2008,7 +1959,6 @@ struct ProteinDetailRowView: View {
         
         // Check if annotation exists
         if !hasAnnotation(for: proteinId) {
-            print("No annotation exists for: \(title)")
             return
         }
         
@@ -2019,7 +1969,6 @@ struct ProteinDetailRowView: View {
         // Update CurtainData
         updateCurtainDataWithNewAnnotations(updatedTextAnnotation)
         
-        print("🗑️ Removed annotation: '\(title)' for protein: \(proteinId)")
     }
     
     /// Update CurtainData with new textAnnotation (reusable helper)

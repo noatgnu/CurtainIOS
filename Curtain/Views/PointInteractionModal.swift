@@ -814,7 +814,6 @@ struct PointInteractionModal: View {
         // Check if annotation already exists to avoid duplicates
         let existingAnnotations = curtainData.settings.textAnnotation
         if existingAnnotations.keys.contains(title) {
-            print("Annotation already exists for: \(title)")
             return
         }
         
@@ -934,13 +933,8 @@ struct PointInteractionModal: View {
             permanent: curtainData.permanent
         )
         
-        print("✅ Created annotation: '\(title)' for protein: \(protein.id) at plot coordinates (\(plotX), \(plotY))")
-        print("   📋 Total textAnnotations now: \(updatedTextAnnotation.count)")
-        print("   📋 All annotation keys: \(Array(updatedTextAnnotation.keys))")
         if protein.id == clickData.clickedProtein.id {
-            print("   📍 Used click coordinates for clicked protein")
         } else {
-            print("   📍 Used protein coordinates for nearby protein (raw: \(protein.log2FC), \(protein.negLog10PValue))")
         }
         
         // Trigger volcano plot refresh to show new annotations
@@ -949,7 +943,6 @@ struct PointInteractionModal: View {
             object: nil,
             userInfo: ["reason": "annotation_added", "annotationTitle": title]
         )
-        print("📡 Sent VolcanoPlotRefresh notification for annotation: '\(title)'")
     }
     
     // MARK: - Selection and Color Helper Methods

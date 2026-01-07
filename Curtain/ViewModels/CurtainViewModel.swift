@@ -67,7 +67,6 @@ class CurtainViewModel {
                 let tempModelContext = ModelContext(modelContainer)
                 self.curtainRepository = CurtainRepository(modelContext: tempModelContext)
             } catch {
-                print("CurtainViewModel: Failed to create temporary ModelContext: \(error)")
                 // Create minimal repository to prevent crashes
                 fatalError("Unable to initialize CurtainViewModel")
             }
@@ -77,11 +76,9 @@ class CurtainViewModel {
     /// Setup the ViewModel with the proper ModelContext from environment
     func setupWithModelContext(_ modelContext: ModelContext) {
         guard !hasBeenSetup else { 
-            print("CurtainViewModel: Already setup, skipping")
             return 
         }
         
-        print("CurtainViewModel: Setting up with proper ModelContext")
         self.curtainRepository = CurtainRepository(modelContext: modelContext)
         hasBeenSetup = true
         loadCurtains()
@@ -90,7 +87,6 @@ class CurtainViewModel {
     // MARK: - Data Loading Methods (Like Android)
     
     func loadCurtains() {
-        print("🔴 CurtainViewModel: loadCurtains() called")
         isLoading = true
         error = nil
         
@@ -103,11 +99,9 @@ class CurtainViewModel {
         // Get all curtains from repository
         allCurtains = curtainRepository.getAllCurtains()
         totalCurtains = allCurtains.count
-        print("🔴 CurtainViewModel: Loaded \(totalCurtains) total curtains from repository")
 
         // Load initial page
         loadInitialPage()
-        print("🔴 CurtainViewModel: Initial page loaded, displaying \(curtains.count) curtains")
 
         // Database ready for user to add data via + button
 
@@ -121,7 +115,6 @@ class CurtainViewModel {
         curtains = loadedCurtains
         
         hasMoreData = allCurtains.count > Self.initialPageSize
-        print("CurtainViewModel: Loaded initial \(initialCurtains.count) curtains, total: \(allCurtains.count), hasMore: \(hasMoreData)")
     }
     
     func loadMoreCurtains() {
@@ -146,7 +139,6 @@ class CurtainViewModel {
             curtains = loadedCurtains
 
             hasMoreData = loadedCurtains.count < allCurtains.count
-            print("CurtainViewModel: Loaded \(newCurtains.count) more curtains, total loaded: \(loadedCurtains.count)/\(allCurtains.count)")
         }
     }
     
@@ -240,7 +232,6 @@ class CurtainViewModel {
         // Process using CurtainDataService (like Android)
         try await curtainDataService.restoreSettings(from: jsonString)
         
-        print("CurtainViewModel: Successfully processed curtain data for \(curtain.linkId)")
     }
     
     // MARK: - CRUD Operations
@@ -274,19 +265,6 @@ class CurtainViewModel {
     
     // MARK: - Network Operations
     
-    func syncCurtains(hostname: String) async {
-        isLoading = true
-        error = nil
-        
-        do {
-            _ = try await curtainRepository.syncCurtains(hostname: hostname)
-            loadCurtains() // Refresh list after sync
-        } catch {
-            self.error = error.localizedDescription
-            isLoading = false
-        }
-    }
-    
     func fetchCurtainByLinkId(linkId: String, hostname: String, frontendURL: String? = nil) async {
         isLoading = true
         error = nil
@@ -307,7 +285,7 @@ class CurtainViewModel {
     func createCurtainEntry(linkId: String, hostname: String, frontendURL: String? = nil, description: String = "") async {
         isLoading = true
         error = nil
-        
+
         do {
             _ = try await curtainRepository.createCurtainEntry(
                 linkId: linkId,
@@ -321,7 +299,56 @@ class CurtainViewModel {
             isLoading = false
         }
     }
-    
+
+    /// Create a CurtainEntity from DOI session data
+    /// The session data is already loaded, so we save it to a file and create the entity
+    func createCurtainFromDOISession(sessionData: [String: Any], doi: String, description: String = "") async throws -> CurtainEntity {
+        // Generate a unique linkId for this DOI session
+        let linkId = "doi-\(UUID().uuidString)"
+
+        // Save session data to file
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let curtainDataDir = documentsPath.appendingPathComponent("CurtainData", isDirectory: true)
+        try? FileManager.default.createDirectory(at: curtainDataDir, withIntermediateDirectories: true)
+
+        let filePath = curtainDataDir.appendingPathComponent("\(linkId).json").path
+        let jsonData = try JSONSerialization.data(withJSONObject: sessionData, options: .prettyPrinted)
+        FileManager.default.createFile(atPath: filePath, contents: jsonData)
+
+        // Create CurtainEntity with DOI metadata
+        let descriptionText = description.isEmpty ? "DOI: \(doi)" : description
+        let curtainEntity = CurtainEntity(
+            linkId: linkId,
+            created: Date(),
+            updated: Date(),
+            file: filePath,
+            dataDescription: descriptionText,
+            enable: true,
+            curtainType: "DOI",
+            sourceHostname: "doi.org",
+            frontendURL: nil,
+            isPinned: false
+        )
+
+        // Ensure site settings exist for doi.org
+        if curtainRepository.getSiteSettingsByHostname("doi.org") == nil {
+            let doiSettings = CurtainSiteSettings(
+                hostname: "doi.org",
+                active: true,
+                siteDescription: "DOI Sessions"
+            )
+            curtainRepository.insertSiteSettings(doiSettings)
+        }
+
+        // Insert into database
+        curtainRepository.insertCurtain(curtainEntity)
+
+        // Refresh list
+        loadCurtains()
+
+        return curtainEntity
+    }
+
     // MARK: - Utility Methods
     
     func cancelDownload() {

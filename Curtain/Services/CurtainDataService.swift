@@ -38,7 +38,6 @@ class CurtainDataService {
     // MARK: - Main Parsing Method (Direct from Android restoreSettings)
     
     func restoreSettings(from jsonObject: Any) async throws {
-        print("CurtainDataService: Starting to restore settings from JSON")
         
         // Parse the main JSON object (like Android)
         let dataObject: [String: Any]
@@ -63,7 +62,6 @@ class CurtainDataService {
             }
         }
         
-        print("CurtainDataService: Restored settings with colorMap size: \(curtainSettings.colorMap.count)")
         
         // Process extraData if available (for UniProt data) - like Android
         if dataObject["fetchUniprot"] as? Bool == true {
@@ -89,15 +87,12 @@ class CurtainDataService {
                     uniprotData.geneNameToAcc = convertToMutableMap(uniprotObj["geneNameToAcc"])
                 }
                 
-                print("CurtainDataService: Uniprot DB Size: \(uniprotData.db?.count ?? 0)")
                 
                 // Process app data (like Android) - CRITICAL: Must process in exact order
                 if let dataObj = extraData["data"] as? [String: Any] {
-                    print("🔍 CurtainDataService: Processing app data with keys: \(dataObj.keys)")
                     
                     // Step 1: Process dataMap with full conversion (like Android convertToMutableMap)
                     curtainData.dataMap = convertToMutableMap(dataObj["dataMap"])
-                    print("🔍 CurtainDataService: Processed dataMap with \(curtainData.dataMap?.count ?? 0) entries")
                     
                     // Step 2: Process genesMap (like Android - can be Map or direct object)
                     curtainData.genesMap = processGenesMap(dataObj["genesMap"])
@@ -107,7 +102,6 @@ class CurtainDataService {
                     
                     // Step 4: Process allGenes array
                     curtainData.allGenes = dataObj["allGenes"] as? [String] ?? []
-                    print("🔍 CurtainDataService: Processed \(curtainData.allGenes.count) allGenes")
                 }
                 
                 // Step 5: Set bypass flag and perform post-processing (like Android)
@@ -178,17 +172,14 @@ class CurtainDataService {
         // CRITICAL: Final data integration step (like Android post-processing)
         await performFinalDataIntegration()
         
-        print("CurtainDataService: Settings restoration completed")
     }
     
     // MARK: - Final Data Integration (Like Android post-restore processing)
     
     private func performFinalDataIntegration() async {
-        print("🔍 CurtainDataService: Starting final data integration (like Android)")
         
         // Step 1: Integrate UniProt data with main data (like Android)
         if !curtainData.bypassUniProt, let uniprotDB = uniprotData.db, let dataMap = curtainData.dataMap {
-            print("🔍 CurtainDataService: Integrating UniProt data with \(dataMap.count) proteins")
             
             for (proteinId, _) in dataMap {
                 if let uniprotRecord = uniprotDB[proteinId] as? [String: Any] {
@@ -217,16 +208,13 @@ class CurtainDataService {
         // Step 2: Validate data integrity (like Android)
         validateDataIntegrity()
         
-        print("🔍 CurtainDataService: Final data integration completed")
     }
     
     private func validateDataIntegrity() {
-        print("🔍 CurtainDataService: Validating data integrity (like Android)")
         
         // Check dataMap structure
         if let dataMap = curtainData.dataMap {
             let validProteins = dataMap.values.compactMap { $0 as? [String: Any] }.count
-            print("🔍 CurtainDataService: DataMap has \(dataMap.count) total entries, \(validProteins) valid protein dictionaries")
             
             // Sample validation on first few proteins
             for (index, (key, value)) in dataMap.prefix(3).enumerated() {
@@ -234,35 +222,28 @@ class CurtainDataService {
                     let hasFC = proteinDict["foldChange"] != nil
                     let hasPVal = proteinDict["pValue"] != nil
                     let hasGenes = proteinDict["geneNames"] != nil
-                    print("🔍 CurtainDataService: Protein \(index+1) (\(key)): FC=\(hasFC), pValue=\(hasPVal), genes=\(hasGenes)")
                 } else {
-                    print("⚠️ CurtainDataService: Protein \(key) is not a dictionary: \(type(of: value))")
                 }
             }
         }
         
         // Check UniProt integration
         if let uniprotDB = uniprotData.db {
-            print("🔍 CurtainDataService: UniProt DB has \(uniprotDB.count) entries")
         }
         
-        print("🔍 CurtainDataService: Data integrity validation completed")
     }
     
     // MARK: - Differential Data Processing (CRITICAL - Like Android processDifferentialData)
     
     private func processDifferentialData() async {
-        print("🔍 CurtainDataService: Starting differential data processing (like Android)")
         
         guard let differential = curtainData.differential, !differential.originalFile.isEmpty else {
-            print("🔍 CurtainDataService: No differential data to process")
             return
         }
         
         let diffForm = curtainData.differentialForm!
         let df = differential.df
         
-        print("🔍 CurtainDataService: Processing \(df.rowCount()) rows with form: \(diffForm)")
         
         // Handle comparison column defaulting (like Android)
         var comparison = diffForm.comparison
@@ -271,7 +252,6 @@ class CurtainDataService {
         if comparison.isEmpty || comparison == "CurtainSetComparison" {
             comparison = "CurtainSetComparison"
             comparisonSelect = ["1"]
-            print("🔍 CurtainDataService: Using default comparison: CurtainSetComparison = 1")
         }
         
         // Define essential columns to keep (like Android) - MUST be user-specified
@@ -283,7 +263,6 @@ class CurtainDataService {
         
         // CRITICAL: Validate user specified required columns
         guard !fcColumn.isEmpty && !sigColumn.isEmpty && !idColumn.isEmpty else {
-            print("❌ CurtainDataService: Required columns not specified by user - FC: '\\(fcColumn)', Sig: '\\(sigColumn)', ID: '\\(idColumn)'")
             return
         }
         
@@ -294,7 +273,6 @@ class CurtainDataService {
             }
         }
         
-        print("🔍 CurtainDataService: Essential columns: \(essentialColumns)")
         
         var modifiedData: [[String: Any]] = []
         
@@ -361,8 +339,6 @@ class CurtainDataService {
         }
         curtainData.dataMap!["processedDifferentialData"] = modifiedData
         
-        print("🔍 CurtainDataService: Processed \(modifiedData.count) differential data points")
-        print("🔍 CurtainDataService: Stored as 'processedDifferentialData' in dataMap")
     }
     
     // MARK: - JSON Parsing Methods (Like Android)
@@ -382,28 +358,21 @@ class CurtainDataService {
     // MARK: - Manual Data Conversion Methods (Like Android convertToMutableMap)
     
     private func convertToMutableMap(_ data: Any?) -> [String: Any]? {
-        print("🔍 CurtainDataService: convertToMutableMap input type: \(type(of: data))")
         
         guard let dataMap = data as? [String: Any] else {
-            print("🔍 CurtainDataService: Data is not dictionary, checking if it's array format")
             if let arrayData = data as? [[Any]] {
-                print("🔍 CurtainDataService: Data is array format with \(arrayData.count) pairs")
                 return convertArrayToMap(arrayData)
             }
-            print("🔍 CurtainDataService: Data is not convertible, returning as-is")
             return data as? [String: Any]
         }
         
-        print("🔍 CurtainDataService: DataMap keys: \(dataMap.keys)")
         
         // Check for JavaScript Map serialization format: {value: [[key, value], ...]}
         if let mapValue = dataMap["value"] as? [[Any]] {
-            print("🔍 CurtainDataService: Found 'value' key with array format (\(mapValue.count) pairs)")
             return convertArrayToMap(mapValue)
         }
         
         // Return the dictionary as-is if it's not in the special format
-        print("🔍 CurtainDataService: Dictionary doesn't have 'value' key, returning as-is")
         return dataMap
     }
     
@@ -416,28 +385,22 @@ class CurtainDataService {
                 
                 // Debug first few pairs to understand data structure
                 if index < 3 {
-                    print("🔍 CurtainDataService: Pair \(index): key=\(key), value=\(pair[1]) (\(type(of: pair[1])))")
                     if let dict = pair[1] as? [String: Any] {
-                        print("🔍 CurtainDataService: Value is dict with keys: \(dict.keys.sorted())")
                         // Show first few key-value pairs from the protein data
                         for (dictKey, dictValue) in dict.prefix(3) {
-                            print("🔍 CurtainDataService:   \(dictKey): \(dictValue) (\(type(of: dictValue)))")
                         }
                     }
                 }
             }
         }
-        print("🔍 CurtainDataService: Converted \(arrayData.count) pairs to \(result.count) dictionary entries")
         return result
     }
     
     // MARK: - Additional Data Processing Methods (Like Android workflow)
     
     private func processGenesMap(_ data: Any?) -> Any? {
-        print("🔍 CurtainDataService: processGenesMap called with type: \(type(of: data))")
         // Like Android - genesMap can be either Map format or direct object
         if let mapData = convertToMutableMap(data) {
-            print("🔍 CurtainDataService: Processed genesMap as Map with \(mapData.count) entries")
             return mapData
         }
         // Return as-is if not in Map format
@@ -445,29 +408,23 @@ class CurtainDataService {
     }
     
     private func processPrimaryIDsMap(_ data: Any?) -> Any? {
-        print("🔍 CurtainDataService: processPrimaryIDsMap called with type: \(type(of: data))")
         // Like Android - primaryIDsMap uses same conversion logic
         if let mapData = convertToMutableMap(data) {
-            print("🔍 CurtainDataService: Processed primaryIDsMap as Map with \(mapData.count) entries")
             return mapData
         }
         return data
     }
     
     private func performPostExtraDataProcessing() {
-        print("🔍 CurtainDataService: Performing post-extraData processing (like Android)")
         
         // Like Android - perform data integration and validation
         if let dataMap = curtainData.dataMap {
-            print("🔍 CurtainDataService: DataMap contains \(dataMap.count) protein entries")
             
             // Debug first few entries to verify data structure
             let firstThreeKeys = Array(dataMap.keys.prefix(3))
             for key in firstThreeKeys {
                 if let proteinData = dataMap[key] {
-                    print("🔍 CurtainDataService: Protein \(key) type: \(type(of: proteinData))")
                     if let dict = proteinData as? [String: Any] {
-                        print("🔍 CurtainDataService: Protein \(key) keys: \(dict.keys.sorted())")
                     }
                 }
             }
@@ -475,10 +432,8 @@ class CurtainDataService {
         
         // Like Android - validate UniProt integration
         if let uniprotDB = uniprotData.db {
-            print("🔍 CurtainDataService: UniProt DB contains \(uniprotDB.count) entries")
         }
         
-        print("🔍 CurtainDataService: Post-processing completed")
     }
     
     private func convertToMutableAccMap(_ data: Any?) -> [String: [String]]? {
@@ -645,7 +600,6 @@ class CurtainDataService {
             return VolcanoAxis()
         }
         
-        print("CurtainDataService: Parsing VolcanoAxis: \(map)")
         
         let result = VolcanoAxis(
             minX: (map["minX"] as? NSNumber)?.doubleValue,
@@ -660,7 +614,6 @@ class CurtainDataService {
             ticklenY: map["ticklenY"] as? Int ?? 5
         )
         
-        print("CurtainDataService: Parsed VolcanoAxis: \(result)")
         return result
     }
     

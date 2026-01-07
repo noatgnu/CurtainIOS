@@ -247,7 +247,6 @@ struct BarChartConditionBracketSettingsView: View {
         bracketColor = hexToColor(settings.bracketColor) ?? .black
         bracketWidth = settings.bracketWidth
 
-        print("📋 BarChartConditionBracketSettings: Loaded settings - show: \(showBracket), height: \(bracketHeight), color: \(bracketColorHex), width: \(bracketWidth)")
     }
 
     private func saveSettings() {
@@ -347,7 +346,6 @@ struct BarChartConditionBracketSettingsView: View {
 
         curtainData = updatedCurtainData
 
-        print("✅ BarChartConditionBracketSettings: Saved - show: \(showBracket), height: \(bracketHeight), color: \(bracketColorHex), width: \(bracketWidth)")
     }
 
     private func hexToColor(_ hex: String) -> Color? {

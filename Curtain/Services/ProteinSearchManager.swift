@@ -235,9 +235,6 @@ class ProteinSearchManager: ObservableObject {
     
     func restoreSearchListsFromCurtainData(curtainData: CurtainData) {
         // Like Android restoreSearchListsFromCurtainData - use selectedMap for runtime operations
-        print("🔍 ProteinSearchManager: Restoring search lists from CurtainData")
-        print("🔍 ProteinSearchManager: selectedMap exists: \(curtainData.selectedMap != nil)")
-        print("🔍 ProteinSearchManager: selectionsName count: \(curtainData.selectionsName?.count ?? 0)")
         
         var restoredSearchLists: [SearchList] = []
         var selectionNames: Set<String> = []
@@ -245,12 +242,10 @@ class ProteinSearchManager: ObservableObject {
         // First, collect all selection names from selectionsName (like Android)
         if let selectionsName = curtainData.selectionsName {
             selectionNames = Set(selectionsName)
-            print("🔍 ProteinSearchManager: Found selection names: \(selectionsName)")
         }
         
         // Use selectedMap for runtime operations (like Android)
         if let selectedMap = curtainData.selectedMap {
-            print("🔍 ProteinSearchManager: Processing selectedMap with \(selectedMap.count) proteins")
             
             for (proteinId, selections) in selectedMap {
                 for (selectionName, isSelected) in selections {
@@ -317,9 +312,7 @@ class ProteinSearchManager: ObservableObject {
             }
         }
         
-        print("🔍 ProteinSearchManager: Restored \(restoredSearchLists.count) search lists from CurtainData")
         for searchList in restoredSearchLists {
-            print("🔍 ProteinSearchManager: - \(searchList.name): \(searchList.proteinIds.count) proteins, color: \(searchList.color)")
         }
     }
     
@@ -393,9 +386,6 @@ class ProteinSearchManager: ObservableObject {
             selectOperationNames: newSelectOperationNames
         )
         
-        print("🔍 ProteinSearchManager: Updated CurtainData with \(searchSession.searchLists.count) search lists")
-        print("🔍 ProteinSearchManager: selectOperationNames: \(newSelectOperationNames)")
-        print("🔍 ProteinSearchManager: Active protein selections: \(newSelectionsMap.count)")
     }
     
     // CRITICAL: Method to actually update CurtainData (like Android)
@@ -416,8 +406,6 @@ class ProteinSearchManager: ObservableObject {
         // Update selectionsName (like Android CurtainData.selectOperationNames)
         curtainData.selectionsName = selectOperationNames
         
-        print("🔧 ProteinSearchManager: Updated CurtainData selectionsMap with \(selectionsMap.keys.count) proteins")
-        print("🔧 ProteinSearchManager: Updated selectOperationNames: \(selectOperationNames)")
         
         // Trigger volcano plot refresh (like Android volcanoPlotRefreshTrigger)
         NotificationCenter.default.post(

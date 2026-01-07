@@ -40,7 +40,8 @@ class NetworkService: NetworkServiceProtocol {
     
     func getAllCurtains(hostname: String) async throws -> [Curtain] {
         let url = buildURL(hostname: hostname, path: "curtain/")
-        return try await performRequest(url: url, responseType: [Curtain].self)
+        let response = try await performRequest(url: url, responseType: PaginatedResponse<Curtain>.self)
+        return response.results
     }
     
     func getCurtainByLinkId(hostname: String, linkId: String) async throws -> Curtain {

@@ -26,30 +26,87 @@ class DeepLinkHandler {
     
     /// Process a deep link URL (from QR code, share, or app launch)
     func processURL(_ url: URL) async -> DeepLinkResult {
-        print("🔗 DeepLinkHandler: Processing URL: \(url.absoluteString)")
-        
+
         isProcessing = true
         defer { isProcessing = false }
-        
+
+        // Check for DOI URLs first
+        if let result = await processDOIURL(url) {
+            return result
+        }
+
         // Check for different URL patterns (like Android)
         if let result = await processCurtainProteoURL(url) {
             return result
         }
-        
+
         if let result = await processCurtainSessionURL(url) {
             return result
         }
-        
+
         if let result = await processGenericCurtainURL(url) {
             return result
         }
-        
+
         // If no pattern matches, try to extract components
         return await processUnknownURL(url)
     }
     
     // MARK: - URL Pattern Processors (Like Android URL parsing)
-    
+
+    /// Process DOI URLs
+    /// Supports formats:
+    /// - curtain://open?doi=doi.org/10.xxxx/yyyy&sessionId=xxx (deep link)
+    /// - https://.../#/doi.org/10.xxxx/yyyy&sessionId (web URL)
+    private func processDOIURL(_ url: URL) async -> DeepLinkResult? {
+        let urlString = url.absoluteString
+
+        // Check for curtain://open?doi=... format
+        if url.scheme == "curtain" && url.host == "open" {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let queryItems = components?.queryItems
+
+            if let doiParam = queryItems?.first(where: { $0.name == "doi" })?.value {
+                let sessionId = queryItems?.first(where: { $0.name == "sessionId" || $0.name == "session_id" })?.value
+
+
+                return DeepLinkResult(
+                    type: .doiSession,
+                    description: "DOI Session",
+                    doi: doiParam,
+                    sessionId: sessionId
+                )
+            }
+        }
+
+        // Check for web URL with /#/doi.org/... format
+        if urlString.contains("/#/doi.org/") {
+            let pattern = "/#/(doi\\.org/[^&]+)(?:&(.+))?"
+            let regex = try? NSRegularExpression(pattern: pattern)
+
+            if let match = regex?.firstMatch(in: urlString, range: NSRange(location: 0, length: urlString.count)) {
+                if let doiRange = Range(match.range(at: 1), in: urlString) {
+                    let doi = String(urlString[doiRange])
+
+                    var sessionId: String?
+                    if let sessionRange = Range(match.range(at: 2), in: urlString) {
+                        sessionId = String(urlString[sessionRange])
+                    }
+
+
+                    return DeepLinkResult(
+                        type: .doiSession,
+                        description: "DOI Session",
+                        doi: doi,
+                        sessionId: sessionId
+                    )
+                }
+            }
+        }
+
+        return nil
+    }
+
     /// Process curtain.proteo.info URLs (like Android proteo intent handling)
     private func processCurtainProteoURL(_ url: URL) async -> DeepLinkResult? {
         let urlString = url.absoluteString
@@ -60,7 +117,6 @@ class DeepLinkHandler {
             return nil
         }
         
-        print("🔗 DeepLinkHandler: Detected curtain.proteo.info URL with linkId: \(linkId)")
         
         return DeepLinkResult(
             type: .curtainSession,
@@ -94,7 +150,6 @@ class DeepLinkHandler {
             )
         }
         
-        print("🔗 DeepLinkHandler: Detected Android-compatible Curtain URL: \(linkId) at \(apiUrl)")
         
         return DeepLinkResult(
             type: .curtainSession,
@@ -137,7 +192,6 @@ class DeepLinkHandler {
             apiUrl = "https://\(host)/"
         }
         
-        print("🔗 DeepLinkHandler: Detected generic Curtain URL: \(linkId) at \(apiUrl)")
         
         return DeepLinkResult(
             type: .curtainSession,
@@ -150,7 +204,6 @@ class DeepLinkHandler {
     
     /// Process unknown URLs (fallback parser)
     private func processUnknownURL(_ url: URL) async -> DeepLinkResult {
-        print("🔗 DeepLinkHandler: Unknown URL pattern: \(url.absoluteString)")
         
         // Try to extract any UUID-like strings as potential linkIds
         let uuidPattern = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -160,7 +213,6 @@ class DeepLinkHandler {
             let linkId = String(url.absoluteString[Range(match.range, in: url.absoluteString)!])
             let apiUrl = url.host.map { "https://\($0)/" } ?? ""
             
-            print("🔗 DeepLinkHandler: Extracted potential linkId: \(linkId)")
             
             return DeepLinkResult(
                 type: .curtainSession,
@@ -181,7 +233,6 @@ class DeepLinkHandler {
     
     /// Process QR code content (which might be a URL or encoded data)
     func processQRCode(_ content: String) async -> DeepLinkResult {
-        print("🔗 DeepLinkHandler: Processing QR code content: \(content)")
         
         // First, try to parse as URL
         if let url = URL(string: content) {
@@ -219,7 +270,6 @@ class DeepLinkHandler {
                 let frontendUrl = json?["frontendURL"] as? String ?? json?["frontend_url"] as? String ?? json?["frontendUrl"] as? String ?? json?["frontend"] as? String
                 let description = json?["description"] as? String ?? json?["title"] as? String
                 
-                print("🔗 DeepLinkHandler: Parsed JSON session data: \(linkId)")
                 
                 return DeepLinkResult(
                     type: .curtainSession,
@@ -230,7 +280,6 @@ class DeepLinkHandler {
                 )
             }
         } catch {
-            print("🔗 DeepLinkHandler: Failed to parse QR code as JSON: \(error)")
         }
         
         return nil
@@ -246,23 +295,35 @@ struct DeepLinkResult {
     let frontendUrl: String?
     let description: String?
     let error: String?
-    
-    init(type: DeepLinkType, linkId: String? = nil, apiUrl: String? = nil, frontendUrl: String? = nil, description: String? = nil, error: String? = nil) {
+    let doi: String?
+    let sessionId: String?
+
+    init(type: DeepLinkType, linkId: String? = nil, apiUrl: String? = nil, frontendUrl: String? = nil, description: String? = nil, error: String? = nil, doi: String? = nil, sessionId: String? = nil) {
         self.type = type
         self.linkId = linkId
         self.apiUrl = apiUrl
         self.frontendUrl = frontendUrl
         self.description = description
         self.error = error
+        self.doi = doi
+        self.sessionId = sessionId
     }
-    
+
     var isValid: Bool {
-        return type != .invalid && linkId != nil && apiUrl != nil
+        switch type {
+        case .curtainSession:
+            return linkId != nil && apiUrl != nil
+        case .doiSession:
+            return doi != nil
+        case .invalid:
+            return false
+        }
     }
 }
 
 enum DeepLinkType {
     case curtainSession
+    case doiSession
     case invalid
 }
 
@@ -327,7 +388,6 @@ extension CurtainConstants {
                 let jsonData = try JSONSerialization.data(withJSONObject: sessionData)
                 return String(data: jsonData, encoding: .utf8)
             } catch {
-                print("Failed to generate JSON QR code data: \(error)")
                 return nil
             }
         }

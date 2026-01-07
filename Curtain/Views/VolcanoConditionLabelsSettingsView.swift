@@ -316,7 +316,6 @@ struct VolcanoConditionLabelsSettingsView: View {
     private func loadAvailableConditions() {
         // Extract unique conditions from conditionOrder
         availableConditions = curtainData.settings.conditionOrder
-        print("📋 VolcanoConditionLabelsSettings: Loaded \(availableConditions.count) conditions")
     }
 
     private func resetPositionsToDefaults() {
@@ -333,9 +332,7 @@ struct VolcanoConditionLabelsSettingsView: View {
         // If both are below plot (negative) and too close (within 0.1), adjust label position
         if legendY < 0 && labelY < 0 && abs(legendY - labelY) < 0.1 {
             yPosition = legendY + 0.1
-            print("🔧 Auto-adjusted label Y from \(labelY) to \(yPosition) to avoid legend overlap")
         } else {
-            print("ℹ️ No adjustment needed. Legend Y: \(legendY), Label Y: \(labelY)")
         }
     }
 
@@ -453,7 +450,6 @@ struct VolcanoConditionLabelsSettingsView: View {
             userInfo: ["reason": "conditionLabelsUpdate"]
         )
 
-        print("✅ VolcanoConditionLabelsSettings: Updated condition labels - enabled: \(enabled), left: '\(leftCondition)', right: '\(rightCondition)'")
     }
 }
 
