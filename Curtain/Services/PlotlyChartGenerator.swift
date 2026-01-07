@@ -409,7 +409,15 @@ class PlotlyChartGenerator {
                     let arrowhead = dataSection["arrowhead"] as? Int ?? 1
                     let arrowsize = dataSection["arrowsize"] as? Double ?? 1.0
                     let arrowwidth = dataSection["arrowwidth"] as? Double ?? 1.0
-                    let arrowcolor = dataSection["arrowcolor"] as? String ?? defaultArrowColor
+
+                    // Arrow color with dark mode adjustment
+                    var arrowcolor = dataSection["arrowcolor"] as? String ?? defaultArrowColor
+                    // Adjust black arrows to white in dark mode for better contrast
+                    if isDarkMode && isBlackColor(arrowcolor) {
+                        print("🎨 PlotlyChartGenerator: Adjusted arrow color from '\(arrowcolor)' to white for dark mode")
+                        arrowcolor = "#FFFFFF"
+                    }
+
                     let ax = dataSection["ax"] as? Double ?? -20
                     let ay = dataSection["ay"] as? Double ?? -20
                     let xanchor = dataSection["xanchor"] as? String ?? "center"
@@ -424,6 +432,12 @@ class PlotlyChartGenerator {
                         fontSize = fontData["size"] as? Double ?? 15
                         fontColor = fontData["color"] as? String ?? defaultFontColor
                         fontFamily = fontData["family"] as? String ?? "Arial, sans-serif"
+                    }
+
+                    // Adjust black text to white in dark mode for better contrast
+                    if isDarkMode && isBlackColor(fontColor) {
+                        print("🎨 PlotlyChartGenerator: Adjusted text color from '\(fontColor)' to white for dark mode")
+                        fontColor = "#FFFFFF"
                     }
                     
                     let annotation = PlotAnnotation(
@@ -461,7 +475,56 @@ class PlotlyChartGenerator {
         print("📊 PlotlyChartGenerator: Converted \(annotations.count) annotations from textAnnotation data")
         return annotations
     }
-    
+
+    // MARK: - Color Utilities
+
+    /// Check if a color string represents black or very dark color
+    private func isBlackColor(_ color: String) -> Bool {
+        let normalized = color.lowercased().trimmingCharacters(in: .whitespaces)
+
+        // Check common black representations
+        if normalized == "#000000" || normalized == "#000" || normalized == "black" {
+            return true
+        }
+
+        // Check for very dark colors (RGB values all less than 30)
+        if normalized.hasPrefix("#") {
+            let hex = String(normalized.dropFirst()) // Remove #
+
+            // Handle 6-digit hex (#RRGGBB)
+            if hex.count == 6 {
+                let rHex = String(hex.prefix(2))
+                let gHex = String(hex.dropFirst(2).prefix(2))
+                let bHex = String(hex.dropFirst(4).prefix(2))
+
+                if let r = Int(rHex, radix: 16),
+                   let g = Int(gHex, radix: 16),
+                   let b = Int(bHex, radix: 16) {
+                    // Consider it black if all RGB values are very low
+                    return r < 30 && g < 30 && b < 30
+                }
+            }
+            // Handle 3-digit hex (#RGB)
+            else if hex.count == 3 {
+                let r = String(hex.prefix(1))
+                let g = String(hex.dropFirst(1).prefix(1))
+                let b = String(hex.dropFirst(2).prefix(1))
+
+                let rHex = r + r  // Double the character (e.g., "F" -> "FF")
+                let gHex = g + g
+                let bHex = b + b
+
+                if let rVal = Int(rHex, radix: 16),
+                   let gVal = Int(gHex, radix: 16),
+                   let bVal = Int(bHex, radix: 16) {
+                    return rVal < 30 && gVal < 30 && bVal < 30
+                }
+            }
+        }
+
+        return false
+    }
+
     // MARK: - Volcano Condition Label Annotations
 
     private func createVolcanoConditionLabelAnnotations(_ settings: CurtainSettings, isDarkMode: Bool) -> [PlotAnnotation] {
@@ -491,12 +554,12 @@ class PlotlyChartGenerator {
         print("🏷️ PlotlyChartGenerator: Left condition: '\(leftCondition)'")
         print("🏷️ PlotlyChartGenerator: Right condition: '\(rightCondition)'")
 
-        // Use dark mode appropriate color: if saved color is black (#000000), replace with white in dark mode
+        // Use dark mode appropriate color: if saved color is black, replace with white in dark mode
         let savedColor = settings.volcanoConditionLabels.fontColor
         let labelColor: String
-        if isDarkMode && (savedColor == "#000000" || savedColor.lowercased() == "#000" || savedColor.lowercased() == "black") {
+        if isDarkMode && isBlackColor(savedColor) {
             labelColor = "#FFFFFF"  // Use white in dark mode for better contrast
-            print("🏷️ PlotlyChartGenerator: Adjusted label color from black to white for dark mode")
+            print("🏷️ PlotlyChartGenerator: Adjusted label color from '\(savedColor)' to white for dark mode")
         } else {
             labelColor = savedColor  // Use saved color
         }

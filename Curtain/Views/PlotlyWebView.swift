@@ -234,43 +234,40 @@ struct PlotlyWebView: UIViewRepresentable {
 struct InteractiveVolcanoPlotView: View {
     @Binding var curtainData: CurtainData
     @Binding var annotationEditMode: Bool // Now passed from parent
-    @State private var isLoading = true
-    @State private var error: String?
-    @State private var selectedPoints: [ProteinPoint] = []
-    @State private var plotId = UUID() // Force SwiftUI updates
-    @State private var refreshTrigger = 0 // Force plot regeneration when selections change
-    @State private var coordinateRefreshTrigger = 0 // Trigger coordinate recalculation when plot dimensions arrive
-    @State private var showingProteinSearch = false // Show protein search dialog
-    @State private var showingAnnotationEditor = false // Show annotation editing modal
-    @State private var selectedAnnotationsForEdit: [AnnotationEditCandidate] = [] // Annotations near tap point
-    @State private var isInteractivePositioning = false // Interactive positioning mode
-    @State private var positioningCandidate: AnnotationEditCandidate? // Annotation being repositioned
-    @State private var isPreviewingPosition = false // Preview mode with accept/reject options
-    @State private var previewOffsetX: Double = 0.0 // Preview offset X
-    @State private var previewOffsetY: Double = 0.0 // Preview offset Y
-    @State private var originalOffsetX: Double = 0.0 // Original offset X for revert
-    @State private var originalOffsetY: Double = 0.0 // Original offset Y for revert
-    @State private var isDragging = false // Track if user is actively dragging
-    @State private var lastDragTime: Date = Date() // Throttle drag updates
-    @State private var cachedArrowPosition: CGPoint? // Cache arrow position during drag
-    @State private var dragStartPosition: CGPoint? // Original position when drag started
-    @State private var currentDragPosition: CGPoint? // Current drag position for preview line
-    @State private var isShowingDragPreview = false // Show native preview line
-    
-    
-    
+
+    // MARK: - Grouped State Management
+
+    /// Manages plot loading, error states, and selected points
+    @State private var loadingState = PlotLoadingViewState()
+
+    /// Controls plot rendering and refresh behavior
+    @State private var renderState = PlotRenderViewState()
+
+    /// Manages modal presentation states (search, annotation editor)
+    @State private var modalState = UIModalViewState()
+
+    /// Manages annotation positioning workflow
+    @State private var positioningState = AnnotationPositioningViewState()
+
+    /// Manages drag gesture state and performance throttling
+    @State private var dragState = DragOperationViewState()
+
+    // MARK: - Initializers
+
     // Default initializer for cases where annotation edit mode is not needed
     init(curtainData: Binding<CurtainData>) {
         self._curtainData = curtainData
         self._annotationEditMode = .constant(false)
     }
-    
+
     // Full initializer with annotation edit mode
     init(curtainData: Binding<CurtainData>, annotationEditMode: Binding<Bool>) {
         self._curtainData = curtainData
         self._annotationEditMode = annotationEditMode
     }
-    
+
+    // MARK: - View Models
+
     // Point interaction system (like Android)
     @StateObject private var pointInteractionViewModel = PointInteractionViewModel()
     @StateObject private var selectionManager = SelectionManager()
@@ -279,27 +276,27 @@ struct InteractiveVolcanoPlotView: View {
     @StateObject private var plotExportService = PlotExportService.shared
     
     var body: some View {
-        VStack(spacing: 0) {
-            if isLoading {
-                print("🔄 InteractiveVolcanoPlotView: Showing loading view (isLoading=\(isLoading))")
-                return AnyView(loadingView)
-            } else if let error = error {
-                print("❌ InteractiveVolcanoPlotView: Showing error view: \(error)")
-                return AnyView(errorView(error))
+        Group {
+            if loadingState.isLoading {
+                let _ = print("🔄 InteractiveVolcanoPlotView: Showing loading view (isLoading=\(loadingState.isLoading))")
+                loadingView
+            } else if let error = loadingState.error {
+                let _ = print("❌ InteractiveVolcanoPlotView: Showing error view: \(error)")
+                errorView(error)
             } else {
-                print("📊 InteractiveVolcanoPlotView: Showing plot content view")
-                return AnyView(plotContentView)
+                let _ = print("📊 InteractiveVolcanoPlotView: Showing plot content view")
+                plotContentView
             }
         }
         // Remove navigation title and toolbar since they're handled by parent
-        .sheet(isPresented: $showingProteinSearch) {
+        .sheet(isPresented: $modalState.showingProteinSearch) {
             ProteinSearchView(curtainData: $curtainData)
         }
-        .sheet(isPresented: $showingAnnotationEditor) {
+        .sheet(isPresented: $modalState.showingAnnotationEditor) {
             AnnotationEditModal(
-                candidates: selectedAnnotationsForEdit,
+                candidates: modalState.selectedAnnotationsForEdit,
                 curtainData: $curtainData,
-                isPresented: $showingAnnotationEditor,
+                isPresented: $modalState.showingAnnotationEditor,
                 onAnnotationUpdated: {
                     // Refresh plot after annotation changes
                     NotificationCenter.default.post(
@@ -309,19 +306,25 @@ struct InteractiveVolcanoPlotView: View {
                     )
                 },
                 onInteractivePositioning: { candidate in
-                    // Start interactive positioning mode
-                    positioningCandidate = candidate
-                    isInteractivePositioning = true
-                    
-                    // Store original offsets for potential revert
+                    // Extract original offsets for potential revert
+                    var originalAx: Double = -20.0
+                    var originalAy: Double = -20.0
+
                     if let annotationData = curtainData.settings.textAnnotation[candidate.key] as? [String: Any],
                        let dataSection = annotationData["data"] as? [String: Any] {
-                        originalOffsetX = dataSection["ax"] as? Double ?? 0.0
-                        originalOffsetY = dataSection["ay"] as? Double ?? 0.0
+                        originalAx = dataSection["ax"] as? Double ?? -20.0
+                        originalAy = dataSection["ay"] as? Double ?? -20.0
                     }
-                    
+
+                    // Start interactive positioning mode using ViewState
+                    positioningState.startPositioning(
+                        candidate: candidate,
+                        originalAx: originalAx,
+                        originalAy: originalAy
+                    )
+
                     // Close the annotation editor modal
-                    showingAnnotationEditor = false
+                    modalState.hideAnnotationEditor()
                 }
             )
         }
@@ -339,18 +342,25 @@ struct InteractiveVolcanoPlotView: View {
         }
         .onAppear {
             print("🔵 InteractiveVolcanoPlotView: onAppear called with \(curtainData.proteomicsData.count) proteins")
-            print("🔍 InteractiveVolcanoPlotView: Initial state - isLoading: \(isLoading), error: \(error ?? "nil")")
-            loadPlot()
+            print("🔍 InteractiveVolcanoPlotView: Initial state - isLoading: \(loadingState.isLoading), error: \(loadingState.error ?? "nil")")
+            // Only load plot if it hasn't been loaded yet (initial state)
+            // This prevents unnecessary redraws when app comes back from background
+            if loadingState.isLoading && loadingState.error == nil {
+                print("🔄 InteractiveVolcanoPlotView: Loading plot for first time")
+                loadPlot()
+            } else {
+                print("⏭️ InteractiveVolcanoPlotView: Skipping load - plot already loaded")
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("VolcanoPlotRefresh"))) { notification in
             print("🔄 InteractiveVolcanoPlotView: Received volcano plot refresh notification")
             if let reason = notification.userInfo?["reason"] as? String {
                 print("🔄 InteractiveVolcanoPlotView: Refresh reason: \(reason)")
             }
-            // Force plot regeneration by incrementing refresh trigger
-            refreshTrigger += 1
-            plotId = UUID()
-            print("🔄 InteractiveVolcanoPlotView: Updated refreshTrigger to \(refreshTrigger)")
+            // Force plot regeneration using ViewState methods
+            renderState.triggerRefresh()
+            renderState.forceUpdate()
+            print("🔄 InteractiveVolcanoPlotView: Updated refreshTrigger to \(renderState.refreshTrigger)")
         }
     }
     
@@ -358,23 +368,23 @@ struct InteractiveVolcanoPlotView: View {
     
     private func handleAnnotationEditTap(at tapPoint: CGPoint, geometry: GeometryProxy) {
         print("🎯 Handling annotation edit tap at: \(tapPoint) in view size: \(geometry.size)")
-        
+
         // Find annotations near the tap point using the actual view geometry
         let nearbyAnnotations = findAnnotationsNearPoint(tapPoint, maxDistance: 150.0, viewSize: geometry.size)
-        
+
         if nearbyAnnotations.isEmpty {
             print("🎯 No annotations found near tap point")
             return
         }
-        
-        selectedAnnotationsForEdit = nearbyAnnotations
-        showingAnnotationEditor = true
-        
+
+        // Show annotation editor modal with found candidates using ViewState
+        modalState.showAnnotationEditor(with: nearbyAnnotations)
+
         print("🎯 Found \(nearbyAnnotations.count) annotations near tap point")
     }
-    
+
     private func handleInteractivePositioning(at tapPoint: CGPoint, geometry: GeometryProxy) {
-        guard let candidate = positioningCandidate else { return }
+        guard let candidate = positioningState.positioningCandidate else { return }
         
         print("🎯 Interactive positioning tap at: \(tapPoint)")
         
@@ -415,65 +425,67 @@ struct InteractiveVolcanoPlotView: View {
         print("🎯 Arrow at view coordinates: (\(viewArrowX), \(viewArrowY))")
         print("🎯 Tap at view coordinates: (\(tapPoint.x), \(tapPoint.y))")
         print("🎯 Calculated offset: (\(offsetX), \(offsetY))")
-        
-        // Store preview position and enter preview mode
-        previewOffsetX = offsetX
-        previewOffsetY = offsetY
-        isPreviewingPosition = true
-        
+
+        // Update preview position and enter preview mode using ViewState
+        positioningState.updatePreviewOffset(x: offsetX, y: offsetY)
+        positioningState.startPreview()
+
         // Use JavaScript to update annotation position efficiently (no plot reload!)
         updateAnnotationPositionJS(candidate: candidate, offsetX: offsetX, offsetY: offsetY)
     }
     
     // Handle interactive drag for smooth annotation movement - now with native preview
     private func handleInteractiveDrag(at dragPoint: CGPoint, geometry: GeometryProxy) {
-        guard let candidate = positioningCandidate else {
+        guard let candidate = positioningState.positioningCandidate else {
             print("❌ PlotlyWebView: No positioning candidate for drag")
             return
         }
-        
+
         print("🎯 PlotlyWebView: Interactive drag at \(dragPoint) for candidate \(candidate.title)")
-        
-        // Set drag state
-        if !isDragging {
-            isDragging = true
-            cachedArrowPosition = nil // Clear cache for new drag session
+
+        // Initialize drag state on first drag
+        if !dragState.isDragging {
             print("🎯 PlotlyWebView: Starting drag for \(candidate.title)")
-            
+
             // Get current annotation text position for the preview line (not the arrow position)
-            if let textPos = getCurrentAnnotationTextPosition(candidate, geometry: geometry) {
-                dragStartPosition = textPos
-                // Still cache arrow position for offset calculations
-                cachedArrowPosition = getArrowPositionForCandidate(candidate, geometry: geometry)
+            if let textPos = getCurrentAnnotationTextPosition(candidate, geometry: geometry),
+               let arrowPos = getArrowPositionForCandidate(candidate, geometry: geometry) {
+                // Start drag using ViewState
+                dragState.startDrag(at: textPos, arrowPosition: arrowPos)
+                print("✅ PlotlyWebView: Drag state initialized - startPos: \(textPos), arrowPos: \(arrowPos)")
+                print("   dragState.isShowingDragPreview: \(dragState.isShowingDragPreview)")
+            } else {
+                print("❌ PlotlyWebView: Failed to get text or arrow position")
             }
-            
+
             // Enter preview mode on first drag
-            if !isPreviewingPosition {
-                isPreviewingPosition = true
+            if !positioningState.isPreviewingPosition {
+                positioningState.startPreview()
             }
-            isShowingDragPreview = true
         }
-        
-        // Update current drag position for native preview line (no throttling needed for SwiftUI)
-        currentDragPosition = dragPoint
-        
+
+        // Update current drag position for native preview line (with automatic throttling)
+        let updateResult = dragState.updateDrag(to: dragPoint)
+        if updateResult {
+            print("📍 PlotlyWebView: Updated drag position to \(dragPoint)")
+        }
+
         // Store the calculated offset for final commit
-        if let arrowPosition = cachedArrowPosition {
+        if let arrowPosition = dragState.cachedArrowPosition {
             let offsetX = Double(dragPoint.x) - arrowPosition.x
             // FIXED: Direct coordinate mapping - negative y should move up, negative x should move left
             // Drag left (negative X change) → negative offset (move left)
-            // Drag up (negative Y change) → negative offset (move up) 
+            // Drag up (negative Y change) → negative offset (move up)
             let offsetY = Double(dragPoint.y) - arrowPosition.y // Direct mapping, no inversion
-            
-            previewOffsetX = offsetX
-            previewOffsetY = offsetY
+
+            positioningState.updatePreviewOffset(x: offsetX, y: offsetY)
             
             // Debug coordinate calculations
             print("🔍 DRAG DEBUG (FIXED):")
             print("   Arrow Position: (\(arrowPosition.x), \(arrowPosition.y))")
             print("   Drag Point: (\(dragPoint.x), \(dragPoint.y))")
             print("   Calculated Offset (ax, ay): (\(offsetX), \(offsetY)) - Direct mapping, no inversion")
-            if let startPos = dragStartPosition {
+            if let startPos = dragState.dragStartPosition {
                 print("   Start Position (current text): (\(startPos.x), \(startPos.y))")
             }
         }
@@ -646,50 +658,34 @@ struct InteractiveVolcanoPlotView: View {
     // Accept the preview position and make it permanent
     private func acceptPositionPreview() {
         // Use JavaScript to commit the final position efficiently
-        if let candidate = positioningCandidate {
-            updateAnnotationPositionJS(candidate: candidate, offsetX: previewOffsetX, offsetY: previewOffsetY)
+        if let candidate = positioningState.positioningCandidate {
+            let offset = positioningState.currentOffset
+            updateAnnotationPositionJS(candidate: candidate, offsetX: offset.x, offsetY: offset.y)
             // Also save to CurtainData for persistence
-            updateAnnotationPosition(candidate: candidate, offsetX: previewOffsetX, offsetY: previewOffsetY)
+            updateAnnotationPosition(candidate: candidate, offsetX: offset.x, offsetY: offset.y)
         }
-        
-        // Clear preview state
-        isShowingDragPreview = false
-        dragStartPosition = nil
-        currentDragPosition = nil
-        cachedArrowPosition = nil
-        
-        // Exit preview mode
-        isInteractivePositioning = false
-        isPreviewingPosition = false
-        positioningCandidate = nil
-        isDragging = false
+
+        // Reset all states using ViewState methods
+        dragState.reset()
+        positioningState.acceptPosition()
     }
-    
+
     // Reject the preview position and revert to original
     private func rejectPositionPreview() {
-        guard let candidate = positioningCandidate else {
-            isShowingDragPreview = false
-            dragStartPosition = nil
-            currentDragPosition = nil
-            isInteractivePositioning = false
-            isPreviewingPosition = false
+        guard let candidate = positioningState.positioningCandidate else {
+            // Just reset states if no candidate
+            dragState.reset()
+            positioningState.reset()
             return
         }
-        
+
         // Revert to original position using JavaScript for immediate response
-        updateAnnotationPositionJS(candidate: candidate, offsetX: originalOffsetX, offsetY: originalOffsetY)
-        
-        // Clear preview state
-        isShowingDragPreview = false
-        dragStartPosition = nil
-        currentDragPosition = nil
-        cachedArrowPosition = nil
-        
-        // Exit preview mode
-        isInteractivePositioning = false
-        isPreviewingPosition = false
-        positioningCandidate = nil
-        isDragging = false
+        let originalOffset = positioningState.originalOffset
+        updateAnnotationPositionJS(candidate: candidate, offsetX: originalOffset.x, offsetY: originalOffset.y)
+
+        // Reset all states using ViewState methods
+        dragState.reset()
+        positioningState.rejectPosition()
     }
     
     private func updateAnnotationPosition(candidate: AnnotationEditCandidate, offsetX: Double, offsetY: Double) {
@@ -911,25 +907,23 @@ struct InteractiveVolcanoPlotView: View {
                 searchFilter: nil, // No search in read-only mode
                 editMode: false, // Disable point interactions when in annotation edit mode
                 curtainDataService: nil, // No editing service needed
-                isLoading: $isLoading,
-                error: $error,
-                selectedPoints: $selectedPoints,
+                isLoading: $loadingState.isLoading,
+                error: $loadingState.error,
+                selectedPoints: $loadingState.selectedPoints,
                 pointInteractionViewModel: annotationEditMode ? PointInteractionViewModel() : pointInteractionViewModel, // Disable interactions in edit mode
                 selectionManager: selectionManager,
                 annotationManager: annotationManager,
-                coordinateRefreshTrigger: $coordinateRefreshTrigger,
+                coordinateRefreshTrigger: $renderState.coordinateRefreshTrigger,
                 exportService: plotExportService
             )
-            .id("\(plotId)-\(refreshTrigger)") // Force refresh when selections change
+            .id("\(renderState.plotId)-\(renderState.refreshTrigger)") // Force refresh when selections change
             .frame(minHeight: 400) // Ensure WebView has proper size
             .clipped()
             .onAppear {
                 print("🔵 PlotlyWebView: onAppear called")
-                // Trigger a plot update
-                DispatchQueue.main.async {
-                    self.plotId = UUID()
-                }
-                
+                // Don't force update on every appear - only update when renderState changes via .id()
+                // This prevents unnecessary redraws when app comes back from background
+
                 // Trigger plot dimensions request when entering annotation edit mode
                 if annotationEditMode {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -944,36 +938,36 @@ struct InteractiveVolcanoPlotView: View {
             if annotationEditMode {
                 AnnotationEditOverlay(
                     curtainData: curtainData,
-                    isInteractivePositioning: isInteractivePositioning,
-                    isPreviewingPosition: isPreviewingPosition,
-                    positioningCandidate: positioningCandidate,
-                    // Native drag preview properties
-                    isShowingDragPreview: isShowingDragPreview,
-                    dragStartPosition: dragStartPosition,
-                    currentDragPosition: currentDragPosition,
+                    isInteractivePositioning: positioningState.isInteractivePositioning,
+                    isPreviewingPosition: positioningState.isPreviewingPosition,
+                    positioningCandidate: positioningState.positioningCandidate,
+                    // Native drag preview properties - pass bindings for real-time updates
+                    isShowingDragPreview: $dragState.isShowingDragPreview,
+                    dragStartPosition: $dragState.dragStartPosition,
+                    currentDragPosition: $dragState.currentDragPosition,
                     onAnnotationTapped: { tapPoint, geometry in
-                        if isInteractivePositioning {
+                        if positioningState.isInteractivePositioning {
                             // Allow continuous positioning even in preview mode
                             handleInteractivePositioning(at: tapPoint, geometry: geometry)
-                        } else if !isPreviewingPosition {
+                        } else if !positioningState.isPreviewingPosition {
                             handleAnnotationEditTap(at: tapPoint, geometry: geometry)
                         }
                         // Allow continuous editing during preview mode
                     },
                     onAnnotationDragged: { dragPoint, geometry in
                         // Handle drag for smooth annotation movement with native preview
-                        if isInteractivePositioning {
+                        if positioningState.isInteractivePositioning {
                             handleInteractiveDrag(at: dragPoint, geometry: geometry)
                         }
                     },
                     onDragEnded: {
-                        // Reset drag state when drag ends
-                        isDragging = false
-                        // Keep the preview line visible for accept/reject decision
+                        // Complete drag - keeps preview visible for accept/reject decision
+                        dragState.completeDrag()
+                        print("✅ PlotlyWebView: Drag completed - preview still visible for accept/reject")
                     }
                 )
                 .allowsHitTesting(true)
-                .id("overlay-\(coordinateRefreshTrigger)") // Force refresh when coordinates update
+                .id("overlay-\(renderState.coordinateRefreshTrigger)") // Force refresh when coordinates update
             }
         }
         .overlay(
@@ -983,7 +977,7 @@ struct InteractiveVolcanoPlotView: View {
                 Spacer()
                     .frame(height: 80) // Push notification below toolbar
                 HStack {
-                    if isInteractivePositioning && isPreviewingPosition {
+                    if positioningState.isInteractivePositioning && positioningState.isPreviewingPosition {
                         Text("📝➡️📍 Preview: Drag to move text, then Accept or Cancel")
                             .font(.caption)
                             .padding(.horizontal, 12)
@@ -991,7 +985,7 @@ struct InteractiveVolcanoPlotView: View {
                             .background(Color.green.opacity(0.9))
                             .foregroundColor(.white)
                             .cornerRadius(16)
-                    } else if isInteractivePositioning {
+                    } else if positioningState.isInteractivePositioning {
                         Text("🎯 Drag to reposition the annotation text")
                             .font(.caption)
                             .padding(.horizontal, 12)
@@ -1017,7 +1011,7 @@ struct InteractiveVolcanoPlotView: View {
         )
         .overlay(
             // Accept/Reject buttons for preview mode
-            isPreviewingPosition ?
+            positioningState.isPreviewingPosition ?
             VStack {
                 Spacer()
                 HStack {
@@ -1065,17 +1059,15 @@ struct InteractiveVolcanoPlotView: View {
     
     private func loadPlot() {
         print("🔵 InteractiveVolcanoPlotView: Loading plot with \(curtainData.proteomicsData.count) proteins")
-        
+
         if curtainData.proteomicsData.isEmpty {
             print("❌ InteractiveVolcanoPlotView: No protein data available")
-            error = "No protein data available for volcano plot"
-            isLoading = false
+            loadingState.setError("No protein data available for volcano plot")
         } else {
             print("🔵 InteractiveVolcanoPlotView: Protein data available, forcing plot view to show")
-            error = nil
-            // Force the plot to show by setting loading to false immediately
-            isLoading = false
-            
+            // Force the plot to show by setting to ready state immediately
+            loadingState.setReady()
+
             // Add a small delay to ensure UI updates
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 print("🔄 InteractiveVolcanoPlotView: Ensuring plot view is visible")

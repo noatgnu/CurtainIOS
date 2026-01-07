@@ -675,7 +675,11 @@ extension PlotTrace {
         if let text = text {
             dict["text"] = text
         }
-        
+
+        if let textposition = textposition {
+            dict["textposition"] = textposition
+        }
+
         if let hovertemplate = hovertemplate {
             dict["hovertemplate"] = hovertemplate
         }

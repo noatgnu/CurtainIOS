@@ -16,10 +16,10 @@ struct AnnotationEditOverlay: View {
     let isInteractivePositioning: Bool
     let isPreviewingPosition: Bool
     let positioningCandidate: AnnotationEditCandidate?
-    // Native drag preview properties
-    let isShowingDragPreview: Bool
-    let dragStartPosition: CGPoint?
-    let currentDragPosition: CGPoint?
+    // Native drag preview properties - using @Binding for real-time updates
+    @Binding var isShowingDragPreview: Bool
+    @Binding var dragStartPosition: CGPoint?
+    @Binding var currentDragPosition: CGPoint?
     let onAnnotationTapped: (CGPoint, GeometryProxy) -> Void
     let onAnnotationDragged: ((CGPoint, GeometryProxy) -> Void)?
     let onDragEnded: (() -> Void)?
@@ -68,7 +68,10 @@ struct AnnotationEditOverlay: View {
                     ZStack {
                         // Native drag preview line
                         if isShowingDragPreview, let startPos = dragStartPosition, let currentPos = currentDragPosition {
+                            let _ = print("🎨 AnnotationEditOverlay: Drawing preview line from \(startPos) to \(currentPos)")
                             nativeDragPreviewLine(from: startPos, to: currentPos)
+                        } else {
+                            let _ = print("⚠️ AnnotationEditOverlay: Not showing preview - isShowing: \(isShowingDragPreview), start: \(String(describing: dragStartPosition)), current: \(String(describing: currentDragPosition))")
                         }
 
                         // Visual indicators for annotations

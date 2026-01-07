@@ -189,8 +189,8 @@ struct ColumnSizeSettingsView: View {
                         saveChanges()
                         dismiss()
 
-                        // Trigger plot refresh
-                        NotificationCenter.default.post(name: NSNotification.Name("RefreshPlots"), object: nil)
+                        // Trigger plot refresh using correct notification name
+                        NotificationCenter.default.post(name: NSNotification.Name("ProteinChartRefresh"), object: nil)
                     }
                 }
             }

@@ -292,7 +292,14 @@ struct ProteinChartView: View {
         }
         .onAppear {
             print("🔍 ProteinChartView: onAppear called for protein: \(currentProteinId)")
-            loadChart()
+            // Only load chart if it hasn't been loaded yet (initial state)
+            // This prevents unnecessary redraws when app comes back from background
+            if isLoading && error == nil && chartHtml.isEmpty {
+                print("🔄 ProteinChartView: Loading chart for first time")
+                loadChart()
+            } else {
+                print("⏭️ ProteinChartView: Skipping load - chart already loaded")
+            }
         }
         .onChange(of: chartType) { oldValue, newValue in
             print("🔍 ProteinChartView: chartType changed from \(oldValue) to \(newValue)")
@@ -658,6 +665,9 @@ class ProteinChartGenerator {
         // Track condition positions for bracket drawing
         var conditionPositions: [String: (start: Int, end: Int)] = [:]
 
+        // Store info for horizontal condition highlight lines (to be drawn after loop when total is known)
+        var conditionHighlightInfo: [(condition: String, start: Int, end: Int)] = []
+
         // Process data exactly like Android: iterate through conditions in order
         for (conditionIndex, condition) in chartData.conditions.enumerated() {
             guard let values = chartData.conditionData[condition],
@@ -691,6 +701,14 @@ class ProteinChartGenerator {
             // Store condition positions for bracket drawing
             conditionPositions[condition] = (start: startPosition, end: endPosition)
 
+            // Store info for horizontal line if this is left or right condition
+            let isLeftCondition = condition == curtainData.settings.volcanoConditionLabels.leftCondition
+            let isRightCondition = condition == curtainData.settings.volcanoConditionLabels.rightCondition
+
+            if (isLeftCondition || isRightCondition) && curtainData.settings.barChartConditionBracket.showBracket {
+                conditionHighlightInfo.append((condition: condition, start: startPosition, end: currentPosition))
+            }
+
             // Add separator line after each condition group (except the last one)
             if conditionIndex < chartData.conditions.count - 1 {
                 let separatorPosition = Double(currentPosition) - 0.5
@@ -711,8 +729,33 @@ class ProteinChartGenerator {
             }
         }
 
-        // Add condition bracket shapes if enabled
+        // Now that we know the total sample count, add horizontal lines for left/right conditions
         let totalSamples = currentPosition
+        for info in conditionHighlightInfo {
+            // Calculate paper coordinates using total sample count (Android pattern)
+            let x0 = Double(info.start) / Double(totalSamples)
+            let x1 = Double(info.end) / Double(totalSamples)
+            let width = x1 - x0
+            let padding = width * 0.1  // 10% padding on each side
+
+            // Add horizontal line at y=1.02 spanning the condition width
+            shapes.append(PlotShape(
+                type: "line",
+                x0: x0 + padding,
+                x1: x1 - padding,
+                y0: 1.02,
+                y1: 1.02,
+                xref: "paper",
+                yref: "paper",
+                line: PlotLine(
+                    color: curtainData.settings.barChartConditionBracket.bracketColor,
+                    width: Double(curtainData.settings.barChartConditionBracket.bracketWidth),
+                    dash: nil
+                )
+            ))
+        }
+
+        // Add condition bracket shapes if enabled
         if let bracketShapes = createBarChartConditionBrackets(
             settings: curtainData.settings,
             conditionPositions: conditionPositions,
@@ -802,6 +845,11 @@ class ProteinChartGenerator {
             }
         }
         
+        // Get color scheme appropriate colors for dots and error bars (Android pattern)
+        let dotColor = isDarkMode ? "#adb5bd" : "#654949"  // Light gray in dark mode, dark brown in light mode
+        let errorBarColor = isDarkMode ? "#FFFFFF" : "#000000"  // White in dark mode, black in light mode
+        let barBorderColor = isDarkMode ? "#FFFFFF" : "#000000"  // White in dark mode, black in light mode
+
         // Main bar trace with error bars (Android configuration)
         let barTrace = PlotTrace(
             x: xValues,
@@ -813,7 +861,7 @@ class ProteinChartGenerator {
                 color: colors,
                 size: 10,
                 symbol: nil,
-                line: PlotLine(color: "black", width: 1, dash: nil)  // Android black border
+                line: PlotLine(color: barBorderColor, width: 1, dash: nil)  // Android border with contrast
             ),
             text: nil,
             hovertemplate: "<b>%{x}</b><br>Mean: %{y:.3f}<extra></extra>",  // Android hover
@@ -822,13 +870,13 @@ class ProteinChartGenerator {
                 type: "data",
                 array: errorValues,
                 visible: true,
-                color: "black",      // Android black error bars
-                thickness: 2,       // Android thickness
-                width: 4            // Android width
+                color: errorBarColor,  // Android error bars with proper contrast
+                thickness: 2,         // Android thickness
+                width: 4              // Android width
             )
         )
         traces.append(barTrace)
-        
+
         // Individual sample dots overlay (Android feature)
         let dotTrace = PlotTrace(
             x: allDotXValues,
@@ -837,10 +885,11 @@ class ProteinChartGenerator {
             type: "scatter",
             name: "",  // No legend
             marker: PlotMarker(
-                color: "rgba(0,0,0,0.6)",  // Android semi-transparent black
-                size: 6,                   // Android 6px markers
+                color: dotColor,      // Android color scheme-aware dots
+                size: 6,              // Android 6px markers
                 symbol: "circle",
-                line: nil
+                line: nil,
+                opacity: 0.8          // Android opacity for better visibility
             ),
             text: nil,
             hovertemplate: "<b>%{x}</b><br>Value: %{y:.3f}<extra></extra>",  // Android hover for individual points
@@ -890,24 +939,30 @@ class ProteinChartGenerator {
     private func createViolinPlot(chartData: ProteinChartData, curtainData: CurtainData, isDarkMode: Bool) -> PlotData {
         // Android VIOLIN_PLOT implementation - exact replication
         var traces: [PlotTrace] = []
-        
+
+        // Track condition indices for bracket drawing
+        var conditionIndices: [String: Int] = [:]
+
         // Create one trace per condition (Android approach)
-        for condition in chartData.conditions {
-            guard let values = chartData.conditionData[condition], 
+        for (index, condition) in chartData.conditions.enumerated() {
+            guard let values = chartData.conditionData[condition],
                   let _ = chartData.conditionSamples[condition],
                   !values.isEmpty else { continue }
-            
+
             let conditionColor = getConditionColor(condition: condition, curtainData: curtainData)
-            
+
+            // Store condition index for bracket drawing
+            conditionIndices[condition] = index
+
             // Calculate Android-style statistics for enhanced hover
             let mean = values.reduce(0, +) / Double(values.count)
             let variance = values.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(values.count)
             let std = sqrt(variance)
             let sortedValues = values.sorted()
-            let median = sortedValues.count % 2 == 0 
+            let median = sortedValues.count % 2 == 0
                 ? (sortedValues[sortedValues.count / 2 - 1] + sortedValues[sortedValues.count / 2]) / 2.0
                 : sortedValues[sortedValues.count / 2]
-            
+
             // Create enhanced hover template with all statistics (Android-style)
             let hoverTemplate = "<b>%{x}</b><br>" +
                 "Value: %{y:.3f}<br>" +
@@ -915,7 +970,7 @@ class ProteinChartGenerator {
                 "Median: \(String(format: "%.3f", median))<br>" +
                 "Std: \(String(format: "%.3f", std))<br>" +
                 "N: \(values.count)<extra></extra>"
-            
+
             // Android violin plot trace configuration - exact match
             let trace = PlotTrace(
                 x: Array(repeating: condition, count: values.count),
@@ -925,7 +980,7 @@ class ProteinChartGenerator {
                 name: condition,       // Android uses condition name
                 marker: PlotMarker(
                     color: conditionColor,
-                    size: 4,           // Android point size  
+                    size: 4,           // Android point size
                     symbol: "circle",
                     line: nil,         // No marker border in Android
                     opacity: 0.7       // Android marker opacity
@@ -963,7 +1018,18 @@ class ProteinChartGenerator {
             )
             traces.append(trace)
         }
-        
+
+        // Create bracket shapes if enabled
+        let totalConditions = chartData.conditions.count
+        var bracketShapes: [PlotShape] = []
+        if let shapes = createAverageBarChartConditionBrackets(
+            settings: curtainData.settings,
+            conditionIndices: conditionIndices,
+            totalConditions: totalConditions
+        ) {
+            bracketShapes = shapes
+        }
+
         // Android layout configuration
         let yValues = chartData.conditionData.values.flatMap { $0 }
         let defaultYRange = [(yValues.min() ?? 0.0) * 0.95, (yValues.max() ?? 1.0) * 1.05]
@@ -974,6 +1040,7 @@ class ProteinChartGenerator {
             yRange: finalYRange,
             curtainData: curtainData,
             conditionCount: chartData.conditions.count,
+            bracketShapes: bracketShapes,
             isDarkMode: isDarkMode
         )
 
@@ -1295,6 +1362,19 @@ class ProteinChartGenerator {
             plotWidth = nil  // Auto width
         }
 
+        // Calculate top margin based on whether brackets are shown
+        // Bracket extends to y = 1.02 + bracketHeight in paper coordinates
+        // Need sufficient margin to display the bracket above the plot
+        let topMargin: Int
+        if curtainData.settings.barChartConditionBracket.showBracket {
+            // Calculate required margin: (0.02 + bracketHeight) needs space
+            // Assuming typical plot height ~600px, allocate proportional margin
+            let bracketExtension = 0.02 + curtainData.settings.barChartConditionBracket.bracketHeight
+            topMargin = max(80, Int(bracketExtension * 600))  // At least 80px, or proportional to bracket
+        } else {
+            topMargin = 20  // Default minimal margin
+        }
+
         return PlotLayout(
             title: nil,  // Remove title as requested - already have header title
             xaxis: PlotAxis(
@@ -1340,7 +1420,7 @@ class ProteinChartGenerator {
             shapes: updatedShapes,   // Separator lines between condition groups
             annotations: nil,
             legend: nil,
-            margin: PlotMargin(left: 50, right: 20, top: 20, bottom: 100),
+            margin: PlotMargin(left: 50, right: 20, top: topMargin, bottom: 100),
             width: plotWidth,  // Optional width based on column size
             height: nil  // Auto height
         )
@@ -1363,6 +1443,15 @@ class ProteinChartGenerator {
             print("📏 AverageBarChart: Applying column size \(columnSize), conditionCount: \(conditionCount), calculated width: \(plotWidth ?? 0)")
         } else {
             plotWidth = nil  // Auto width
+        }
+
+        // Calculate top margin based on whether brackets are shown
+        let topMargin: Int
+        if curtainData.settings.barChartConditionBracket.showBracket {
+            let bracketExtension = 0.02 + curtainData.settings.barChartConditionBracket.bracketHeight
+            topMargin = max(80, Int(bracketExtension * 600))
+        } else {
+            topMargin = 20
         }
 
         return PlotLayout(
@@ -1407,13 +1496,13 @@ class ProteinChartGenerator {
             shapes: shapes,  // Support condition brackets
             annotations: nil,
             legend: nil,
-            margin: PlotMargin(left: 50, right: 20, top: 20, bottom: 100),
+            margin: PlotMargin(left: 50, right: 20, top: topMargin, bottom: 100),
             width: plotWidth,  // Optional width based on column size
             height: nil  // Auto height
         )
     }
     
-    private func createAndroidViolinLayout(title: String, yRange: [Double], curtainData: CurtainData, conditionCount: Int, isDarkMode: Bool) -> PlotLayout {
+    private func createAndroidViolinLayout(title: String, yRange: [Double], curtainData: CurtainData, conditionCount: Int, bracketShapes: [PlotShape], isDarkMode: Bool) -> PlotLayout {
         // Android Violin Plot layout - exact configuration
 
         // Get colors appropriate for current color scheme
@@ -1430,6 +1519,15 @@ class ProteinChartGenerator {
             print("📏 ViolinPlot: Applying column size \(columnSize), conditionCount: \(conditionCount), calculated width: \(plotWidth ?? 0)")
         } else {
             plotWidth = nil  // Auto width
+        }
+
+        // Calculate top margin based on whether brackets are shown
+        let topMargin: Int
+        if curtainData.settings.barChartConditionBracket.showBracket {
+            let bracketExtension = 0.02 + curtainData.settings.barChartConditionBracket.bracketHeight
+            topMargin = max(80, Int(bracketExtension * 600))
+        } else {
+            topMargin = 20
         }
 
         return PlotLayout(
@@ -1471,10 +1569,10 @@ class ProteinChartGenerator {
             plot_bgcolor: bgColor,
             paper_bgcolor: bgColor,
             font: PlotFont(family: "Arial", size: 10, color: textColor, dash: nil),
-            shapes: nil,
+            shapes: bracketShapes.isEmpty ? nil : bracketShapes,  // Add bracket shapes if any
             annotations: nil,
             legend: nil,
-            margin: PlotMargin(left: 50, right: 20, top: 20, bottom: 100),
+            margin: PlotMargin(left: 50, right: 20, top: topMargin, bottom: 100),
             width: plotWidth,  // Optional width based on column size
             height: nil  // Auto height
         )
@@ -1610,12 +1708,12 @@ class ProteinChartGenerator {
             return nil
         }
 
-        // Calculate paper coordinates (normalized 0-1 range)
-        // For data positions [0...totalSamples-1], convert to paper coordinates
-        let leftX0 = Double(leftPos.start) / Double(totalSamples - 1)
-        let leftX1 = Double(leftPos.end) / Double(totalSamples - 1)
-        let rightX0 = Double(rightPos.start) / Double(totalSamples - 1)
-        let rightX1 = Double(rightPos.end) / Double(totalSamples - 1)
+        // Calculate paper coordinates (normalized 0-1 range) - Android pattern
+        // Divide by totalSamples (not totalSamples - 1) to match Android behavior
+        let leftX0 = Double(leftPos.start) / Double(totalSamples)
+        let leftX1 = Double(leftPos.end + 1) / Double(totalSamples)  // end+1 because end is inclusive
+        let rightX0 = Double(rightPos.start) / Double(totalSamples)
+        let rightX1 = Double(rightPos.end + 1) / Double(totalSamples)  // end+1 because end is inclusive
 
         // Calculate middle positions for each condition
         let leftMidX = (leftX0 + leftX1) / 2.0
@@ -1713,9 +1811,15 @@ class ProteinChartGenerator {
         }
 
         // For categorical x-axis, each condition occupies 1/totalConditions of the plot width
-        // Condition at index i is centered at paper coordinate (i + 0.5) / totalConditions
-        let leftMidX = (Double(leftIndex) + 0.5) / Double(totalConditions)
-        let rightMidX = (Double(rightIndex) + 0.5) / Double(totalConditions)
+        // Condition at index i spans from i/totalConditions to (i+1)/totalConditions
+        let leftX0 = Double(leftIndex) / Double(totalConditions)
+        let leftX1 = Double(leftIndex + 1) / Double(totalConditions)
+        let rightX0 = Double(rightIndex) / Double(totalConditions)
+        let rightX1 = Double(rightIndex + 1) / Double(totalConditions)
+
+        // Calculate middle positions for bracket vertical lines
+        let leftMidX = (leftX0 + leftX1) / 2.0
+        let rightMidX = (rightX0 + rightX1) / 2.0
 
         // Bracket Y positions (above the plot)
         let baseY = 1.02  // Just above plot area
@@ -1729,6 +1833,35 @@ class ProteinChartGenerator {
         )
 
         var bracketShapes: [PlotShape] = []
+
+        // Add horizontal lines highlighting each condition (Android pattern)
+        // Left condition horizontal line
+        let leftWidth = leftX1 - leftX0
+        let leftPadding = leftWidth * 0.1
+        bracketShapes.append(PlotShape(
+            type: "line",
+            x0: leftX0 + leftPadding,
+            x1: leftX1 - leftPadding,
+            y0: baseY,
+            y1: baseY,
+            xref: "paper",
+            yref: "paper",
+            line: bracketLine
+        ))
+
+        // Right condition horizontal line
+        let rightWidth = rightX1 - rightX0
+        let rightPadding = rightWidth * 0.1
+        bracketShapes.append(PlotShape(
+            type: "line",
+            x0: rightX0 + rightPadding,
+            x1: rightX1 - rightPadding,
+            y0: baseY,
+            y1: baseY,
+            xref: "paper",
+            yref: "paper",
+            line: bracketLine
+        ))
 
         // Left vertical line: from (leftMidX, baseY) to (leftMidX, bracketY)
         bracketShapes.append(PlotShape(
