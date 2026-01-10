@@ -319,7 +319,7 @@ struct ProteinChartView: View {
                     self.isLoading = false
                 }
             } catch {
-                if let chartError = error as? ChartGenerationError {
+                if let _ = error as? ChartGenerationError {
                 }
                 await MainActor.run {
                     self.error = error.localizedDescription
@@ -370,16 +370,16 @@ struct ProteinChartView: View {
         if let rawData = curtainData.raw {
             let lines = rawData.components(separatedBy: .newlines).filter { !$0.isEmpty }
             if !lines.isEmpty {
-                let header = lines[0].components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                _ = lines[0].components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             }
         } else {
         }
         
 
         let processingStart = Date()
-        let processedSettings = await curtainData.getProcessedSettingsAsync { progress in
+        _ = await curtainData.getProcessedSettingsAsync { progress in
         }
-        let processingDuration = Date().timeIntervalSince(processingStart)
+        _ = Date().timeIntervalSince(processingStart)
         
         let generator = ProteinChartGenerator()
         let html = try await generator.generateProteinChart(
@@ -389,7 +389,7 @@ struct ProteinChartView: View {
             isDarkMode: colorScheme == .dark
         )
         
-        let duration = Date().timeIntervalSince(startTime)
+        _ = Date().timeIntervalSince(startTime)
         if html.count < 100 {
         }
         return html

@@ -15,7 +15,7 @@ class PlotlyChartGenerator {
     
     func createVolcanoPlotHtml(context: PlotGenerationContext) async -> String {
         let volcanoResult = await volcanoPlotDataService.processVolcanoData(
-            curtainData: convertToCurtainData(context.data),
+            curtainData: convertToAppData(context.data),
             settings: context.settings
         )
         
@@ -29,8 +29,30 @@ class PlotlyChartGenerator {
         }
     }
     
-    private func convertToCurtainData(_ data: CurtainData) -> CurtainData {
-        return data
+    private func convertToAppData(_ data: CurtainData) -> AppData {
+        let appData = AppData()
+        appData.dataMap = data.selectionsMap
+        appData.rawForm = RawForm(
+            primaryIDs: data.rawForm.primaryIDs,
+            samples: data.rawForm.samples,
+            log2: data.rawForm.log2
+        )
+        appData.differentialForm = DifferentialForm(
+            primaryIDs: data.differentialForm.primaryIDs,
+            geneNames: data.differentialForm.geneNames,
+            foldChange: data.differentialForm.foldChange,
+            transformFC: data.differentialForm.transformFC,
+            significant: data.differentialForm.significant,
+            transformSignificant: data.differentialForm.transformSignificant,
+            comparison: data.differentialForm.comparison,
+            comparisonSelect: data.differentialForm.comparisonSelect,
+            reverseFoldChange: data.differentialForm.reverseFoldChange
+        )
+        appData.selectedMap = data.selectedMap ?? [:]
+        if let rawString = data.raw {
+            appData.raw = InputFile(originalFile: rawString)
+        }
+        return appData
     }
     
     private func createAndroidCompatiblePlotData(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotData {
@@ -218,8 +240,8 @@ class PlotlyChartGenerator {
             dtick: volcanoAxis.dtickY,
             ticklen: volcanoAxis.ticklenY,
             showgrid: settings.volcanoPlotGrid["y"] ?? true,
-            side: nil,
-            automargin: true
+            automargin: true,
+            side: nil
         )
 
         var shapes = createAndroidCompatibleThresholdShapes(settings, volcanoAxis)
@@ -345,9 +367,9 @@ class PlotlyChartGenerator {
                 let b = Int(hex.dropFirst(4).prefix(2), radix: 16) ?? 255
                 return r < 30 && g < 30 && b < 30
             } else if hex.count == 3 {
-                let r = Int(String(repeating: hex.prefix(1), count: 2), radix: 16) ?? 255
-                let g = Int(String(repeating: hex.dropFirst(1).prefix(1), count: 2), radix: 16) ?? 255
-                let b = Int(String(repeating: hex.dropFirst(2).prefix(1), count: 2), radix: 16) ?? 255
+                let r = Int(String(repeating: String(hex.prefix(1)), count: 2), radix: 16) ?? 255
+                let g = Int(String(repeating: String(hex.dropFirst(1).prefix(1)), count: 2), radix: 16) ?? 255
+                let b = Int(String(repeating: String(hex.dropFirst(2).prefix(1)), count: 2), radix: 16) ?? 255
                 return r < 30 && g < 30 && b < 30
             }
         }

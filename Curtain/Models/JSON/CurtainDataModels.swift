@@ -105,7 +105,7 @@ struct CurtainData {
         
         let primaryIdColumn = differentialForm.primaryIDs
         guard let id = row[primaryIdColumn] as? String, !id.isEmpty else {
-            if let debugValue = row[primaryIdColumn] {
+            if row[primaryIdColumn] != nil {
             } else {
             }
             return nil
@@ -210,7 +210,7 @@ struct CurtainData {
                 if index < 3 {
                     if let dict = pair[1] as? [String: Any] {
                         // Show first few key-value pairs from the protein data
-                        for (dictKey, dictValue) in dict.prefix(3) {
+                        for (_, _) in dict.prefix(3) {
                         }
                     }
                 }

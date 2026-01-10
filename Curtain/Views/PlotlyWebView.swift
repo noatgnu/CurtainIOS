@@ -121,9 +121,7 @@ struct PlotlyWebView: UIViewRepresentable {
         let finalFilename = filename ?? generateDefaultFilename(format: "png")
         let jsCode = "window.CurtainVisualization.exportAsPNG('\(finalFilename)', \(width), \(height));"
         
-        webView.evaluateJavaScript(jsCode) { result, error in
-            if let error = error {
-            }
+        webView.evaluateJavaScript(jsCode) { _, _ in
         }
     }
     
@@ -136,9 +134,7 @@ struct PlotlyWebView: UIViewRepresentable {
         let finalFilename = filename ?? generateDefaultFilename(format: "svg")
         let jsCode = "window.CurtainVisualization.exportAsSVG('\(finalFilename)', \(width), \(height));"
         
-        webView.evaluateJavaScript(jsCode) { result, error in
-            if let error = error {
-            }
+        webView.evaluateJavaScript(jsCode) { _, _ in
         }
     }
     
@@ -149,9 +145,7 @@ struct PlotlyWebView: UIViewRepresentable {
         }
         
         let jsCode = "window.CurtainVisualization.getCurrentPlotInfo();"
-        webView.evaluateJavaScript(jsCode) { result, error in
-            if let error = error {
-            }
+        webView.evaluateJavaScript(jsCode) { _, _ in
         }
     }
     
@@ -185,9 +179,7 @@ struct PlotlyWebView: UIViewRepresentable {
         let finalFilename = filename ?? "plot_\(DateFormatter.filenameSafe.string(from: Date())).png"
         let jsCode = "window.CurtainVisualization.exportAsPNG('\(finalFilename)', \(width), \(height));"
         
-        webView.evaluateJavaScript(jsCode) { result, error in
-            if let error = error {
-            }
+        webView.evaluateJavaScript(jsCode) { _, _ in
         }
     }
     
@@ -200,9 +192,7 @@ struct PlotlyWebView: UIViewRepresentable {
         let finalFilename = filename ?? "plot_\(DateFormatter.filenameSafe.string(from: Date())).svg"
         let jsCode = "window.CurtainVisualization.exportAsSVG('\(finalFilename)', \(width), \(height));"
         
-        webView.evaluateJavaScript(jsCode) { result, error in
-            if let error = error {
-            }
+        webView.evaluateJavaScript(jsCode) { _, _ in
         }
     }
     
@@ -406,7 +396,7 @@ struct InteractiveVolcanoPlotView: View {
 
             positioningState.updatePreviewOffset(x: offsetX, y: offsetY)
             
-            if let startPos = dragState.dragStartPosition {
+            if dragState.dragStartPosition != nil {
             }
         }
     }
@@ -461,7 +451,7 @@ struct InteractiveVolcanoPlotView: View {
         
         // Fallback to calculated coordinates if JavaScript data not available
         if let jsCoordinates = PlotlyWebView.Coordinator.sharedCoordinator?.annotationCoordinates {
-            for coord in jsCoordinates {
+            for _ in jsCoordinates {
             }
         } else {
         }
@@ -475,7 +465,7 @@ struct InteractiveVolcanoPlotView: View {
         
         let (marginLeft, marginRight, marginTop, marginBottom): (Double, Double, Double, Double)
         
-        if let coord = PlotlyWebView.Coordinator.sharedCoordinator {
+        if PlotlyWebView.Coordinator.sharedCoordinator != nil {
         }
         
         if let jsDimensions = PlotlyWebView.Coordinator.sharedCoordinator?.plotDimensions,

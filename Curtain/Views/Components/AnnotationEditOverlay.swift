@@ -274,13 +274,13 @@ struct AnnotationEditOverlay: View {
         let plotDimensions = coordinator?.plotDimensions
 
         if let webViewInfo = plotDimensions?["webView"] as? [String: Any],
-           let finalPlotLeft = plotDimensions?["plotLeft"] as? Double,
-           let finalPlotTop = plotDimensions?["plotTop"] as? Double,
-           let finalPlotRight = plotDimensions?["plotRight"] as? Double,
-           let finalPlotBottom = plotDimensions?["plotBottom"] as? Double {
+           let _ = plotDimensions?["plotLeft"] as? Double,
+           let _ = plotDimensions?["plotTop"] as? Double,
+           let _ = plotDimensions?["plotRight"] as? Double,
+           let _ = plotDimensions?["plotBottom"] as? Double {
 
-            let webViewLeft = webViewInfo["left"] as? Double ?? 0.0
-            let webViewTop = webViewInfo["top"] as? Double ?? 0.0
+            let _ = webViewInfo["left"] as? Double ?? 0.0
+            let _ = webViewInfo["top"] as? Double ?? 0.0
 
             // Use CoordinateTransformUtilities
             let bounds = CoordinateTransformUtilities.calculateNestedPlotBounds(

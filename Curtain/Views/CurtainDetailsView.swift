@@ -144,7 +144,7 @@ struct CurtainDetailsView: View {
         let transformedSelectedMap = transformSelectionsMapToSelectedMap(service.curtainData.selectedMap.isEmpty ? nil : service.curtainData.selectedMap)
         
         return CurtainData(
-            raw: service.curtainData.raw?.originalFile, // CRITICAL: Add the raw CSV data!
+            raw: service.curtainData.raw?.originalFile,
             rawForm: CurtainRawForm(
                 primaryIDs: service.curtainData.rawForm?.primaryIDs ?? "",
                 samples: service.curtainData.rawForm?.samples ?? [],
@@ -161,6 +161,8 @@ struct CurtainDetailsView: View {
                 comparisonSelect: service.curtainData.differentialForm?.comparisonSelect ?? [],
                 reverseFoldChange: service.curtainData.differentialForm?.reverseFoldChange ?? false
             ),
+            processed: service.curtainData.differential?.originalFile,
+            selectionsMap: service.curtainData.dataMap,
             selectedMap: transformedSelectedMap,
             settings: service.curtainSettings,
             fetchUniprot: service.curtainSettings.fetchUniprot,

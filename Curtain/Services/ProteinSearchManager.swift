@@ -311,9 +311,6 @@ class ProteinSearchManager: ObservableObject {
                 searchSession.activeFilters = Set(restoredSearchLists.map { $0.id })
             }
         }
-        
-        for searchList in restoredSearchLists {
-        }
     }
     
     func saveSearchListsToCurtainData(curtainData: inout CurtainData) {

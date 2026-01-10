@@ -214,21 +214,21 @@ class CurtainDataService {
         
         // Check dataMap structure
         if let dataMap = curtainData.dataMap {
-            let validProteins = dataMap.values.compactMap { $0 as? [String: Any] }.count
+            _ = dataMap.values.compactMap { $0 as? [String: Any] }.count
             
             // Sample validation on first few proteins
-            for (index, (key, value)) in dataMap.prefix(3).enumerated() {
+            for (_, value) in dataMap.prefix(3) {
                 if let proteinDict = value as? [String: Any] {
-                    let hasFC = proteinDict["foldChange"] != nil
-                    let hasPVal = proteinDict["pValue"] != nil
-                    let hasGenes = proteinDict["geneNames"] != nil
+                    _ = proteinDict["foldChange"] != nil
+                    _ = proteinDict["pValue"] != nil
+                    _ = proteinDict["geneNames"] != nil
                 } else {
                 }
             }
         }
         
         // Check UniProt integration
-        if let uniprotDB = uniprotData.db {
+        if uniprotData.db != nil {
         }
         
     }
@@ -387,7 +387,7 @@ class CurtainDataService {
                 if index < 3 {
                     if let dict = pair[1] as? [String: Any] {
                         // Show first few key-value pairs from the protein data
-                        for (dictKey, dictValue) in dict.prefix(3) {
+                        for (_, _) in dict.prefix(3) {
                         }
                     }
                 }
@@ -424,14 +424,14 @@ class CurtainDataService {
             let firstThreeKeys = Array(dataMap.keys.prefix(3))
             for key in firstThreeKeys {
                 if let proteinData = dataMap[key] {
-                    if let dict = proteinData as? [String: Any] {
+                    if let _ = proteinData as? [String: Any] {
                     }
                 }
             }
         }
         
         // Like Android - validate UniProt integration
-        if let uniprotDB = uniprotData.db {
+        if uniprotData.db != nil {
         }
         
     }

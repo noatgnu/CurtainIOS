@@ -42,6 +42,31 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         NotificationCenter.default.removeObserver(self)
     }
 
+    private func convertToAppData(_ data: CurtainData) -> AppData {
+        let appData = AppData()
+        appData.dataMap = data.selectionsMap
+        appData.rawForm = RawForm(
+            primaryIDs: data.rawForm.primaryIDs,
+            samples: data.rawForm.samples,
+            log2: data.rawForm.log2
+        )
+        appData.differentialForm = DifferentialForm(
+            primaryIDs: data.differentialForm.primaryIDs,
+            geneNames: data.differentialForm.geneNames,
+            foldChange: data.differentialForm.foldChange,
+            transformFC: data.differentialForm.transformFC,
+            significant: data.differentialForm.significant,
+            transformSignificant: data.differentialForm.transformSignificant,
+            comparison: data.differentialForm.comparison,
+            comparisonSelect: data.differentialForm.comparisonSelect,
+            reverseFoldChange: data.differentialForm.reverseFoldChange
+        )
+        appData.selectedMap = data.selectedMap ?? [:]
+        if let rawString = data.raw {
+            appData.raw = InputFile(originalFile: rawString)
+        }
+        return appData
+    }
 
     private func setupNotificationObservers() {
         NotificationCenter.default.addObserver(
@@ -249,7 +274,7 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
         let volcanoDataService = VolcanoPlotDataService()
         let volcanoResult = await volcanoDataService.processVolcanoData(
-            curtainData: parent.curtainData,
+            curtainData: convertToAppData(parent.curtainData),
             settings: parent.curtainData.settings
         )
 
@@ -335,14 +360,14 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
         if let exportService = parent.exportService {
             Task {
-                let result = await exportService.processExportData(exportData)
+                _ = await exportService.processExportData(exportData)
             }
         }
     }
 
     private func handlePlotExportError(_ messageBody: Any?) {
         if let errorData = messageBody as? [String: Any],
-           let format = errorData["format"] as? String,
+           let _ = errorData["format"] as? String,
            let errorMessage = errorData["error"] as? String {
             if let exportService = parent.exportService {
                 Task { @MainActor in

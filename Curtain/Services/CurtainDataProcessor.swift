@@ -12,7 +12,6 @@ class CurtainDataProcessor {
     /// Process raw CSV data to create essential metadata structures
     /// This is the iOS equivalent of Android's processRawData() method
     static func processRawData(_ curtainData: CurtainData) -> CurtainSettings {
-        let startTime = Date()
 
         guard let rawCSV = curtainData.raw, !rawCSV.isEmpty else {
             return curtainData.settings
@@ -87,8 +86,6 @@ class CurtainDataProcessor {
             newSampleOrder: sampleOrder,
             newSampleVisible: sampleVisible
         )
-
-        let duration = Date().timeIntervalSince(startTime)
 
         return updatedSettings
     }
@@ -292,7 +289,6 @@ actor DataProcessorActor {
         _ curtainData: CurtainData,
         progressCallback: ((Double) -> Void)?
     ) async -> CurtainSettings {
-        let startTime = Date()
 
         guard let rawCSV = curtainData.raw, !rawCSV.isEmpty else {
             progressCallback?(1.0)
@@ -373,8 +369,6 @@ actor DataProcessorActor {
             newSampleOrder: sampleOrder,
             newSampleVisible: sampleVisible
         )
-
-        let duration = Date().timeIntervalSince(startTime)
 
         progressCallback?(1.0)
         return merged

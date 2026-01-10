@@ -62,7 +62,7 @@ class VolcanoPlotDataService {
             var colors: [String] = []
             var hasUserSelection = false
 
-            if let selectedMap = curtainData.selectedMap, let selectionForId = selectedMap[id] {
+            if let selectionForId = curtainData.selectedMap[id] {
                 for (name, isSelected) in selectionForId {
                     if isSelected, let color = colorMap[name] {
                         if let match = name.range(of: #"\(([^)]*)\)[^(]*$"#, options: .regularExpression),
@@ -221,12 +221,10 @@ class VolcanoPlotDataService {
         let defaultColorList = settings.defaultColorList
         let currentColors = Array(colorMap.values).filter { defaultColorList.contains($0) }
         var currentPosition = currentColors.count < defaultColorList.count ? currentColors.count : 0
-        var breakColor = false
         var shouldRepeat = false
         for s in selectOperationNames.sorted() {
             if colorMap[s] == nil {
                 while true {
-                    if breakColor { colorMap[s] = defaultColorList[currentPosition]; break }
                     if currentColors.contains(defaultColorList[currentPosition]) {
                         currentPosition += 1
                         if shouldRepeat { colorMap[s] = defaultColorList[currentPosition]; break }

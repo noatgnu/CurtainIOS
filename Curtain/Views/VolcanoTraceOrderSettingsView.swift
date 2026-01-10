@@ -14,26 +14,6 @@ struct TraceItem: Identifiable {
     let originalIndex: Int
 }
 
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3:
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6:
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8:
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 0, 0, 0)
-        }
-        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
-    }
-}
-
 struct VolcanoTraceOrderSettingsView: View {
     @Binding var curtainData: CurtainData
     let traces: [PlotTrace]
@@ -72,7 +52,7 @@ struct VolcanoTraceOrderSettingsView: View {
                                     .font(.caption)
 
                                 Circle()
-                                    .fill(Color(hex: item.color))
+                                    .fill(colorFromHex(item.color))
                                     .frame(width: 12, height: 12)
 
                                 Text(item.name)
@@ -223,10 +203,28 @@ struct VolcanoTraceOrderSettingsView: View {
     }
 
     private func getTraceColor(_ trace: PlotTrace) -> String {
-        if let color = trace.marker?.color {
+        if let color = trace.marker?.color as? String {
             return color
         }
         return "#999999"
+    }
+
+    private func colorFromHex(_ hex: String) -> Color {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3:
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6:
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8:
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        return Color(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
     }
 
     private func saveChanges() {
@@ -419,5 +417,24 @@ struct VolcanoTraceOrderSettingsView: View {
         settings: CurtainSettings()
     )
 
-    VolcanoTraceOrderSettingsView(curtainData: $sampleData)
+    let sampleTraces: [PlotTrace] = [
+        PlotTrace(
+            x: [1.0, 2.0, 3.0],
+            y: [1.0, 2.0, 3.0],
+            mode: "markers",
+            type: "scatter",
+            name: "Group A",
+            marker: PlotMarker(color: "#FF0000", size: 5)
+        ),
+        PlotTrace(
+            x: [1.0, 2.0, 3.0],
+            y: [1.0, 2.0, 3.0],
+            mode: "markers",
+            type: "scatter",
+            name: "Group B",
+            marker: PlotMarker(color: "#00FF00", size: 5)
+        )
+    ]
+
+    VolcanoTraceOrderSettingsView(curtainData: $sampleData, traces: sampleTraces)
 }
