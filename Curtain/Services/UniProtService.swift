@@ -7,7 +7,6 @@
 
 import Foundation
 
-// MARK: - UniProt Service (Based on Android UniprotService.kt)
 
 @Observable
 class UniProtService {
@@ -17,9 +16,7 @@ class UniProtService {
         self.curtainDataService = curtainDataService
     }
     
-    // MARK: - UniProt Data Access (Exact copy of Android getUniprotFromPrimary)
     
-    /// Get UniProt data from a primary accession ID (exact copy of Android implementation)
     func getUniprotFromPrimary(_ accessionId: String) -> [String: Any]? {
         // Direct lookup in the database
         if let db = curtainDataService.uniprotData.db, db.keys.contains(accessionId) {
@@ -44,11 +41,6 @@ class UniProtService {
         }
         
         return nil
-    }
-    
-    /// Check if UniProt data is available and bypassed
-    var isBypassUniProt: Bool {
-        return curtainDataService.curtainData.bypassUniProt
     }
     
     /// Check if UniProt data is loaded

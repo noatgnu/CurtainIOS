@@ -7,11 +7,9 @@
 
 import Foundation
 
-// MARK: - CurtainConstants (Based on Android predefined values)
 
 struct CurtainConstants {
     
-    // MARK: - Predefined Hostnames (From Android AddCurtainDialog.kt)
     
     struct PredefinedHosts {
         static let celsusBackend = "https://celsus.muttsu.xyz"
@@ -19,7 +17,6 @@ struct CurtainConstants {
         static let proteoFrontend = "https://curtain.proteo.info"
     }
     
-    // MARK: - Example/Demo Data (From Android MainActivity.kt)
     
     struct ExampleData {
         static let uniqueId = "f4b009f3-ac3c-470a-a68b-55fcadf68d0f"
@@ -40,7 +37,6 @@ struct CurtainConstants {
         "https://your-curtain-server.com"
     ]
     
-    // MARK: - URL Pattern Recognition (From Android AddCurtainDialog.kt)
     
     struct URLPatterns {
         static let proteoHost = "curtain.proteo.info"

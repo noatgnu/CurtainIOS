@@ -11,7 +11,7 @@ import Foundation
 
 // MARK: - Helper Structs
 
-// MARK: - CurtainDetailsView (Based on Android CurtainDetailsFragment)
+// MARK: - CurtainDetailsView 
 
 struct CurtainDetailsView: View {
     let curtain: CurtainEntity
@@ -185,21 +185,19 @@ struct CurtainDetailsView: View {
         )
     }
     
-    // MARK: - Android Data Transformation (Like Android CurtainDataService)
     
     private func transformSelectionsMapToSelectedMap(_ selectedMap: [String: [String: Bool]]?) -> [String: [String: Bool]]? {
-        // Android transformation: selectionsMap -> selectedMap
-        // In Android: this.curtainData.selectedMap = dataObject["selectionsMap"] as? Map<String, Map<String, Boolean>> ?: mapOf()
+        
         
         guard let selectedMap = selectedMap else { return nil }
         
-        // Filter out false values (Android only stores true values)
+        // Filter out false values 
         var cleanedSelectedMap: [String: [String: Bool]] = [:]
         
         for (proteinId, selections) in selectedMap {
             var cleanedSelections: [String: Bool] = [:]
             for (selectionName, isSelected) in selections {
-                if isSelected { // Only store true values like Android
+                if isSelected { 
                     cleanedSelections[selectionName] = true
                 }
             }
@@ -356,9 +354,7 @@ struct DataOverviewTab: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
-                // DataFrame Statistics (matching Android implementation)
                 OverviewSection(title: "Data Statistics") {
-                    // Row counts matching Android dataframeInfoTextView
                     OverviewRow(label: "Raw Data Rows", value: "\(data.rawDataRowCount)")
                     OverviewRow(label: "Differential Data Rows", value: "\(data.differentialDataRowCount)")
                     
@@ -368,14 +364,12 @@ struct DataOverviewTab: View {
                     OverviewRow(label: "Total Proteins", value: "\(data.proteomicsData.count)")
                     OverviewRow(label: "Conditions", value: "\(data.settings.conditionOrder.count)")
                     
-                    // Sample information (matching Android samplesInfo)
                     if !data.rawForm.samples.isEmpty {
                         let samplesInfo = data.rawForm.samples.joined(separator: ", ")
                         OverviewRow(label: "Samples", value: samplesInfo, isExpandable: true)
                     }
                 }
                 
-                // UniProt Status (matching Android implementation)
                 OverviewSection(title: "Data Processing") {
                     let uniprotStatus = data.fetchUniprot ? "UniProt data loaded" : "UniProt data not loaded"
                     OverviewRow(label: "UniProt Status", value: uniprotStatus)
@@ -383,7 +377,6 @@ struct DataOverviewTab: View {
                     OverviewRow(label: "Fetch UniProt", value: data.fetchUniprot ? "Yes" : "No")
                 }
                 
-                // Differential Form Parameters (matching Android implementation)
                 if !data.differentialForm.primaryIDs.isEmpty || !data.differentialForm.foldChange.isEmpty {
                     OverviewSection(title: "Differential Analysis Configuration") {
                         if !data.differentialForm.primaryIDs.isEmpty {
@@ -759,7 +752,7 @@ struct ProteinDetailsTab: View {
     
     var body: some View {
         VStack(spacing: 0) {
-                // Filter controls (like Android)
+                // Filter controls 
                 VStack(spacing: 12) {
                     // Selection group filter
                     HStack {
@@ -1865,7 +1858,6 @@ struct ProteinDetailRowView: View {
     
     // MARK: - Annotation Management
     
-    /// Generate annotation title exactly like Android implementation
     private func generateAnnotationTitle(for proteinId: String) -> String {
         guard let curtainData = curtainData else { return proteinId }
         
@@ -1880,7 +1872,7 @@ struct ProteinDetailRowView: View {
                 .first
             
             if let geneName = firstGeneName, geneName != proteinId {
-                return "\(geneName)(\(proteinId))"  // Android format: "GAPDH(P04406)"
+                return "\(geneName)(\(proteinId))"  
             }
         }
         
@@ -1920,7 +1912,6 @@ struct ProteinDetailRowView: View {
             ? pValue  // Already -log10 transformed
             : -log10(max(pValue, 1e-300))  // Apply transformation
         
-        // Create annotation data (matching Android format)
         let annotationData: [String: Any] = [
             "primary_id": proteinId,
             "title": title,
@@ -2068,7 +2059,7 @@ struct ProteinDetailRowView: View {
                     
                     Spacer()
                     
-                    // Selection group indicators (like Android)
+                    // Selection group indicators 
                     HStack(spacing: 4) {
                         ForEach(Array(zip(selectionGroups, selectionColors)), id: \.0) { (groupName, color) in
                             Circle()

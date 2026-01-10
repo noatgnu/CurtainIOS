@@ -147,7 +147,7 @@ struct CoordinateTransformUtilities {
             let webViewLeft = webViewInfo["left"] as? Double ?? 0.0
             let webViewTop = webViewInfo["top"] as? Double ?? 0.0
 
-            // CRITICAL: For nested GeometryReader in overlay, convert to WebView-relative coordinates
+            
             let plotBounds = PlotBounds(
                 left: finalPlotLeft - webViewLeft,
                 top: finalPlotTop - webViewTop,

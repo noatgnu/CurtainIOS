@@ -7,25 +7,25 @@
 
 import Foundation
 
-// MARK: - CurtainDataService (Based on Android CurtainDataService.kt)
+// MARK: - CurtainDataService 
 
 @Observable
 class CurtainDataService {
     
-    // State fields (like Android)
+    // State fields 
     var instructorMode: Bool = false
     var tempLink: Bool = false
     var bypassUniProt: Bool = false
     var draftDataCiteCount: Int = 0
     var colorMap: [String: Any] = [:]
     
-    // Data structures (like Android)
+    // Data structures 
     var dataMap: [String: String] = [:]
     var uniprotData = UniprotData()
     var curtainData = AppData()
     var curtainSettings = CurtainSettings()
     
-    // UniProt service (like Android)
+    // UniProt service 
     private var _uniprotService: UniProtService?
     
     func getUniprotService() -> UniProtService {
@@ -35,11 +35,11 @@ class CurtainDataService {
         return _uniprotService!
     }
     
-    // MARK: - Main Parsing Method (Direct from Android restoreSettings)
+    // MARK: - Main Parsing Method 
     
     func restoreSettings(from jsonObject: Any) async throws {
         
-        // Parse the main JSON object (like Android)
+        // Parse the main JSON object 
         let dataObject: [String: Any]
         switch jsonObject {
         case let string as String:
@@ -50,7 +50,6 @@ class CurtainDataService {
             throw CurtainDataError.invalidJsonFormat
         }
         
-        // Parse settings (like Android - can be String or Map)
         if let settingsData = dataObject["settings"] {
             switch settingsData {
             case let settingsString as String:
@@ -63,7 +62,6 @@ class CurtainDataService {
         }
         
         
-        // Process extraData if available (for UniProt data) - like Android
         if dataObject["fetchUniprot"] as? Bool == true {
             let extraDataObj: [String: Any]?
             
@@ -77,7 +75,7 @@ class CurtainDataService {
             }
             
             if let extraData = extraDataObj {
-                // Process Uniprot data (like Android)
+                // Process Uniprot data 
                 if let uniprotObj = extraData["uniprot"] as? [String: Any] {
                     uniprotData.results = convertToMutableMap(uniprotObj["results"]) ?? [:]
                     uniprotData.dataMap = convertToMutableMap(uniprotObj["dataMap"])
@@ -88,29 +86,23 @@ class CurtainDataService {
                 }
                 
                 
-                // Process app data (like Android) - CRITICAL: Must process in exact order
                 if let dataObj = extraData["data"] as? [String: Any] {
                     
-                    // Step 1: Process dataMap with full conversion (like Android convertToMutableMap)
                     curtainData.dataMap = convertToMutableMap(dataObj["dataMap"])
                     
-                    // Step 2: Process genesMap (like Android - can be Map or direct object)
                     curtainData.genesMap = processGenesMap(dataObj["genesMap"])
                     
-                    // Step 3: Process primaryIDsMap (like Android - note lowercase 'm')
                     curtainData.primaryIDsMap = processPrimaryIDsMap(dataObj["primaryIDsmap"])
                     
                     // Step 4: Process allGenes array
                     curtainData.allGenes = dataObj["allGenes"] as? [String] ?? []
                 }
                 
-                // Step 5: Set bypass flag and perform post-processing (like Android)
-                curtainData.bypassUniProt = true
                 performPostExtraDataProcessing()
             }
         }
         
-        // Process raw and differential forms (like Android)
+        // Process raw and differential forms 
         if let rawFormData = dataObject["rawForm"] as? [String: Any] {
             curtainData.rawForm = RawForm(
                 primaryIDs: rawFormData["_primaryIDs"] as? String ?? "",
@@ -144,14 +136,14 @@ class CurtainDataService {
             )
         }
         
-        // Version handling (like Android)
+        // Version handling 
         if curtainSettings.version == 2.0 {
             curtainData.selected = dataObject["selections"] as? [String: [Any]] ?? [:]
             curtainData.selectedMap = dataObject["selectionsMap"] as? [String: [String: Bool]] ?? [:]
             curtainData.selectOperationNames = dataObject["selectionsName"] as? [String] ?? []
         }
         
-        // Process raw and processed data strings (like Android)
+        // Process raw and processed data strings 
         if let rawString = dataObject["raw"] as? String, !rawString.isEmpty {
             curtainData.raw = InputFile(
                 filename: "rawFile.txt",
@@ -166,24 +158,23 @@ class CurtainDataService {
             )
         }
         
-        // CRITICAL: Process differential data (like Android processDifferentialData)
+        
         await processDifferentialData()
         
-        // CRITICAL: Final data integration step (like Android post-processing)
+        
         await performFinalDataIntegration()
         
     }
     
-    // MARK: - Final Data Integration (Like Android post-restore processing)
     
     private func performFinalDataIntegration() async {
         
-        // Step 1: Integrate UniProt data with main data (like Android)
-        if !curtainData.bypassUniProt, let uniprotDB = uniprotData.db, let dataMap = curtainData.dataMap {
+        // Step 1: Integrate UniProt data with main data 
+        if let uniprotDB = uniprotData.db, let dataMap = curtainData.dataMap {
             
             for (proteinId, _) in dataMap {
                 if let uniprotRecord = uniprotDB[proteinId] as? [String: Any] {
-                    // Like Android - merge UniProt annotations
+                    
                     if var proteinData = dataMap[proteinId] as? [String: Any] {
                         // Add gene names from UniProt if not present
                         if proteinData["geneNames"] == nil || (proteinData["geneNames"] as? String)?.isEmpty == true {
@@ -205,7 +196,7 @@ class CurtainDataService {
             }
         }
         
-        // Step 2: Validate data integrity (like Android)
+        // Step 2: Validate data integrity 
         validateDataIntegrity()
         
     }
@@ -233,7 +224,6 @@ class CurtainDataService {
         
     }
     
-    // MARK: - Differential Data Processing (CRITICAL - Like Android processDifferentialData)
     
     private func processDifferentialData() async {
         
@@ -245,7 +235,7 @@ class CurtainDataService {
         let df = differential.df
         
         
-        // Handle comparison column defaulting (like Android)
+        // Handle comparison column defaulting 
         var comparison = diffForm.comparison
         var comparisonSelect = diffForm.comparisonSelect
         
@@ -254,14 +244,14 @@ class CurtainDataService {
             comparisonSelect = ["1"]
         }
         
-        // Define essential columns to keep (like Android) - MUST be user-specified
+        // Define essential columns to keep  - MUST be user-specified
         var essentialColumns = Set<String>()
         let fcColumn = diffForm.foldChange
         let sigColumn = diffForm.significant
         let idColumn = diffForm.primaryIDs
         let geneNameColumn = diffForm.geneNames
         
-        // CRITICAL: Validate user specified required columns
+        
         guard !fcColumn.isEmpty && !sigColumn.isEmpty && !idColumn.isEmpty else {
             return
         }
@@ -276,9 +266,9 @@ class CurtainDataService {
         
         var modifiedData: [[String: Any]] = []
         
-        // Process each row (like Android)
+        // Process each row 
         for rowIndex in 0..<df.rowCount() {
-            // Filter by comparison value (like Android)
+            // Filter by comparison value 
             if !comparison.isEmpty && !comparisonSelect.isEmpty {
                 let compValue: String
                 if comparison == "CurtainSetComparison" {
@@ -292,7 +282,7 @@ class CurtainDataService {
                 }
             }
             
-            // Create sparse row map with only essential columns (like Android)
+            // Create sparse row map with only essential columns 
             var rowMap: [String: Any] = [:]
             
             for column in essentialColumns {
@@ -305,7 +295,7 @@ class CurtainDataService {
                 rowMap[column] = value
             }
             
-            // Process fold change values (like Android)
+            // Process fold change values 
             if !fcColumn.isEmpty && rowMap[fcColumn] != nil {
                 var fcValue = Double(rowMap[fcColumn] as? String ?? "0") ?? 0.0
                 
@@ -319,7 +309,7 @@ class CurtainDataService {
                 rowMap[fcColumn] = fcValue
             }
             
-            // Process significance values (like Android)
+            // Process significance values 
             if !sigColumn.isEmpty && rowMap[sigColumn] != nil {
                 var sigValue = Double(rowMap[sigColumn] as? String ?? "0") ?? 0.0
                 
@@ -333,7 +323,6 @@ class CurtainDataService {
             modifiedData.append(rowMap)
         }
         
-        // Store processed data with exact Android key name
         if curtainData.dataMap == nil {
             curtainData.dataMap = [:]
         }
@@ -341,7 +330,6 @@ class CurtainDataService {
         
     }
     
-    // MARK: - JSON Parsing Methods (Like Android)
     
     private func parseJsonObject(_ jsonString: String) throws -> [String: Any] {
         guard let data = jsonString.data(using: .utf8) else {
@@ -355,7 +343,6 @@ class CurtainDataService {
         return result
     }
     
-    // MARK: - Manual Data Conversion Methods (Like Android convertToMutableMap)
     
     private func convertToMutableMap(_ data: Any?) -> [String: Any]? {
         
@@ -396,10 +383,9 @@ class CurtainDataService {
         return result
     }
     
-    // MARK: - Additional Data Processing Methods (Like Android workflow)
     
     private func processGenesMap(_ data: Any?) -> Any? {
-        // Like Android - genesMap can be either Map format or direct object
+        
         if let mapData = convertToMutableMap(data) {
             return mapData
         }
@@ -408,7 +394,7 @@ class CurtainDataService {
     }
     
     private func processPrimaryIDsMap(_ data: Any?) -> Any? {
-        // Like Android - primaryIDsMap uses same conversion logic
+        
         if let mapData = convertToMutableMap(data) {
             return mapData
         }
@@ -417,7 +403,7 @@ class CurtainDataService {
     
     private func performPostExtraDataProcessing() {
         
-        // Like Android - perform data integration and validation
+        
         if let dataMap = curtainData.dataMap {
             
             // Debug first few entries to verify data structure
@@ -430,7 +416,7 @@ class CurtainDataService {
             }
         }
         
-        // Like Android - validate UniProt integration
+        
         if uniprotData.db != nil {
         }
         
@@ -442,7 +428,7 @@ class CurtainDataService {
             return data as? [String: [String]]
         }
         
-        // Handle special format for accession maps (like Android)
+        // Handle special format for accession maps 
         var result: [String: [String]] = [:]
         for pair in mapValue {
             if pair.count >= 2,
@@ -455,7 +441,6 @@ class CurtainDataService {
         return result
     }
     
-    // MARK: - Manual Settings Deserialization (Like Android manualDeserializeSettings)
     
     private func manualDeserializeSettingsFromString(_ jsonString: String) throws -> CurtainSettings {
         let settingsMap = try parseJsonObject(jsonString)
@@ -561,7 +546,6 @@ class CurtainDataService {
         )
     }
     
-    // MARK: - Nested Object Parsing (Like Android)
     
     private func parseProject(_ data: Any?) -> Project {
         guard let map = data as? [String: Any] else {
@@ -654,7 +638,6 @@ class CurtainDataService {
     }
 }
 
-// MARK: - Data Structures (Like Android)
 
 class UniprotData {
     var results: [String: Any] = [:]
@@ -670,7 +653,7 @@ class AppData {
     var genesMap: Any?
     var primaryIDsMap: Any?
     var allGenes: [String] = []
-    var bypassUniProt: Bool = false
+    var uniprotDB: [String: Any]?
     var rawForm: RawForm?
     var differentialForm: DifferentialForm?
     var selected: [String: [Any]] = [:]

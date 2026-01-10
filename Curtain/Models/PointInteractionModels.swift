@@ -8,7 +8,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Point Interaction Models (Like Android)
 
 struct VolcanoPointClickData {
     let clickedProtein: ProteinPoint
@@ -34,7 +33,7 @@ struct PlotCoordinates {
 class PointInteractionViewModel: ObservableObject {
     @Published var selectedPointData: VolcanoPointClickData?
     @Published var isModalPresented = false
-    @Published var distanceCutoff: Double = 1.0 // Default cutoff like Android
+    @Published var distanceCutoff: Double = 1.0 
     
     func handlePointClick(_ clickData: VolcanoPointClickData) {
         selectedPointData = clickData
@@ -96,7 +95,6 @@ struct DistanceCalculator {
             }
         }
         
-        // Sort by distance (closest first, like Android)
         return nearbyProteins.sorted { $0.distance < $1.distance }
     }
 }
@@ -184,7 +182,6 @@ class AnnotationManager: ObservableObject {
         )
         annotations.append(annotation)
         
-        // Create Android-compatible annotation data structure
         let annotationData: [String: Any] = [
             "primary_id": proteinId,
             "title": text,
@@ -210,7 +207,7 @@ class AnnotationManager: ObservableObject {
             ]
         ]
         
-        // Notify about annotation update using the text as the key (matching Android)
+        // Notify about annotation update using the text as the key 
         onAnnotationUpdate?(text, annotationData)
     }
     

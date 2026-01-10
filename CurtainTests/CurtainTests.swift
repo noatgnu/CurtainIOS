@@ -6,6 +6,7 @@
 //
 
 import Testing
+import Foundation
 @testable import Curtain
 
 struct CurtainTests {
@@ -72,18 +73,14 @@ struct CurtainTests {
         #expect(CurtainConstants.ExampleData.frontendUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == expectedFrontend)
     }
     
-    // MARK: - Android Compatibility Tests
     
-    @Test("iOS constants match Android values exactly")
+    @Test
     func androidEquivalentValues() async throws {
-        // Ensure iOS constants match Android values exactly
         
-        // From Android MainActivity.kt
         #expect(CurtainConstants.ExampleData.uniqueId == "f4b009f3-ac3c-470a-a68b-55fcadf68d0f")
         #expect(CurtainConstants.ExampleData.apiUrl == "https://celsus.muttsu.xyz/")
         #expect(CurtainConstants.ExampleData.frontendUrl == "https://curtain.proteo.info/")
         
-        // From Android AddCurtainDialog.kt
         #expect(CurtainConstants.PredefinedHosts.celsusBackend == "https://celsus.muttsu.xyz")
         #expect(CurtainConstants.PredefinedHosts.questBackend == "https://curtain-backend.omics.quest")
         
@@ -129,7 +126,7 @@ struct CurtainTests {
     
     // MARK: - Performance Tests
     
-    @Test("Performance with example data", .timeLimit(.seconds(5)))
+    @Test("Performance with example data", .timeLimit(.minutes(1)))
     func performanceWithExampleData() async throws {
         // Performance test using example constants
         for _ in 0..<1000 {

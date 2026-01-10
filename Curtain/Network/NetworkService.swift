@@ -36,7 +36,6 @@ class NetworkService: NetworkServiceProtocol {
         self.downloadClient = DownloadClient.shared
     }
     
-    // MARK: - Curtain API Methods (from Android CurtainApi.kt)
     
     func getAllCurtains(hostname: String) async throws -> [Curtain] {
         let url = buildURL(hostname: hostname, path: "curtain/")
@@ -88,7 +87,6 @@ class NetworkService: NetworkServiceProtocol {
         }
     }
     
-    // MARK: - DataFilterList API Methods (from Android DataFilterListApi.kt)
     
     func getAllDataFilterLists(hostname: String, limit: Int? = nil, offset: Int? = nil) async throws -> PaginatedResponse<DataFilterList> {
         var queryItems: [URLQueryItem] = []

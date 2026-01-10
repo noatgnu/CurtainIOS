@@ -8,7 +8,7 @@
 import Foundation
 import SwiftData
 
-// MARK: - CurtainRepository (Direct port from Android CurtainRepository.kt)
+// MARK: - CurtainRepository 
 
 @Observable
 class CurtainRepository {
@@ -35,7 +35,7 @@ class CurtainRepository {
         }
     }
     
-    // MARK: - Local Database Operations (Direct from Android)
+    // MARK: - Local Database Operations 
     
     func getAllCurtains() -> [CurtainEntity] {
         return performDatabaseOperation {
@@ -93,7 +93,6 @@ class CurtainRepository {
         }
     }
     
-    // MARK: - Network Sync Operations (From Android)
     
     func syncCurtains(hostname: String) async throws -> [CurtainEntity] {
         let curtains = try await networkManager.getAllCurtains(hostname: hostname)
@@ -114,7 +113,7 @@ class CurtainRepository {
     }
     
     func fetchCurtainByLinkIdAndHost(linkId: String, hostname: String, frontendURL: String? = nil) async throws -> CurtainEntity {
-        // First check if we already have this curtain stored locally (like Android)
+        // First check if we already have this curtain stored locally 
         if let localCurtain = getCurtainById(linkId) {
             return localCurtain
         }
@@ -143,7 +142,7 @@ class CurtainRepository {
         frontendURL: String? = nil,
         description: String = ""
     ) async throws -> CurtainEntity {
-        // Check if curtain already exists (like Android)
+        // Check if curtain already exists 
         if let existingCurtain = getCurtainById(linkId) {
             return existingCurtain
         }
@@ -151,7 +150,7 @@ class CurtainRepository {
         // Ensure site settings exist (foreign key constraint)
         try await ensureSiteSettingsExist(hostname: hostname)
         
-        // Create curtain entity without network data (like Android)
+        // Create curtain entity without network data 
         let curtainEntity = CurtainEntity(
             linkId: linkId,
             created: Date(),
@@ -174,7 +173,7 @@ class CurtainRepository {
         return curtainEntity
     }
     
-    // MARK: - Download Operations (Based on Android download logic)
+    // MARK: - Download Operations 
     // Progress mapping for two-level downloads:
     // 0-5%: Initialization
     // 5-40%: First download (API metadata) 
@@ -193,7 +192,7 @@ class CurtainRepository {
         
         progressCallback?(0, 0.0) // Start at 0%
         
-        // Check if we already have the file locally and not forcing a redownload (like Android)
+        // Check if we already have the file locally and not forcing a redownload 
         let localFilePath = getLocalFilePath(linkId: linkId)
         if !forceDownload && FileManager.default.fileExists(atPath: localFilePath) {
             // If file exists, make sure the entity has the file path set
@@ -202,7 +201,6 @@ class CurtainRepository {
             return localFilePath
         }
         
-        // Build download endpoint like Android: "{linkId}/download/token={token}"
         let downloadEndpoint = if let token = token {
             "\(linkId)/download/token=\(token)"
         } else {
@@ -225,14 +223,14 @@ class CurtainRepository {
         
         
         do {
-            // Try to parse as JSON to check for "url" field (like Android)
+            // Try to parse as JSON to check for "url" field 
             if let jsonData = responseString.data(using: .utf8),
                let jsonMap = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
                let downloadUrl = jsonMap["url"] as? String {
                 
                 progressCallback?(45, 0.0) // Found download URL, starting second download
                 
-                // Ensure we have an absolute URL (like Android)
+                // Ensure we have an absolute URL 
                 let absoluteUrl: String
                 if downloadUrl.hasPrefix("http") {
                     absoluteUrl = downloadUrl // Already an absolute URL
@@ -249,7 +247,7 @@ class CurtainRepository {
                     progressCallback?(mappedProgress, speed)
                 }
                 
-                // Download file using DownloadClient (like Android)
+                // Download file using DownloadClient 
                 let fileURL = try await downloadClient.downloadFile(
                     from: absoluteUrl,
                     to: getLocalFilePath(linkId: linkId),
@@ -259,14 +257,13 @@ class CurtainRepository {
                 filePath = fileURL.path
                 
             } else {
-                // Direct response data (like Android fallback)
                 progressCallback?(50, 0.0) // Writing direct response to file
                 try responseString.write(toFile: localFilePath, atomically: true, encoding: .utf8)
                 progressCallback?(80, 0.0)
                 filePath = localFilePath
             }
         } catch {
-            // Fallback to raw response (like Android)
+            // Fallback to raw response 
             progressCallback?(50, 0.0)
             try responseString.write(toFile: localFilePath, atomically: true, encoding: .utf8)
             progressCallback?(80, 0.0)
@@ -283,7 +280,6 @@ class CurtainRepository {
         throw CurtainError.downloadFailed
     }
     
-    // MARK: - CRUD Operations (From Android)
     
     func updateCurtainDescription(_ linkId: String, description: String) throws {
         performDatabaseOperation {
@@ -307,7 +303,7 @@ class CurtainRepository {
     func deleteCurtain(_ linkId: String) throws {
         performDatabaseOperation {
             if let curtain = getCurtainById(linkId) {
-                // Delete associated local file if it exists (like Android)
+                // Delete associated local file if it exists 
                 if let filePath = curtain.file {
                     try? FileManager.default.removeItem(atPath: filePath)
                 }
@@ -350,7 +346,6 @@ class CurtainRepository {
         }
     }
 
-    // MARK: - Private Helper Methods (Like Android)
     
     private func getLocalFilePath(linkId: String) -> String {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -383,7 +378,7 @@ class CurtainRepository {
     }
     
     private func parseCreatedDateToTimestamp(_ createdDateString: String) -> Date {
-        // Multiple date format fallbacks (like Android)
+        // Multiple date format fallbacks 
         let formatters = [
             ISO8601DateFormatter(),
         ]
@@ -475,7 +470,6 @@ class CurtainRepository {
     }
 }
 
-// MARK: - Extension for Converting API Models to Entities (Like Android toCurtainEntity)
 
 private extension Curtain {
     func toCurtainEntity(hostname: String, frontendURL: String? = nil) -> CurtainEntity {

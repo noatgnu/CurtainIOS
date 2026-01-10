@@ -7,12 +7,12 @@
 
 import Foundation
 
-// MARK: - Download Client (Based on Android DownloadClient.kt)
+// MARK: - Download Client 
 
 class DownloadClient: @unchecked Sendable {
     private let session: URLSession
     private var currentTask: URLSessionDataTask?
-    private let bufferSize = 8192 // 8KB buffer like Android
+    private let bufferSize = 8192 
 
     static let shared = DownloadClient()
     

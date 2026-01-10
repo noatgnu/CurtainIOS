@@ -8,7 +8,6 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - SiteSettingsView (Like Android Site Management)
 
 struct SiteSettingsView: View {
     @Environment(\.modelContext) private var modelContext

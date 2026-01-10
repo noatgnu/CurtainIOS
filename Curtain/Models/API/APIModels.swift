@@ -7,7 +7,6 @@
 
 import Foundation
 
-// MARK: - Basic API Response Models (from actual Android code)
 
 struct Curtain: Codable, Identifiable {
     let id: Int

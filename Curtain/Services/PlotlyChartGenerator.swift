@@ -19,7 +19,7 @@ class PlotlyChartGenerator {
             settings: context.settings
         )
         
-        let plotData = createAndroidCompatiblePlotData(volcanoResult, context: context)
+        let plotData = createCompatiblePlotData(volcanoResult, context: context)
         
         do {
             let plotJSON = try plotData.toJSON()
@@ -55,19 +55,19 @@ class PlotlyChartGenerator {
         return appData
     }
     
-    private func createAndroidCompatiblePlotData(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotData {
-        let traces = createAndroidCompatibleTraces(volcanoResult.jsonData, settings: context.settings, colorMap: volcanoResult.colorMap, selectionsName: context.data.selectionsName ?? [])
-        let layout = createAndroidCompatibleLayout(volcanoResult, context: context)
+    private func createCompatiblePlotData(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotData {
+        let traces = createCompatibleTraces(volcanoResult.jsonData, settings: context.settings, colorMap: volcanoResult.colorMap, selectionsName: context.data.selectionsName ?? [])
+        let layout = createCompatibleLayout(volcanoResult, context: context)
         let config = createDefaultPlotConfig()
         
         return PlotData(traces: traces, layout: layout, config: config)
     }
     
-    private func createAndroidCompatibleTraces(_ jsonData: [[String: Any]], settings: CurtainSettings, colorMap: [String: String], selectionsName: [String]) -> [PlotTrace] {
-        var selectionGroups: [String: (color: String, points: [AndroidDataPoint])] = [:]
+    private func createCompatibleTraces(_ jsonData: [[String: Any]], settings: CurtainSettings, colorMap: [String: String], selectionsName: [String]) -> [PlotTrace] {
+        var selectionGroups: [String: (color: String, points: [DataPoint])] = [:]
 
         for dataPoint in jsonData {
-            let androidPoint = AndroidDataPoint(
+            let point = DataPoint(
                 x: dataPoint["x"] as? Double ?? 0.0,
                 y: dataPoint["y"] as? Double ?? 0.0,
                 id: dataPoint["id"] as? String ?? "",
@@ -79,34 +79,60 @@ class PlotlyChartGenerator {
                 customText: dataPoint["customText"] as? String
             )
 
-            for (index, selectionName) in androidPoint.selections.enumerated() {
-                let selectionColor = index < androidPoint.colors.count ? androidPoint.colors[index] : "#808080"
+            for (index, selectionName) in point.selections.enumerated() {
+                let selectionColor = index < point.colors.count ? point.colors[index] : "#808080"
 
                 if selectionGroups[selectionName] == nil {
                     selectionGroups[selectionName] = (color: selectionColor, points: [])
                 }
-                selectionGroups[selectionName]?.points.append(androidPoint)
+                selectionGroups[selectionName]?.points.append(point)
             }
         }
 
         var traces: [PlotTrace] = []
         let allGroupNames = Array(selectionGroups.keys)
 
+        // 1. Add Background trace first (drawn at the bottom)
+        if let groupData = selectionGroups["Background"] {
+            let trace = createCompatibleTrace(
+                dataPoints: groupData.points,
+                name: "Background",
+                color: groupData.color,
+                markerSize: getMarkerSize(for: "Background", settings: settings)
+            )
+            traces.append(trace)
+        }
+
+        // 2. Add Significant/Other traces (drawn above Background)
+        let significantNames = allGroupNames.filter {
+            return ($0 == "Other" || $0.contains("P-value") || $0.contains("FC")) && $0 != "Background"
+        }.sorted()
+
+        for selectionName in significantNames {
+            guard let groupData = selectionGroups[selectionName] else { continue }
+            let trace = createCompatibleTrace(
+                dataPoints: groupData.points,
+                name: selectionName,
+                color: groupData.color,
+                markerSize: getMarkerSize(for: selectionName, settings: settings)
+            )
+            traces.append(trace)
+        }
+
+        // 3. Add User Selections (drawn on top of everything)
         let userSelectionNames: [String]
         if !selectionsName.isEmpty {
             userSelectionNames = selectionsName.filter { selectionGroups[$0] != nil }
         } else {
             userSelectionNames = allGroupNames.filter {
                 return $0 != "Background" &&
-                       $0 != "Other" &&
-                       !$0.contains("P-value") &&
-                       !$0.contains("FC")
+                       !significantNames.contains($0)
             }.sorted()
         }
 
         for selectionName in userSelectionNames {
             guard let groupData = selectionGroups[selectionName] else { continue }
-            let trace = createAndroidCompatibleTrace(
+            let trace = createCompatibleTrace(
                 dataPoints: groupData.points,
                 name: selectionName,
                 color: groupData.color,
@@ -115,38 +141,15 @@ class PlotlyChartGenerator {
             traces.append(trace)
         }
 
-        let backgroundAndSignificanceNames = allGroupNames.filter {
-            return $0 == "Background" ||
-                   $0 == "Other" ||
-                   $0.contains("P-value") ||
-                   $0.contains("FC")
-        }.sorted()
-
-        for selectionName in backgroundAndSignificanceNames {
-            guard let groupData = selectionGroups[selectionName] else { continue }
-            let trace = createAndroidCompatibleTrace(
-                dataPoints: groupData.points,
-                name: selectionName,
-                color: groupData.color,
-                markerSize: getMarkerSize(for: selectionName, settings: settings)
-            )
-            traces.append(trace)
-        }
-
+        // Apply custom trace order if specified
         let sortedTraces = reorderTraces(traces, accordingTo: settings.volcanoTraceOrder)
-        let finalTraces: [PlotTrace]
-        if settings.volcanoTraceOrder.isEmpty {
-            finalTraces = sortedTraces.reversed()
-        } else {
-            finalTraces = sortedTraces
-        }
-
-        lastGeneratedTraceNames = finalTraces.map { $0.name }
-        lastGeneratedTraces = finalTraces
-        return finalTraces
+        
+        lastGeneratedTraceNames = sortedTraces.map { $0.name }
+        lastGeneratedTraces = sortedTraces
+        return sortedTraces
     }
     
-    private func createAndroidCompatibleTrace(dataPoints: [AndroidDataPoint], name: String, color: String, markerSize: Double) -> PlotTrace {
+    private func createCompatibleTrace(dataPoints: [DataPoint], name: String, color: String, markerSize: Double) -> PlotTrace {
         let x = dataPoints.map { $0.x }
         let y = dataPoints.map { $0.y }
         
@@ -196,7 +199,7 @@ class PlotlyChartGenerator {
         )
     }
     
-    private func createAndroidCompatibleLayout(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotLayout {
+    private func createCompatibleLayout(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotLayout {
         let settings = context.settings
         let volcanoAxis = volcanoResult.updatedVolcanoAxis
         let textColor = context.isDarkMode ? "#E0E0E0" : "#000000"
@@ -244,7 +247,7 @@ class PlotlyChartGenerator {
             side: nil
         )
 
-        var shapes = createAndroidCompatibleThresholdShapes(settings, volcanoAxis)
+        var shapes = createCompatibleThresholdShapes(settings, volcanoAxis)
 
         if settings.volcanoPlotYaxisPosition.contains("left") {
             let yAxisShape = PlotShape(
@@ -296,7 +299,7 @@ class PlotlyChartGenerator {
         return nil
     }
 
-    private func createAndroidCompatibleThresholdShapes(_ settings: CurtainSettings, _ volcanoAxis: VolcanoAxis) -> [PlotShape] {
+    private func createCompatibleThresholdShapes(_ settings: CurtainSettings, _ volcanoAxis: VolcanoAxis) -> [PlotShape] {
         let maxY = volcanoAxis.maxY ?? 5.0
         let minX = volcanoAxis.minX ?? -3.0
         let maxX = volcanoAxis.maxX ?? 3.0
@@ -309,7 +312,7 @@ class PlotlyChartGenerator {
         ]
     }
     
-    private struct AndroidDataPoint {
+    private struct DataPoint {
         let x: Double
         let y: Double
         let id: String

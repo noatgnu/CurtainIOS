@@ -8,7 +8,6 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - Protein Search Dialog (Like Android ProteinSearchDialog)
 
 struct ProteinSearchDialog: View {
     @Binding var curtainData: CurtainData
@@ -103,7 +102,6 @@ struct ProteinSearchDialog: View {
                     .textFieldStyle(RoundedBorderTextFieldStyle())
             }
             
-            // Mode toggle (like Android dual mode interface)
             Picker("Search Mode", selection: $isTypeaheadMode) {
                 Text("Typeahead").tag(true)
                 Text("Bulk Input").tag(false)
@@ -154,7 +152,6 @@ struct ProteinSearchDialog: View {
                 .padding(.horizontal)
             }
             
-            // Suggestions list (like Android typeahead suggestions)
             if !typeaheadSuggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Suggestions")
@@ -360,7 +357,6 @@ struct ProteinSearchDialog: View {
         searchTask = Task {
             isLoadingSuggestions = true
             
-            // Debounce like Android (300ms)
             try? await Task.sleep(nanoseconds: 300_000_000)
             
             if !Task.isCancelled {

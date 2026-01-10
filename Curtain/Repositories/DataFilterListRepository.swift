@@ -8,7 +8,7 @@
 import Foundation
 import SwiftData
 
-// MARK: - DataFilterListRepository (Direct port from Android DataFilterListRepository.kt)
+// MARK: - DataFilterListRepository 
 
 @Observable
 class DataFilterListRepository {
@@ -33,7 +33,7 @@ class DataFilterListRepository {
         }
     }
     
-    // MARK: - Local Database Operations (Direct from Android)
+    // MARK: - Local Database Operations 
     
     /// Get all saved data filter lists from the local database
     func getAllDataFilterLists() -> [DataFilterListEntity] {
@@ -62,10 +62,8 @@ class DataFilterListRepository {
         }
     }
     
-    /// Save multiple data filter lists to the local database (like Android insertAll - clears first)
     func saveDataFilterLists(_ dataFilterLists: [DataFilterListEntity]) throws {
         performDatabaseOperation {
-            // Clear all existing filter lists first (like Android insertAll behavior)
             let descriptor = FetchDescriptor<DataFilterListEntity>()
             let existingEntities = (try? modelContext.fetch(descriptor)) ?? []
             for entity in existingEntities {
@@ -98,12 +96,12 @@ class DataFilterListRepository {
         }
     }
     
-    // MARK: - Remote API Operations (Direct from Android)
+    // MARK: - Remote API Operations 
     
     /// Fetch all data filter lists from the remote API
     /// First gets all categories and then fetches lists for each category
     func fetchAllDataFilterLists(hostname: String) async throws -> [(String, DataFilterList)] {
-        // First get all categories (like Android)
+        // First get all categories 
         let categories = try await getAllCategories(hostname: hostname)
         var allFilterLists: [(String, DataFilterList)] = []
         
@@ -119,13 +117,13 @@ class DataFilterListRepository {
                     offset: offset
                 )
                 
-                // Add results with category pairing (like Android)
+                // Add results with category pairing 
                 let listsWithCategory = response.results.map { filterList in
                     (category, filterList)
                 }
                 allFilterLists.append(contentsOf: listsWithCategory)
                 
-                // Handle pagination (like Android)
+                // Handle pagination 
                 if let nextUrl = response.next {
                     offset = extractOffsetFromUrl(nextUrl)
                     hasMore = offset != nil
@@ -148,7 +146,7 @@ class DataFilterListRepository {
         let service = networkManager.getNetworkService(for: hostname)
         let createdFilterList = try await service.createDataFilterList(hostname: hostname, request: request)
         
-        // Also save to local database (like Android)
+        // Also save to local database 
         let entity = mapApiToEntity(createdFilterList, category: request.category)
         try saveDataFilterList(entity)
         
@@ -160,7 +158,7 @@ class DataFilterListRepository {
         let service = networkManager.getNetworkService(for: hostname)
         let updatedFilterList = try await service.updateDataFilterList(hostname: hostname, id: id, request: request)
         
-        // Also update in local database (like Android)
+        // Also update in local database 
         let entity = mapApiToEntity(updatedFilterList, category: request.category)
         try saveDataFilterList(entity)
         
@@ -179,7 +177,7 @@ class DataFilterListRepository {
         return try await service.getAllCategories(hostname: hostname)
     }
     
-    /// Sync data from remote API to local database (like Android)
+    /// Sync data from remote API to local database 
     func syncDataFilterLists(hostname: String) async throws {
         let apiFilterListsWithCategories = try await fetchAllDataFilterLists(hostname: hostname)
         let entityFilterLists = apiFilterListsWithCategories.map { (category, filterList) in
@@ -188,7 +186,7 @@ class DataFilterListRepository {
         try saveDataFilterLists(entityFilterLists)
     }
     
-    /// Fetch data filter lists for a specific category (like Android)
+    /// Fetch data filter lists for a specific category 
     func fetchDataFilterListsByCategory(hostname: String, category: String) async throws -> [(String, DataFilterList)] {
         var allFilterLists: [(String, DataFilterList)] = []
         var offset: Int? = nil
@@ -202,13 +200,13 @@ class DataFilterListRepository {
                 offset: offset
             )
             
-            // Extract results from the current page (like Android)
+            // Extract results from the current page 
             let filterLists = response.results.map { filterList in
                 (category, filterList)
             }
             allFilterLists.append(contentsOf: filterLists)
             
-            // Handle pagination (like Android)
+            // Handle pagination 
             if let nextUrl = response.next {
                 offset = extractOffsetFromUrl(nextUrl)
                 hasMore = offset != nil
@@ -220,9 +218,8 @@ class DataFilterListRepository {
         return allFilterLists
     }
     
-    // MARK: - Helper Methods (Like Android)
     
-    /// Helper functions to extract pagination parameters from URLs (like Android)
+    /// Helper functions to extract pagination parameters from URLs 
     private func extractOffsetFromUrl(_ url: String) -> Int? {
         let regex = try? NSRegularExpression(pattern: "offset=(\\d+)")
         let range = NSRange(location: 0, length: url.utf16.count)
@@ -253,7 +250,6 @@ class DataFilterListRepository {
         return nil
     }
     
-    /// Map API model to Entity (like Android - made public for use in ViewModel)
     func mapApiToEntity(_ apiModel: DataFilterList, category: String) -> DataFilterListEntity {
         return DataFilterListEntity(
             apiId: apiModel.id,  // Use apiId instead of id for API integer ID
@@ -265,7 +261,7 @@ class DataFilterListRepository {
         )
     }
     
-    // Overload for backward compatibility (like Android)
+    // Overload for backward compatibility 
     private func mapApiToEntity(_ apiModel: DataFilterList) -> DataFilterListEntity {
         return mapApiToEntity(apiModel, category: "")
     }

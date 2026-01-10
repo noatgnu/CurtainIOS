@@ -8,7 +8,6 @@
 import SwiftUI
 import SwiftData
 
-// MARK: - DataFilterListView (Based on Android DataFilterList UI)
 
 struct DataFilterListView: View {
     @Environment(\.modelContext) private var modelContext
@@ -37,7 +36,6 @@ struct DataFilterListView: View {
                         SearchBar(text: $searchText)
                             .padding(.horizontal)
                         
-                        // Sync Progress (Like Android sync progress tracking)
                         if viewModel.isSyncing {
                             SyncProgressView(
                                 progress: viewModel.getSyncProgressPercentage(),

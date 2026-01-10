@@ -757,7 +757,6 @@ struct InteractiveVolcanoPlotView: View {
     
     private var plotContentView: some View {
         ZStack {
-            // Android-style: Simple, clean volcano plot with point interactions
             PlotlyWebView(
                 curtainData: curtainData,
                 plotType: .volcano, 

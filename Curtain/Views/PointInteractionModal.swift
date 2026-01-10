@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Point Interaction Modal (Like Android)
 
 struct PointInteractionModal: View {
     let clickData: VolcanoPointClickData
@@ -674,7 +673,6 @@ struct PointInteractionModal: View {
         )
     }
     
-    /// Generate annotation title exactly like Android implementation:
     /// - If gene names exist and they're not empty: "geneName(proteinId)"
     /// - Otherwise: just "proteinId"
     private func generateAnnotationTitle(for protein: ProteinPoint) -> String {
@@ -745,7 +743,7 @@ struct PointInteractionModal: View {
     private func createAutomaticSelection(name: String, proteinIds: Set<String>) {
         guard !proteinIds.isEmpty else { return }
         
-        // Create search list using protein search manager (like Android)
+        // Create search list using protein search manager 
         let _ = proteinSearchManager.createSearchListFromProteinIds(
             name: name,
             proteinIds: proteinIds,
@@ -769,12 +767,12 @@ struct PointInteractionModal: View {
     
     private func performAction() {
         switch selectedTab {
-        case 0: // Create selection using Android-style protein search system
+        case 0: 
             let finalSelectedIds = getFinalSelectedProteinIds()
             guard !newSelectionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !finalSelectedIds.isEmpty else { return }
             
-            // Create search list using protein search manager (like Android)
+            // Create search list using protein search manager 
             let _ = proteinSearchManager.createSearchListFromProteinIds(
                 name: newSelectionName.trimmingCharacters(in: .whitespacesAndNewlines),
                 proteinIds: finalSelectedIds,
@@ -792,7 +790,7 @@ struct PointInteractionModal: View {
                 color: color
             )
             
-        case 1: // Create annotation(s) automatically (like Android)
+        case 1: // Create annotation(s) automatically 
             // Create annotations for all target proteins
             let targetProteins = getAnnotationTargetProteins()
             for proteinId in targetProteins {
@@ -806,9 +804,7 @@ struct PointInteractionModal: View {
         }
     }
     
-    /// Add annotation for a protein using automatic title generation (matching Android implementation)
     private func addAnnotationForProtein(_ protein: ProteinPoint) {
-        // Generate unique annotation title exactly like Android
         let title = generateAnnotationTitle(for: protein)
         
         // Check if annotation already exists to avoid duplicates
@@ -817,7 +813,6 @@ struct PointInteractionModal: View {
             return
         }
         
-        // CRITICAL FIX: Get the correct plot coordinates for this specific protein
         // Use clickData coordinates for clicked protein, use protein's own coordinates for nearby proteins
         let plotX: Double
         let plotY: Double
@@ -832,7 +827,6 @@ struct PointInteractionModal: View {
             plotY = protein.negLog10PValue
         }
         
-        // Create Android-compatible annotation data structure exactly like Android
         let annotationData: [String: Any] = [
             "primary_id": protein.id,
             "title": title,
@@ -846,11 +840,11 @@ struct PointInteractionModal: View {
                 "arrowhead": 1,
                 "arrowsize": 1,
                 "arrowwidth": 1,
-                "arrowcolor": "#000000",  // Android default: black arrows
+                "arrowcolor": "#000000",  
                 "ax": -20,
                 "ay": -20,
-                "xanchor": "center",      // Android default: center alignment
-                "yanchor": "bottom",      // Android default: bottom alignment
+                "xanchor": "center",      
+                "yanchor": "bottom",      
                 "font": [
                     "size": 15,
                     "color": "#000000",
@@ -861,7 +855,7 @@ struct PointInteractionModal: View {
             ]
         ]
         
-        // Update textAnnotation in CurtainData directly (matching Android)
+        // Update textAnnotation in CurtainData directly 
         var updatedTextAnnotation = curtainData.settings.textAnnotation
         updatedTextAnnotation[title] = annotationData
         

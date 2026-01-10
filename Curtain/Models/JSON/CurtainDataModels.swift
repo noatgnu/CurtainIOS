@@ -7,7 +7,7 @@
 
 import Foundation
 
-// MARK: - Main CurtainData Structure (Based on Android CurtainData.kt)
+// MARK: - Main CurtainData Structure 
 
 struct CurtainData {
     // Data Content Fields
@@ -18,13 +18,14 @@ struct CurtainData {
     let password: String
     let selections: [String: [Any]]?
     var selectionsMap: [String: Any]?
-    var selectedMap: [String: [String: Bool]]? // Android runtime data structure
+    var selectedMap: [String: [String: Bool]]? 
     var selectionsName: [String]?
     private let _settings: CurtainSettings
     let fetchUniprot: Bool
     let annotatedData: Any?
     let extraData: ExtraData?
     let permanent: Bool
+    var bypassUniProt: Bool
     
     // Direct access to settings without automatic processing to avoid loops
     var settings: CurtainSettings {
@@ -69,13 +70,13 @@ struct CurtainData {
 
     // Computed properties for easier access
     var proteomicsData: [String: Any] {
-        // Priority 1: Use processed differential data (like Android)
+        // Priority 1: Use processed differential data 
         if let extraData = extraData,
            let data = extraData.data,
            let dataMap = data.dataMap {
             let convertedDataMap = convertDataMapToDict(dataMap)
             
-            // Check if we have processedDifferentialData (like Android)
+            // Check if we have processedDifferentialData 
             if let processedData = convertedDataMap["processedDifferentialData"] as? [[String: Any]] {
                 
                 // Convert array to dictionary with protein IDs as keys
@@ -98,7 +99,7 @@ struct CurtainData {
     
     // Helper to find protein ID field in row data - use ONLY user-specified column
     private func findProteinId(in row: [String: Any]) -> String? {
-        // CRITICAL: Use ONLY the user-specified primary ID column from differential form
+        
         guard !differentialForm.primaryIDs.isEmpty else {
             return nil
         }
@@ -114,7 +115,6 @@ struct CurtainData {
         return id
     }
     
-    // Data row counts (matching Android implementation)
     var rawDataRowCount: Int {
         // Count based on samples or data availability
         if !rawForm.samples.isEmpty {
@@ -160,7 +160,8 @@ struct CurtainData {
         fetchUniprot: Bool = true,
         annotatedData: Any? = nil,
         extraData: ExtraData? = nil,
-        permanent: Bool = false
+        permanent: Bool = false,
+        bypassUniProt: Bool = false
     ) {
         self.raw = raw
         self.rawForm = rawForm
@@ -176,6 +177,7 @@ struct CurtainData {
         self.annotatedData = annotatedData
         self.extraData = extraData
         self.permanent = permanent
+        self.bypassUniProt = bypassUniProt
     }
     
     // Helper method to convert JavaScript Map serialization formats
@@ -341,7 +343,6 @@ struct UniprotExtraData {
 
 extension CurtainData {
     
-    /// Parse CurtainData from JSON dictionary (like Android Moshi adapter)
     static func fromJSON(_ json: [String: Any]) -> CurtainData? {
         // Parse CurtainRawForm
         let rawForm: CurtainRawForm
@@ -431,7 +432,8 @@ extension CurtainData {
             fetchUniprot: json["fetchUniprot"] as? Bool ?? true,
             annotatedData: json["annotatedData"],
             extraData: extraData,
-            permanent: json["permanent"] as? Bool ?? false
+            permanent: json["permanent"] as? Bool ?? false,
+            bypassUniProt: json["bypassUniProt"] as? Bool ?? false
         )
     }
     
@@ -444,6 +446,7 @@ extension CurtainData {
         json["password"] = password
         json["fetchUniprot"] = fetchUniprot
         json["permanent"] = permanent
+        json["bypassUniProt"] = bypassUniProt
         
         // Convert RawForm
         json["rawForm"] = [

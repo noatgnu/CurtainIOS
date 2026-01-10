@@ -7,7 +7,6 @@
 
 import Foundation
 
-// MARK: - Search Types and Models (Like Android)
 
 enum SearchType: String, CaseIterable {
     case primaryID = "PRIMARY_ID"
@@ -59,7 +58,6 @@ struct SearchList {
     }
 }
 
-// MARK: - Protein Search Service (Like Android SearchService)
 
 class ProteinSearchService {
     
@@ -72,7 +70,6 @@ class ProteinSearchService {
         limit: Int = 10
     ) async -> [TypeaheadSuggestion] {
         
-        // Minimum 2 characters like Android
         guard query.count >= 2 else { return [] }
         
         let queryLower = query.lowercased()
@@ -96,7 +93,6 @@ class ProteinSearchService {
         curtainData: CurtainData
     ) async -> [SearchResult] {
         
-        // Process input like Android: split by newlines, trim, convert to uppercase
         let processedInput = processBatchSearchInput(inputText: inputText)
         var results: [SearchResult] = []
         
@@ -143,7 +139,6 @@ class ProteinSearchService {
         }
     }
     
-    // MARK: - Primary ID Search (Like Android)
     
     private func getPrimaryIDsFromPrimaryId(searchTerm: String, curtainData: CurtainData) -> [String] {
         var matchedIds: Set<String> = []
@@ -151,7 +146,7 @@ class ProteinSearchService {
         // Get all available protein IDs from the processed data
         let availableProteinIds = getAvailableProteinIds(curtainData: curtainData)
         
-        // Handle semicolon-delimited IDs (like Android)
+        // Handle semicolon-delimited IDs 
         let searchTerms = searchTerm.components(separatedBy: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         
         for term in searchTerms {
@@ -168,7 +163,6 @@ class ProteinSearchService {
         var suggestions: [TypeaheadSuggestion] = []
         
         for proteinId in availableProteinIds {
-            // Case-insensitive substring matching like Android frontend: indexOf(term.toLowerCase()) > -1
             if proteinId.lowercased().contains(queryLower) {
                 suggestions.append(TypeaheadSuggestion(
                     text: proteinId,
@@ -182,16 +176,14 @@ class ProteinSearchService {
         return suggestions
     }
     
-    // MARK: - Gene Name Search (Like Android)
     
     private func getPrimaryIDsFromGeneNames(searchTerm: String, curtainData: CurtainData) -> [String] {
         var matchedIds: Set<String> = []
         
-        // Handle semicolon-delimited gene names (like Android)
+        // Handle semicolon-delimited gene names 
         let geneNames = searchTerm.components(separatedBy: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         
         for geneName in geneNames {
-            // Try UniProt lookup first (like Android chain: geneName → geneNameToAcc → accMap → primaryIds)
             if let uniprotIds = getProteinIdsFromUniProtGene(geneName: geneName, curtainData: curtainData) {
                 matchedIds.formUnion(uniprotIds)
             } else {
@@ -206,7 +198,7 @@ class ProteinSearchService {
     }
     
     private func getProteinIdsFromUniProtGene(geneName: String, curtainData: CurtainData) -> Set<String>? {
-        // Android workflow: geneName → geneNameToAcc → accMap → primaryIds
+        
         guard let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any] else {
             return nil
         }
@@ -296,10 +288,9 @@ class ProteinSearchService {
         return suggestions
     }
     
-    // MARK: - Accession ID Search (Like Android)
     
     private func getPrimaryIDsFromAccessionId(searchTerm: String, curtainData: CurtainData) -> [String] {
-        // Android: Direct lookup in uniprotService.accMap
+        
         // For simplicity, we'll search in the UniProt database
         guard let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any] else {
             return []
@@ -343,7 +334,7 @@ class ProteinSearchService {
     // MARK: - Helper Methods
     
     private func processBatchSearchInput(inputText: String) -> [String: [String]] {
-        // Like Android: Join input lines and process as single string, split by newlines, trim and convert to uppercase
+        
         let lines = inputText.components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -351,7 +342,7 @@ class ProteinSearchService {
         var processedInput: [String: [String]] = [:]
         
         for line in lines {
-            // Handle semicolon-delimited entries within each line (like Android)
+            // Handle semicolon-delimited entries within each line 
             let terms = line.components(separatedBy: ";")
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
                 .filter { !$0.isEmpty }
@@ -363,7 +354,7 @@ class ProteinSearchService {
     }
     
     private func getAvailableProteinIds(curtainData: CurtainData) -> Set<String> {
-        // Get protein IDs from processed differential data (like Android)
+        // Get protein IDs from processed differential data 
         guard let processedData = curtainData.extraData?.data?.dataMap as? [String: Any],
               let differentialData = processedData["processedDifferentialData"] as? [[String: Any]] else {
             return []

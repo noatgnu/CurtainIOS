@@ -28,7 +28,7 @@ struct PlotTrace {
     let customdata: [[String: Any]]?
     let error_y: PlotErrorBar?
 
-    // Violin plot specific properties (Android-compatible)
+    // Violin plot specific properties 
     let violinmode: String?
     let box_visible: Bool?
     let meanline_visible: Bool?
@@ -38,7 +38,6 @@ struct PlotTrace {
     let fillcolor: String?
     let line_color: String?
 
-    // Additional Android violin plot properties
     let spanmode: String?      // "soft" for smooth kernel density estimation
     let bandwidth: String?     // "auto" for automatic bandwidth selection
     let scalemode: String?     // "width" to scale violin width consistently
@@ -409,7 +408,7 @@ struct PlotGenerationContext {
     }
     
     private func convertToProteinPoints() -> [ProteinPoint] {
-        // Use processed differential data (like Android) instead of raw proteomicsData
+        // Use processed differential data  instead of raw proteomicsData
         guard let processedData = data.extraData?.data?.dataMap as? [String: Any],
               let differentialData = processedData["processedDifferentialData"] as? [[String: Any]] else {
             return convertFromProteomicsData()
@@ -427,7 +426,7 @@ struct PlotGenerationContext {
         var processedCount = 0
         let proteins = differentialData.compactMap { proteinData -> ProteinPoint? in
             
-            // CRITICAL: User must specify these columns, don't use defaults that might not exist
+            
             guard !fcColumn.isEmpty && !sigColumn.isEmpty && !idColumn.isEmpty else {
                 if processedCount < 3 {
                 }
@@ -498,7 +497,7 @@ struct PlotGenerationContext {
             }
             
             return ProteinPoint(
-                id: primaryID, // Use primary ID as the main ID (like Android)
+                id: primaryID, // Use primary ID as the main ID 
                 primaryID: primaryID,
                 proteinName: proteinName,
                 geneNames: geneNames,
@@ -531,7 +530,7 @@ struct PlotGenerationContext {
             let idColumn = diffForm.primaryIDs
             let geneColumn = diffForm.geneNames
             
-            // CRITICAL: User must specify these columns, don't use defaults that might not exist
+            
             guard !fcColumn.isEmpty && !sigColumn.isEmpty && !idColumn.isEmpty else {
                 if processedCount < 3 {
                 }
@@ -678,7 +677,7 @@ extension PlotTrace {
         }
         
         if let box_visible = box_visible {
-            // Android box configuration: white fill with black border
+            
             dict["box"] = [
                 "visible": box_visible,
                 "fillcolor": "rgba(255,255,255,0.8)",
@@ -690,7 +689,7 @@ extension PlotTrace {
         }
         
         if let meanline_visible = meanline_visible {
-            // Android meanline configuration: red color with 2px width
+            
             dict["meanline"] = [
                 "visible": meanline_visible,
                 "color": "red",
@@ -715,14 +714,13 @@ extension PlotTrace {
         }
         
         if let line_color = line_color {
-            // Android violin line configuration: specified color with 1px width
+            
             dict["line"] = [
                 "color": line_color,
                 "width": 1
             ]
         }
         
-        // Additional Android violin plot properties
         if let spanmode = spanmode {
             dict["spanmode"] = spanmode
         }

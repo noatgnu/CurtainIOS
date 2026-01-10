@@ -13,7 +13,6 @@ class CurtainConstantsTests: XCTestCase {
     // MARK: - Predefined Hosts Tests
     
     func testPredefinedHostsValues() {
-        // Test that predefined hosts match Android values
         XCTAssertEqual(CurtainConstants.PredefinedHosts.celsusBackend, "https://celsus.muttsu.xyz")
         XCTAssertEqual(CurtainConstants.PredefinedHosts.questBackend, "https://curtain-backend.omics.quest")
         XCTAssertEqual(CurtainConstants.PredefinedHosts.proteoFrontend, "https://curtain.proteo.info")
@@ -29,7 +28,6 @@ class CurtainConstantsTests: XCTestCase {
     // MARK: - Example Data Tests
     
     func testExampleDataValues() {
-        // Test example data matches Android MainActivity.kt values
         XCTAssertEqual(CurtainConstants.ExampleData.uniqueId, "f4b009f3-ac3c-470a-a68b-55fcadf68d0f")
         XCTAssertEqual(CurtainConstants.ExampleData.apiUrl, "https://celsus.muttsu.xyz/")
         XCTAssertEqual(CurtainConstants.ExampleData.frontendUrl, "https://curtain.proteo.info/")

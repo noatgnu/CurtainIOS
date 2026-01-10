@@ -8,7 +8,7 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Deep Link Handler (Based on Android Intent handling)
+// MARK: - Deep Link Handler 
 
 @MainActor
 @Observable
@@ -22,7 +22,6 @@ class DeepLinkHandler {
     
     private init() {}
     
-    // MARK: - Deep Link Processing (Like Android Intent.ACTION_VIEW)
     
     /// Process a deep link URL (from QR code, share, or app launch)
     func processURL(_ url: URL) async -> DeepLinkResult {
@@ -35,7 +34,7 @@ class DeepLinkHandler {
             return result
         }
 
-        // Check for different URL patterns (like Android)
+        // Check for different URL patterns 
         if let result = await processCurtainProteoURL(url) {
             return result
         }
@@ -52,7 +51,6 @@ class DeepLinkHandler {
         return await processUnknownURL(url)
     }
     
-    // MARK: - URL Pattern Processors (Like Android URL parsing)
 
     /// Process DOI URLs
     /// Supports formats:
@@ -107,7 +105,6 @@ class DeepLinkHandler {
         return nil
     }
 
-    /// Process curtain.proteo.info URLs (like Android proteo intent handling)
     private func processCurtainProteoURL(_ url: URL) async -> DeepLinkResult? {
         let urlString = url.absoluteString
         
@@ -127,9 +124,7 @@ class DeepLinkHandler {
         )
     }
     
-    /// Process custom Curtain session URLs (like Android curtain://open scheme handling)
     private func processCurtainSessionURL(_ url: URL) async -> DeepLinkResult? {
-        // Handle curtain:// URLs - must match Android pattern: curtain://open
         guard url.scheme == "curtain" && url.host == "open" else {
             return nil
         }
@@ -137,7 +132,6 @@ class DeepLinkHandler {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let queryItems = components?.queryItems
         
-        // Extract parameters using Android parameter names (with fallbacks)
         let linkId = queryItems?.first(where: { $0.name == "uniqueId" || $0.name == "unique_id" || $0.name == "id" })?.value
         let apiUrl = queryItems?.first(where: { $0.name == "apiURL" || $0.name == "api_url" || $0.name == "api" || $0.name == "host" })?.value
         let frontendUrl = queryItems?.first(where: { $0.name == "frontendURL" || $0.name == "frontend_url" || $0.name == "frontend" })?.value
@@ -160,7 +154,6 @@ class DeepLinkHandler {
         )
     }
     
-    /// Process generic Curtain URLs (like Android web intent handling)
     private func processGenericCurtainURL(_ url: URL) async -> DeepLinkResult? {
         guard let host = url.host else { return nil }
         
@@ -263,7 +256,7 @@ class DeepLinkHandler {
         do {
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             
-            // Look for Curtain session data structure (Android parameter names first)
+            // Look for Curtain session data structure 
             if let linkId = json?["uniqueId"] as? String ?? json?["unique_id"] as? String ?? json?["linkId"] as? String ?? json?["id"] as? String,
                let apiUrl = json?["apiURL"] as? String ?? json?["api_url"] as? String ?? json?["apiUrl"] as? String ?? json?["api"] as? String ?? json?["host"] as? String {
                 
@@ -334,7 +327,6 @@ extension CurtainConstants {
         static let scheme = "curtain"
         static let host = "open"
         
-        /// Generate Android-compatible deep link URL for sharing a Curtain session
         /// Format: curtain://open?uniqueId=[UNIQUE_ID]&apiURL=[API_URL]&frontendURL=[FRONTEND_URL]
         static func generateSessionURL(linkId: String, apiUrl: String, frontendUrl: String? = nil) -> URL? {
             var components = URLComponents()
@@ -354,7 +346,6 @@ extension CurtainConstants {
             return components.url
         }
         
-        /// Generate web share URL (like Android WebShareFragment)
         /// Format: [FRONTEND_URL]/#/[UNIQUE_ID]
         static func generateWebShareURL(linkId: String, frontendUrl: String) -> URL? {
             let cleanUrl = frontendUrl.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -362,8 +353,7 @@ extension CurtainConstants {
             return URL(string: webUrlString)
         }
         
-        /// Generate Android-compatible QR code content (deep link format)
-        static func generateAndroidQRCode(linkId: String, apiUrl: String, frontendUrl: String? = nil) -> String? {
+        static func generateQRCode(linkId: String, apiUrl: String, frontendUrl: String? = nil) -> String? {
             return generateSessionURL(linkId: linkId, apiUrl: apiUrl, frontendUrl: frontendUrl)?.absoluteString
         }
         

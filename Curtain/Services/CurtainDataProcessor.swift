@@ -10,7 +10,6 @@ import Foundation
 class CurtainDataProcessor {
     
     /// Process raw CSV data to create essential metadata structures
-    /// This is the iOS equivalent of Android's processRawData() method
     static func processRawData(_ curtainData: CurtainData) -> CurtainSettings {
 
         guard let rawCSV = curtainData.raw, !rawCSV.isEmpty else {
@@ -33,7 +32,6 @@ class CurtainDataProcessor {
         // Process each sample to extract condition information
         for sample in samples {
             
-            // Extract condition from sample name (Android logic: split on "." and take all but last part)
             let parts = sample.components(separatedBy: ".")
             let replicate = parts.last ?? ""
             let condition = parts.count > 1 ? parts.dropLast().joined(separator: ".") : ""
@@ -46,7 +44,6 @@ class CurtainDataProcessor {
             if !actualCondition.isEmpty && !conditions.contains(actualCondition) {
                 conditions.append(actualCondition)
                 
-                // Cycle through default colors (Android logic)
                 if colorPosition >= curtainData.settings.defaultColorList.count {
                     colorPosition = 0
                 }
@@ -77,7 +74,6 @@ class CurtainDataProcessor {
         }
         
         
-        // Merge with existing settings (Android logic)
         let updatedSettings = mergeWithExistingSettingsSync(
             currentSettings: curtainData.settings,
             newConditions: conditions,
@@ -90,7 +86,6 @@ class CurtainDataProcessor {
         return updatedSettings
     }
     
-    /// Merge new metadata with existing settings (Android logic) - Synchronous version
     /// Accessible to DataProcessorActor
     fileprivate static func mergeWithExistingSettingsSync(
         currentSettings: CurtainSettings,
@@ -312,7 +307,6 @@ actor DataProcessorActor {
 
         // Process each sample with progress tracking
         for (index, sample) in samples.enumerated() {
-            // Extract condition from sample name (Android logic: split on "." and take all but last part)
             let parts = sample.components(separatedBy: ".")
             let replicate = parts.last ?? ""
             let condition = parts.count > 1 ? parts.dropLast().joined(separator: ".") : ""
@@ -324,7 +318,6 @@ actor DataProcessorActor {
             if !actualCondition.isEmpty && !conditions.contains(actualCondition) {
                 conditions.append(actualCondition)
 
-                // Cycle through default colors (Android logic)
                 if colorPosition >= curtainData.settings.defaultColorList.count {
                     colorPosition = 0
                 }

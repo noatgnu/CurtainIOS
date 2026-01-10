@@ -78,7 +78,7 @@ struct SettingsVariant: Codable, Identifiable {
             conditionOrder: map["conditionOrder"] as? [String] ?? [],
             sampleMap: map["sampleMap"] as? [String: [String: String]] ?? [:],
             volcanoAxis: parseVolcanoAxis(map["volcanoAxis"]),
-            textAnnotation: map["textAnnotation"] as? [String: Any] ?? [:], // CRITICAL: Include textAnnotation
+            textAnnotation: map["textAnnotation"] as? [String: Any] ?? [:], 
             volcanoPlotTitle: map["volcanoPlotTitle"] as? String ?? "",
             visible: map["visible"] as? [String: Any] ?? [:],
             volcanoPlotGrid: parseVolcanoPlotGrid(map["volcanoPlotGrid"]),

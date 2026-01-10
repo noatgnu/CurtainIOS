@@ -8,14 +8,13 @@
 import Foundation
 import SwiftData
 
-// MARK: - DataFilterListViewModel (Based on Android DataFilterListViewModel.kt)
+// MARK: - DataFilterListViewModel 
 
 @MainActor
 @Observable
 class DataFilterListViewModel {
     private let repository: DataFilterListRepository
     
-    // MARK: - State Properties (Like Android StateFlow)
     
     // Data State
     var filterLists: [DataFilterListEntity] = []
@@ -25,7 +24,6 @@ class DataFilterListViewModel {
     var isLoading = false
     var isSyncing = false
     
-    // Sync Progress Tracking (Like Android)
     var syncProgress = 0
     var syncTotal = 0
     var currentSyncCategory: String?
@@ -38,7 +36,6 @@ class DataFilterListViewModel {
         loadDataFilterLists()
     }
     
-    // MARK: - Data Loading Methods (Like Android)
     
     /// Load data filter lists from the local database
     func loadDataFilterLists() {
@@ -56,7 +53,6 @@ class DataFilterListViewModel {
         categories = repository.getAllCategoriesLocal()
     }
     
-    // MARK: - Sync Operations (Like Android)
     
     /// Sync data filter lists from the remote API with detailed progress tracking
     func syncDataFilterLists(hostname: String) async {
@@ -67,7 +63,7 @@ class DataFilterListViewModel {
         syncProgress = 0
         
         do {
-            // First get all remote categories (like Android)
+            // First get all remote categories 
             let remoteCategories = try await repository.getAllCategories(hostname: hostname)
             syncTotal = remoteCategories.count
             
@@ -78,7 +74,7 @@ class DataFilterListViewModel {
                 currentSyncCategory = category
                 syncProgress = processedCount
                 
-                // Fetch filter lists for this category (like Android)
+                // Fetch filter lists for this category 
                 let categoryFilterLists = try await repository.fetchDataFilterListsByCategory(
                     hostname: hostname,
                     category: category
@@ -90,7 +86,7 @@ class DataFilterListViewModel {
             }
             
             
-            // Convert to entities and save to local database (like Android)
+            // Convert to entities and save to local database 
             let entityFilterLists = allFilterLists.map { (category, filterList) in
                 repository.mapApiToEntity(filterList, category: category)
             }
@@ -112,7 +108,6 @@ class DataFilterListViewModel {
         }
     }
     
-    // MARK: - CRUD Operations (Like Android)
     
     /// Create a new data filter list
     func createDataFilterList(hostname: String, name: String, category: String, data: String, isDefault: Bool = false) async {

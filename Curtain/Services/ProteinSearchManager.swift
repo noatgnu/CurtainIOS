@@ -7,7 +7,6 @@
 
 import Foundation
 
-// MARK: - Search Session Management (Like Android SearchSession)
 
 struct SearchSession {
     var searchLists: [SearchList] = []
@@ -15,7 +14,6 @@ struct SearchSession {
     var activeStoredSelections: Set<String> = []
 }
 
-// MARK: - Protein Search Manager (Like Android SearchService Integration)
 
 class ProteinSearchManager: ObservableObject {
     @Published var searchSession = SearchSession()
@@ -45,7 +43,7 @@ class ProteinSearchManager: ObservableObject {
             proteinsFound = 0
         }
 
-        // Perform batch search (like Android)
+        // Perform batch search 
         await MainActor.run {
             searchProgress = "Searching for proteins..."
         }
@@ -89,10 +87,9 @@ class ProteinSearchManager: ObservableObject {
             searchProgress = "Creating search list with \(proteinCount) proteins..."
         }
 
-        // Assign color (like Android color assignment)
         let assignedColor = color ?? getNextAvailableColor()
 
-        // Create search list (like Android)
+        // Create search list 
         let searchList = SearchList(
             name: name,
             proteinIds: allMatchedProteins,
@@ -231,20 +228,19 @@ class ProteinSearchManager: ObservableObject {
         }
     }
     
-    // MARK: - Integration with CurtainData (Like Android)
     
     func restoreSearchListsFromCurtainData(curtainData: CurtainData) {
-        // Like Android restoreSearchListsFromCurtainData - use selectedMap for runtime operations
+        
         
         var restoredSearchLists: [SearchList] = []
         var selectionNames: Set<String> = []
         
-        // First, collect all selection names from selectionsName (like Android)
+        // First, collect all selection names from selectionsName 
         if let selectionsName = curtainData.selectionsName {
             selectionNames = Set(selectionsName)
         }
         
-        // Use selectedMap for runtime operations (like Android)
+        // Use selectedMap for runtime operations 
         if let selectedMap = curtainData.selectedMap {
             
             for (proteinId, selections) in selectedMap {
@@ -298,7 +294,7 @@ class ProteinSearchManager: ObservableObject {
             }
         }
         
-        // Apply correct color assignment using the same logic as volcano plot (like Android)
+        // Apply correct color assignment using the same logic as volcano plot 
         assignCorrectColorsToSearchLists(&restoredSearchLists, curtainData.settings)
         
         // Update UI on main thread
@@ -314,9 +310,9 @@ class ProteinSearchManager: ObservableObject {
     }
     
     func saveSearchListsToCurtainData(curtainData: inout CurtainData) {
-        // Like Android saveSearchListsToCurtainData - directly update CurtainData structures
         
-        // Build new selectOperationNames (like Android)
+        
+        // Build new selectOperationNames 
         var newSelectOperationNames: [String] = []
         var newSelectionsMap: [String: [String: Bool]] = [:]
         
@@ -376,7 +372,7 @@ class ProteinSearchManager: ObservableObject {
             convertedSelectionsMap[proteinId] = selections
         }
         
-        // CRITICAL: Actually update the CurtainData object (like Android)
+        
         updateCurtainDataSelections(
             curtainData: &curtainData,
             selectionsMap: convertedSelectionsMap,
@@ -385,26 +381,23 @@ class ProteinSearchManager: ObservableObject {
         
     }
     
-    // CRITICAL: Method to actually update CurtainData (like Android)
+    
     private func updateCurtainDataSelections(
         curtainData: inout CurtainData,
         selectionsMap: [String: Any],
         selectOperationNames: [String]
     ) {
-        // Update the actual CurtainData object properties (like Android)
+        // Update the actual CurtainData object properties 
         // This needs to be done through direct property mutation
         
-        // Update selectionsMap (like Android CurtainData.selectionsMap)
         curtainData.selectionsMap = selectionsMap
         
-        // Update selectedMap (Android runtime data structure) 
+        // Update selectedMap  
         curtainData.selectedMap = convertToSelectedMap(selectionsMap)
         
-        // Update selectionsName (like Android CurtainData.selectOperationNames)
         curtainData.selectionsName = selectOperationNames
         
         
-        // Trigger volcano plot refresh (like Android volcanoPlotRefreshTrigger)
         NotificationCenter.default.post(
             name: NSNotification.Name("VolcanoPlotRefresh"),
             object: nil,
@@ -412,7 +405,6 @@ class ProteinSearchManager: ObservableObject {
         )
     }
     
-    // MARK: - Typeahead Search (Like Android)
     
     func performTypeaheadSearch(
         query: String,
@@ -445,10 +437,9 @@ class ProteinSearchManager: ObservableObject {
         return String(format: "#%06X", Int.random(in: 0...0xFFFFFF))
     }
     
-    // MARK: - Export/Import (Like Android)
     
     func exportSearchList(_ searchList: SearchList) -> String {
-        // Export as newline-separated protein IDs (like Android)
+        // Export as newline-separated protein IDs 
         return searchList.proteinIds.sorted().joined(separator: "\n")
     }
     
@@ -465,14 +456,12 @@ class ProteinSearchManager: ObservableObject {
         return exportContent
     }
     
-    // MARK: - Color Assignment (Like Android VolcanoPlotDataService)
     
     private func assignCorrectColorsToSearchLists(_ searchLists: inout [SearchList], _ settings: CurtainSettings) {
-        // Use the same color assignment logic as VolcanoPlotDataService (like Android)
+        // Use the same color assignment logic as VolcanoPlotDataService 
         var colorMap = settings.colorMap
         let selectionNames = Set(searchLists.map { $0.name })
         
-        // Apply Android color assignment algorithm
         assignColorsToSelections(selectionNames, &colorMap, settings)
         
         // Update search lists with assigned colors
@@ -494,24 +483,23 @@ class ProteinSearchManager: ObservableObject {
     }
     
     private func assignColorsToSelections(_ selectOperationNames: Set<String>, _ colorMap: inout [String: String], _ settings: CurtainSettings) {
-        // Same logic as VolcanoPlotDataService.assignColorsToSelections (like Android)
+        // Same logic as VolcanoPlotDataService.assignColorsToSelections 
         let defaultColorList = settings.defaultColorList
         var currentColors: [String] = []
         
-        // Collect currently used colors (like Android)
+        // Collect currently used colors 
         for (_, color) in colorMap {
             if defaultColorList.contains(color) {
                 currentColors.append(color)
             }
         }
         
-        // Set current position for color assignment (like Android)
+        // Set current position for color assignment 
         var currentPosition = 0
         if currentColors.count < defaultColorList.count {
             currentPosition = currentColors.count
         }
         
-        // Assign colors using Android logic
         var breakColor = false
         var shouldRepeat = false
         
@@ -550,15 +538,14 @@ class ProteinSearchManager: ObservableObject {
         }
     }
     
-    // MARK: - Android Data Structure Conversion
     
     private func convertToSelectedMap(_ selectionsMap: [String: Any]) -> [String: [String: Bool]]? {
-        // Convert generic selectionsMap to strongly-typed selectedMap (like Android)
+        // Convert generic selectionsMap to strongly-typed selectedMap 
         var selectedMap: [String: [String: Bool]] = [:]
         
         for (proteinId, selections) in selectionsMap {
             if let selectionDict = selections as? [String: Bool] {
-                // Filter out false values (Android only stores true values)
+                // Filter out false values 
                 var cleanedSelections: [String: Bool] = [:]
                 for (selectionName, isSelected) in selectionDict {
                     if isSelected {

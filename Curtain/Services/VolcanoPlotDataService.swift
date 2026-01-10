@@ -191,8 +191,18 @@ class VolcanoPlotDataService {
     
     private func resolveGeneName(for id: String, row: [String: Any], geneColumn: String, curtainData: AppData) -> String {
         var gene = id
-        if !curtainData.bypassUniProt {
-            // UniProt logic
+        if let uniprotDB = curtainData.uniprotDB {
+            if let uniprotRecord = uniprotDB[id] as? [String: Any],
+               let geneNames = uniprotRecord["Gene Names"] as? String,
+               !geneNames.isEmpty {
+                let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;\\"))
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .first
+                if let geneName = firstGeneName {
+                    gene = geneName
+                }
+            }
         }
         if !geneColumn.isEmpty, let geneFromColumn = row[geneColumn] as? String, !geneFromColumn.isEmpty {
             gene = geneFromColumn
@@ -222,18 +232,34 @@ class VolcanoPlotDataService {
         let currentColors = Array(colorMap.values).filter { defaultColorList.contains($0) }
         var currentPosition = currentColors.count < defaultColorList.count ? currentColors.count : 0
         var shouldRepeat = false
+        
         for s in selectOperationNames.sorted() {
             if colorMap[s] == nil {
                 while true {
-                    if currentColors.contains(defaultColorList[currentPosition]) {
-                        currentPosition += 1
-                        if shouldRepeat { colorMap[s] = defaultColorList[currentPosition]; break }
-                    } else if currentPosition >= defaultColorList.count {
-                        currentPosition = 0; colorMap[s] = defaultColorList[currentPosition]; shouldRepeat = true; break
-                    } else { colorMap[s] = defaultColorList[currentPosition]; break }
+                    if currentPosition >= defaultColorList.count {
+                        currentPosition = 0
+                        shouldRepeat = true
+                    }
+                    
+                    let candidate = defaultColorList[currentPosition]
+                    
+                    if currentColors.contains(candidate) {
+                        if shouldRepeat {
+                            currentPosition += 1
+                            if currentPosition >= defaultColorList.count { currentPosition = 0 }
+                            colorMap[s] = defaultColorList[currentPosition]
+                            break
+                        } else {
+                            currentPosition += 1
+                        }
+                    } else {
+                        colorMap[s] = candidate
+                        break
+                    }
                 }
+                
                 currentPosition += 1
-                if currentPosition == defaultColorList.count { currentPosition = 0 }
+                if currentPosition >= defaultColorList.count { currentPosition = 0 }
             }
         }
         return currentPosition

@@ -63,7 +63,7 @@ class ProteinColorResolver {
 
     // MARK: - Private Methods
 
-    /// Determine protein color based on selection groups and significance (like Android)
+    /// Determine protein color based on selection groups and significance 
     private func calculateColor(
         proteinId: String,
         fcValue: Double,
@@ -93,7 +93,6 @@ class ProteinColorResolver {
         return groupColor
     }
 
-    /// Determine significance group name (matching Android VolcanoPlotDataService)
     private func getSignificanceGroup(
         fcValue: Double,
         pValue: Double,

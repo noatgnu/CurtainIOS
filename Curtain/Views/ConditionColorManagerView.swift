@@ -357,7 +357,6 @@ struct ConditionColorManagerView: View {
     
     private func getDefaultColorForCondition(_ conditionName: String) -> String {
         // Use the EXACT same logic as ProteinChartView for consistency
-        // Android Default Color Palettes (Pastel palette as default)
         let androidPastelColors = [
             "#fd7f6f",  // Red
             "#7eb0d5",  // Blue  

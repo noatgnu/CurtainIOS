@@ -7,7 +7,6 @@
 
 import Foundation
 
-// MARK: - Multi-Host Network Manager (Based on Android BaseUrlInterceptor)
 
 class MultiHostNetworkManager {
     private var networkServices: [String: NetworkService] = [:]

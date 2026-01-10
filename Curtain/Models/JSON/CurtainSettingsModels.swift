@@ -7,7 +7,6 @@
 
 import Foundation
 
-// MARK: - Comprehensive CurtainSettings (Based on Android CurtainSettings.kt)
 
 struct CurtainSettings {
     // Core Analysis Settings
@@ -309,7 +308,6 @@ struct CurtainSettings {
         self.markerSizeMap = markerSizeMap
     }
     
-    // MARK: - Default Values (From Android)
     
     static func defaultColors() -> [String] {
         return [
@@ -352,7 +350,6 @@ struct CurtainSettings {
     }
 }
 
-// MARK: - Nested Structures (From Android)
 
 struct Project {
     let title: String
@@ -635,11 +632,9 @@ struct ExtraDataItem {
     }
 }
 
-// MARK: - Manual Deserialization Extensions (Based on Android CurtainSettingsDeserializer.kt)
 
 extension CurtainSettings {
     
-    /// Manual deserialization from dictionary (equivalent to Android manualDeserializeSettings)
     static func fromDictionary(_ map: [String: Any]) -> CurtainSettings {
         return CurtainSettings(
             fetchUniprot: map["fetchUniprot"] as? Bool ?? true,
@@ -709,7 +704,6 @@ extension CurtainSettings {
         )
     }
     
-    /// JSON deserialization from JSON string (equivalent to Android deserializeCurtainSettings)
     static func fromJSON(_ jsonString: String) -> CurtainSettings? {
         guard let data = jsonString.data(using: .utf8),
               let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {

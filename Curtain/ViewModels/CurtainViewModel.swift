@@ -8,7 +8,7 @@
 import Foundation
 import SwiftData
 
-// MARK: - CurtainViewModel (Based on Android CurtainViewModel.kt)
+// MARK: - CurtainViewModel 
 
 @MainActor
 @Observable
@@ -16,14 +16,12 @@ class CurtainViewModel {
     private var curtainRepository: CurtainRepository
     private let curtainDataService: CurtainDataService
     
-    // MARK: - State Properties (Like Android StateFlow)
     
     // Curtain List State
     var curtains: [CurtainEntity] = []
     private var allCurtains: [CurtainEntity] = []
     private var loadedCurtains: [CurtainEntity] = []
     
-    // Pagination State (Like Android)
     private var currentPage = 0
     private var hasMoreData = true
     private static let pageSize = 10
@@ -34,7 +32,6 @@ class CurtainViewModel {
     var isLoadingMore = false
     var isDownloading = false
     
-    // Progress Tracking (Like Android)
     var downloadProgress = 0
     var downloadSpeed = 0.0
     
@@ -84,13 +81,12 @@ class CurtainViewModel {
         loadCurtains()
     }
     
-    // MARK: - Data Loading Methods (Like Android)
     
     func loadCurtains() {
         isLoading = true
         error = nil
         
-        // Reset pagination state (like Android)
+        // Reset pagination state 
         currentPage = 0
         hasMoreData = true
         allCurtains.removeAll()
@@ -146,7 +142,6 @@ class CurtainViewModel {
         return "Showing \(loadedCurtains.count) of \(allCurtains.count) curtains"
     }
     
-    // MARK: - Download Methods (Like Android)
     
     /// Downloads the curtain data when a user clicks on a curtain item
     /// Shows progress updates during the download
@@ -157,7 +152,7 @@ class CurtainViewModel {
         error = nil
         
         do {
-            // Download the curtain data with progress tracking (like Android)
+            // Download the curtain data with progress tracking 
             let result = try await curtainRepository.downloadCurtainData(
                 linkId: curtain.linkId,
                 hostname: curtain.sourceHostname,
@@ -189,7 +184,7 @@ class CurtainViewModel {
         error = nil
         
         do {
-            // Delete old file if it exists (like Android)
+            // Delete old file if it exists 
             if let filePath = curtain.file {
                 try? FileManager.default.removeItem(atPath: filePath)
             }
@@ -229,7 +224,7 @@ class CurtainViewModel {
         // Read the JSON file
         let jsonString = try String(contentsOfFile: filePath, encoding: .utf8)
         
-        // Process using CurtainDataService (like Android)
+        // Process using CurtainDataService 
         try await curtainDataService.restoreSettings(from: jsonString)
         
     }
@@ -382,7 +377,6 @@ class CurtainViewModel {
         }
     }
     
-    // MARK: - Pagination Methods (Like Android)
     
     func hasMoreCurtains() -> Bool {
         return curtains.count < totalCurtains
@@ -392,15 +386,12 @@ class CurtainViewModel {
         return max(0, totalCurtains - curtains.count)
     }
     
-    // MARK: - Example/Demo Data Methods (Like Android MainActivity.kt)
     
-    /// Load example curtain with predefined values (like Android loadExampleCurtain)
     func loadExampleCurtain() async {
         isLoading = true
         error = nil
         
         do {
-            // Use predefined example values from Android
             _ = try await curtainRepository.fetchCurtainByLinkIdAndHost(
                 linkId: CurtainConstants.ExampleData.uniqueId,
                 hostname: CurtainConstants.ExampleData.apiUrl,
@@ -419,7 +410,6 @@ class CurtainViewModel {
         }
     }
     
-    /// Create curtain entry for specific hostname (like Android loadCurtain method)
     func loadCurtain(linkId: String, apiUrl: String, frontendUrl: String? = nil) async {
         isLoading = true
         error = nil
@@ -443,7 +433,6 @@ class CurtainViewModel {
         }
     }
     
-    /// Handle special curtain.proteo.info URLs (like Android AddCurtainDialog logic)
     func handleProteoURL(_ urlString: String) async {
         guard CurtainConstants.URLPatterns.isProteoURL(urlString),
               let linkId = CurtainConstants.URLPatterns.extractLinkIdFromProteoURL(urlString) else {

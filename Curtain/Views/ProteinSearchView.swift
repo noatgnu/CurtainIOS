@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Protein Search View (Like Android SearchFragment)
 
 struct ProteinSearchView: View {
     @Binding var curtainData: CurtainData
@@ -49,7 +48,7 @@ struct ProteinSearchView: View {
             ShareSheet(activityItems: [exportContent])
         }
         .onAppear {
-            // Restore search lists from CurtainData (like Android)
+            // Restore search lists from CurtainData 
             searchManager.restoreSearchListsFromCurtainData(curtainData: curtainData)
         }
     }

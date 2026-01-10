@@ -7,7 +7,6 @@
 
 import Foundation
 
-// MARK: - InputFile with DataFrame functionality (Like Android)
 
 struct InputFile {
     let filename: String
@@ -20,7 +19,7 @@ struct InputFile {
         self.originalFile = originalFile
         self.other = other
         
-        // Convert tab-separated data to DataFrame (like Android)
+        // Convert tab-separated data to DataFrame 
         if originalFile.isEmpty {
             self.df = DataFrame()
         } else {
@@ -29,7 +28,6 @@ struct InputFile {
     }
 }
 
-// MARK: - DataFrame Implementation (Like Android kotlinx.dataframe)
 
 struct DataFrame {
     private var columns: [String: [String]]
@@ -61,7 +59,7 @@ struct DataFrame {
         // Parse header row
         let header = rows[0].components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespaces) }
         
-        // Handle duplicate column names (like Android)
+        // Handle duplicate column names 
         let uniqueHeader = handleDuplicateColumnNames(header)
         
         // Parse data rows
@@ -91,7 +89,7 @@ struct DataFrame {
         return DataFrame(columns: columns, columnOrder: uniqueHeader)
     }
     
-    // Handle duplicate column names by appending suffixes (like Android)
+    // Handle duplicate column names by appending suffixes 
     private static func handleDuplicateColumnNames(_ header: [String]) -> [String] {
         var uniqueHeader: [String] = []
         var nameCounts: [String: Int] = [:]
@@ -114,7 +112,6 @@ struct DataFrame {
         return uniqueHeader
     }
     
-    // MARK: - DataFrame Interface (Like Android)
     
     func rowCount() -> Int {
         return columns.values.first?.count ?? 0
