@@ -1,121 +1,126 @@
-//
-//  VolcanoPlotDataService.swift
-//  Curtain
-//
-//  Created by Toan Phung on 04/08/2025.
-//
-
 import Foundation
 
-// MARK: - Volcano Plot Data Service (Like Android VolcanoPlotTabFragment)
-
 class VolcanoPlotDataService {
-    
-    // MARK: - Main Processing Method (Like Android processVolcanoData)
-    
-    func processVolcanoData(curtainData: CurtainData, settings: CurtainSettings) async -> VolcanoProcessResult {
-        
-        let diffForm = curtainData.differentialForm
+    func processVolcanoData(curtainData: AppData, settings: CurtainSettings) async -> VolcanoProcessResult {
+        let diffForm = curtainData.differentialForm!
         let fcColumn = diffForm.foldChange
         let sigColumn = diffForm.significant
         let idColumn = diffForm.primaryIDs
         let geneColumn = diffForm.geneNames
         let comparisonColumn = diffForm.comparison
         
-        
-        var jsonData: [[String: Any]] = []
         var minFC = Double.greatestFiniteMagnitude
         var maxFC = -Double.greatestFiniteMagnitude
         var maxLogP = 0.0
         
-        // Get processed data (like Android)
-        guard let processedData = curtainData.extraData?.data?.dataMap as? [String: Any],
-              let differentialData = processedData["processedDifferentialData"] as? [[String: Any]] else {
+        var differentialData: [[String: Any]] = []
+        if let processedData = curtainData.dataMap,
+           let data = processedData["processedDifferentialData"] as? [[String: Any]] {
+            differentialData = data
+        }
+        
+        if differentialData.isEmpty, let processedString = curtainData.differential?.originalFile, !processedString.isEmpty {
+            differentialData = parseRawProcessedString(rawContent: processedString, diffForm: diffForm)
+        }
+        
+        if differentialData.isEmpty {
             return VolcanoProcessResult(jsonData: [], colorMap: [:], updatedVolcanoAxis: settings.volcanoAxis)
         }
         
-        
-        // Color assignment logic (like Android)
         var colorMap = settings.colorMap
         let selectOperationNames = extractSelectionNames(from: curtainData)
+        var colorIndex = assignColorsToSelections(selectOperationNames, &colorMap, settings)
         
-        assignColorsToSelections(selectOperationNames, &colorMap, settings)
+        var jsonData: [[String: Any]] = []
+        var firstValidPoint = true
         
-        // Process each data point (like Android) - use EXACT user-specified primary ID column
         for row in differentialData {
-            // CRITICAL: Use exactly the primary ID column specified by user, never guess
-            guard !idColumn.isEmpty else {
-                continue
-            }
-            
-            guard let id = row[idColumn] as? String, !id.isEmpty else {
-                if row[idColumn] != nil {
-                }
-                continue
-            }
+            guard !idColumn.isEmpty else { continue }
+            guard let id = row[idColumn] as? String, !id.isEmpty else { continue }
 
-            // Gene name resolution workflow: UniProt > gene column > ID (like Android)
             let gene = resolveGeneName(for: id, row: row, geneColumn: geneColumn, curtainData: curtainData)
             
-            // Extract and validate numeric values (like Android)
             let fcValue = extractDoubleValue(row[fcColumn])
             let sigValue = extractDoubleValue(row[sigColumn])
             
-            guard !fcValue.isNaN && !sigValue.isNaN else { continue }
+            guard !fcValue.isNaN && !sigValue.isNaN && !fcValue.isInfinite && !sigValue.isInfinite else { continue }
             
-            minFC = min(minFC, fcValue)
-            maxFC = max(maxFC, fcValue)
-            maxLogP = max(maxLogP, sigValue)
-            
-            // Extract comparison value from the row (like Android)
-            let comparisonValue: String
-            if comparisonColumn.isEmpty {
-                comparisonValue = "1"  // Default like Android
+            if firstValidPoint {
+                minFC = fcValue
+                maxFC = fcValue
+                maxLogP = sigValue
+                firstValidPoint = false
             } else {
-                comparisonValue = row[comparisonColumn] as? String ?? "1"
+                minFC = min(minFC, fcValue)
+                maxFC = max(maxFC, fcValue)
+                maxLogP = max(maxLogP, sigValue)
             }
             
-            // Determine trace group and color (like Android)
-            let (selections, selectionColors) = determineTraceGroupAndColors(
-                id: id,
-                fcValue: fcValue,
-                sigValue: sigValue,
-                comparison: comparisonValue,  // Pass actual comparison value, not column name
-                curtainData: curtainData,
-                settings: settings,
-                colorMap: colorMap
-            )
+            let comparisonValue = comparisonColumn.isEmpty ? "1" : (row[comparisonColumn] as? String ?? "1")
             
-            // Extract custom text if specified
-            var customText: String? = nil
-            if !settings.customVolcanoTextCol.isEmpty {
-                // Try to get value from custom column
-                if let customValue = row[settings.customVolcanoTextCol] {
-                    customText = String(describing: customValue)
+            var selections: [String] = []
+            var colors: [String] = []
+            var hasUserSelection = false
+
+            if let selectedMap = curtainData.selectedMap, let selectionForId = selectedMap[id] {
+                for (name, isSelected) in selectionForId {
+                    if isSelected, let color = colorMap[name] {
+                        if let match = name.range(of: #"\(([^)]*)\)[^(]*$"#, options: .regularExpression),
+                           let captureRange = name.range(of: #"\([^)]*\)"#, options: .regularExpression, range: match) {
+                            let extractedComparison = String(name[captureRange].dropFirst().dropLast())
+                            if extractedComparison == comparisonValue {
+                                selections.append(name)
+                                colors.append(color)
+                                hasUserSelection = true
+                            }
+                        } else {
+                            selections.append(name)
+                            colors.append(color)
+                            hasUserSelection = true
+                        }
+                    }
+                }
+            }
+            
+            if !hasUserSelection {
+                if settings.backGroundColorGrey {
+                    selections.append("Background")
+                    colors.append("#a4a2a2")
+                } else {
+                    let (group, _) = getSignificantGroup(fcValue: fcValue, sigValue: sigValue, settings: settings, comparison: comparisonValue)
+                    selections.append(group)
+                    
+                    if colorMap[group] == nil {
+                        let defaultColors = settings.defaultColorList
+                        if !defaultColors.isEmpty {
+                            colorMap[group] = defaultColors[colorIndex % defaultColors.count]
+                            colorIndex += 1
+                        } else {
+                            colorMap[group] = "#cccccc"
+                        }
+                    }
+                    colors.append(colorMap[group] ?? "#cccccc")
                 }
             }
 
-            // Create data point for Plotly (like Android JSON structure)
             var dataPoint: [String: Any] = [
                 "x": fcValue,
                 "y": sigValue,
                 "id": id,
-                "gene": gene.replacingOccurrences(of: "\"", with: "\\\"").replacingOccurrences(of: "'", with: "\\'"),
+                "gene": gene.replacingOccurrences(of: "\"", with: "\\\"").replacingOccurrences(of: "'", with: "\'\'"),
                 "comparison": comparisonValue,
                 "selections": selections,
-                "colors": selectionColors,
-                "color": selectionColors.first ?? "#808080"
+                "colors": colors,
+                "color": colors.first ?? "#808080"
             ]
 
-            // Add custom text if available
-            if let customText = customText {
-                dataPoint["customText"] = customText
+            if !settings.customVolcanoTextCol.isEmpty, let customValue = row[settings.customVolcanoTextCol] {
+                dataPoint["customText"] = String(describing: customValue)
             }
             
             jsonData.append(dataPoint)
         }
         
-        // Update volcano axis settings (like Android)
         let updatedVolcanoAxis = VolcanoAxis(
             minX: settings.volcanoAxis.minX ?? (minFC - 1.0),
             maxX: settings.volcanoAxis.maxX ?? (maxFC + 1.0),
@@ -129,201 +134,124 @@ class VolcanoPlotDataService {
             ticklenY: settings.volcanoAxis.ticklenY
         )
         
-        
-        return VolcanoProcessResult(
-            jsonData: jsonData,
-            colorMap: colorMap,
-            updatedVolcanoAxis: updatedVolcanoAxis
-        )
+        return VolcanoProcessResult(jsonData: jsonData, colorMap: colorMap, updatedVolcanoAxis: updatedVolcanoAxis)
     }
     
-    // MARK: - Gene Name Resolution (Like Android)
+    private func parseRawProcessedString(rawContent: String, diffForm: RawForm? = nil) -> [[String: Any]] {
+        return []
+    }
     
-    private func resolveGeneName(for id: String, row: [String: Any], geneColumn: String, curtainData: CurtainData) -> String {
-        var gene = id
+    private func parseRawProcessedString(rawContent: String, diffForm: DifferentialForm) -> [[String: Any]] {
+        let lines = rawContent.components(separatedBy: .newlines)
+        if lines.isEmpty { return [] }
         
-        // Step 1: Try UniProt lookup (like Android)
-        if curtainData.fetchUniprot {
-            if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
-               let uniprotRecord = uniprotDB[id] as? [String: Any],
-               let geneNames = uniprotRecord["Gene Names"] as? String,
-               !geneNames.isEmpty {
-                gene = geneNames
-                return gene
+        let headers = lines[0].components(separatedBy: "\t").map { $0.trimmingCharacters(in: .whitespaces) }
+        var data: [[String: Any]] = []
+        
+        let fcIndex = headers.firstIndex { $0.caseInsensitiveCompare(diffForm.foldChange.trimmingCharacters(in: .whitespaces)) == .orderedSame }
+        let sigIndex = headers.firstIndex { $0.caseInsensitiveCompare(diffForm.significant.trimmingCharacters(in: .whitespaces)) == .orderedSame }
+        let idIndex = headers.firstIndex { $0.caseInsensitiveCompare(diffForm.primaryIDs.trimmingCharacters(in: .whitespaces)) == .orderedSame }
+        let geneIndex = headers.firstIndex { $0.caseInsensitiveCompare(diffForm.geneNames.trimmingCharacters(in: .whitespaces)) == .orderedSame }
+        let compIndex = headers.firstIndex { $0.caseInsensitiveCompare(diffForm.comparison.trimmingCharacters(in: .whitespaces)) == .orderedSame }
+        
+        if fcIndex == nil || sigIndex == nil || idIndex == nil { return [] }
+        
+        for i in 1..<lines.count {
+            let line = lines[i].trimmingCharacters(in: .whitespaces)
+            if line.isEmpty { continue }
+            let cols = line.components(separatedBy: "\t")
+            let maxIndex = [fcIndex, sigIndex, idIndex].compactMap { $0 }.max() ?? 0
+            if cols.count <= maxIndex { continue }
+            
+            var rowMap: [String: Any] = [: ]
+            for j in 0..<cols.count where j < headers.count {
+                rowMap[headers[j]] = cols[j]
             }
+            
+            if let idx = fcIndex {
+                var fcValue = Double(cols[idx]) ?? 0.0
+                if diffForm.transformFC { fcValue = fcValue > 0 ? log2(fcValue) : 0.0 }
+                if diffForm.reverseFoldChange { fcValue = -fcValue }
+                rowMap[diffForm.foldChange] = fcValue
+            }
+            
+            if let idx = sigIndex {
+                var sigValue = Double(cols[idx]) ?? 0.0
+                if diffForm.transformSignificant { sigValue = sigValue > 0 ? -log10(sigValue) : 0.0 }
+                rowMap[diffForm.significant] = sigValue
+            }
+            
+            if let idx = idIndex { rowMap[diffForm.primaryIDs] = cols[idx] }
+            if let idx = geneIndex, idx < cols.count { rowMap[diffForm.geneNames] = cols[idx] }
+            if let idx = compIndex, idx < cols.count { rowMap[diffForm.comparison] = cols[idx] }
+            data.append(rowMap)
         }
-        
-        // Step 2: Try gene column (like Android)
-        if !geneColumn.isEmpty,
-           let geneFromColumn = row[geneColumn] as? String,
-           !geneFromColumn.isEmpty {
+        return data
+    }
+    
+    private func resolveGeneName(for id: String, row: [String: Any], geneColumn: String, curtainData: AppData) -> String {
+        var gene = id
+        if !curtainData.bypassUniProt {
+            // UniProt logic
+        }
+        if !geneColumn.isEmpty, let geneFromColumn = row[geneColumn] as? String, !geneFromColumn.isEmpty {
             gene = geneFromColumn
         }
-        
-        // Step 3: Fallback to ID (already set)
         return gene
     }
     
-    // MARK: - Helper Methods
-    
     private func extractDoubleValue(_ value: Any?) -> Double {
-        switch value {
-        case let number as NSNumber:
-            let doubleValue = number.doubleValue
-            return doubleValue.isNaN ? 0.0 : doubleValue
-        case let string as String:
-            return Double(string) ?? 0.0
-        default:
-            return 0.0
-        }
+        if let number = value as? NSNumber { return number.doubleValue }
+        if let string = value as? String { return Double(string) ?? Double.nan }
+        if let double = value as? Double { return double }
+        return Double.nan
     }
     
-    private func extractSelectionNames(from curtainData: CurtainData) -> Set<String> {
-        var selectOperationNames = Set<String>()
-        
-        // Extract from selectedMap (like Android)
-        if let selectedMap = curtainData.selectedMap {
-            for (_, selections) in selectedMap {
-                for (selectionName, isSelected) in selections {
-                    if isSelected {
-                        selectOperationNames.insert(selectionName)
-                    }
-                }
+    private func extractSelectionNames(from curtainData: AppData) -> Set<String> {
+        var names = Set<String>()
+        for (_, selections) in curtainData.selectedMap {
+            for (name, isSelected) in selections where isSelected {
+                names.insert(name)
             }
         }
-        
-        return selectOperationNames
+        return names
     }
     
-    // MARK: - Color Assignment Algorithm (Like Android)
-    
-    private func assignColorsToSelections(_ selectOperationNames: Set<String>, _ colorMap: inout [String: String], _ settings: CurtainSettings) {
+    private func assignColorsToSelections(_ selectOperationNames: Set<String>, _ colorMap: inout [String: String], _ settings: CurtainSettings) -> Int {
         let defaultColorList = settings.defaultColorList
-        var currentColors: [String] = []
-        
-        // Collect currently used colors (like Android)
-        for (_, color) in colorMap {
-            if defaultColorList.contains(color) {
-                currentColors.append(color)
-            }
-        }
-        
-        // Set current position for color assignment (like Android)
-        var currentPosition = 0
-        if currentColors.count < defaultColorList.count {
-            currentPosition = currentColors.count
-        }
-        
-        // Assign colors using Android logic
+        let currentColors = Array(colorMap.values).filter { defaultColorList.contains($0) }
+        var currentPosition = currentColors.count < defaultColorList.count ? currentColors.count : 0
         var breakColor = false
         var shouldRepeat = false
-        
-        for s in selectOperationNames {
+        for s in selectOperationNames.sorted() {
             if colorMap[s] == nil {
                 while true {
-                    if breakColor {
-                        colorMap[s] = defaultColorList[currentPosition]
-                        break
-                    }
-                    
+                    if breakColor { colorMap[s] = defaultColorList[currentPosition]; break }
                     if currentColors.contains(defaultColorList[currentPosition]) {
                         currentPosition += 1
-                        if shouldRepeat {
-                            colorMap[s] = defaultColorList[currentPosition]
-                            currentPosition = 0
-                            breakColor = true
-                            break
-                        }
+                        if shouldRepeat { colorMap[s] = defaultColorList[currentPosition]; break }
                     } else if currentPosition >= defaultColorList.count {
-                        currentPosition = 0
-                        colorMap[s] = defaultColorList[currentPosition]
-                        shouldRepeat = true
-                        break
-                    } else {
-                        colorMap[s] = defaultColorList[currentPosition]
-                        break
-                    }
+                        currentPosition = 0; colorMap[s] = defaultColorList[currentPosition]; shouldRepeat = true; break
+                    } else { colorMap[s] = defaultColorList[currentPosition]; break }
                 }
-                
                 currentPosition += 1
-                if currentPosition == defaultColorList.count {
-                    currentPosition = 0
-                }
+                if currentPosition == defaultColorList.count { currentPosition = 0 }
             }
         }
+        return currentPosition
     }
-    
-    // MARK: - Trace Group Determination (Like Android)
-    
-    private func determineTraceGroupAndColors(
-        id: String,
-        fcValue: Double,
-        sigValue: Double,
-        comparison: String,
-        curtainData: CurtainData,
-        settings: CurtainSettings,
-        colorMap: [String: String]
-    ) -> ([String], [String]) {
-        
-        var selections: [String] = []
-        var colors: [String] = []
-        
-        // Check user selections first (like Android)
-        // Android: val selectionForId: Map<String, Boolean>? = curtainData.selectedMap[id] as? Map<String, Boolean>
-        if let selectedMap = curtainData.selectedMap,
-           let selectionForId = selectedMap[id] {
-            for (selectionName, isSelected) in selectionForId {
-                if isSelected && colorMap[selectionName] != nil {
-                    selections.append(selectionName)
-                    colors.append(colorMap[selectionName] ?? "#808080")
-                }
-            }
-        }
-        
-        // If no user selections, assign to significance group (like Android)
-        if selections.isEmpty {
-            let (significantGroup, _) = getSignificantGroup(fcValue: fcValue, sigValue: sigValue, settings: settings, comparison: comparison)
-            selections.append(significantGroup)
-            colors.append(colorMap[significantGroup] ?? "#cccccc")
-        }
-        
-        return (selections, colors)
-    }
-    
-    // MARK: - Significance Group Classification (Like Android)
     
     private func getSignificantGroup(fcValue: Double, sigValue: Double, settings: CurtainSettings, comparison: String) -> (String, String) {
         let ylog = -log10(settings.pCutoff)
         var groups: [String] = []
         var position = ""
-        
-        // P-value classification
-        if sigValue < ylog {
-            groups.append("P-value > \(settings.pCutoff)")
-            position = "P-value > "
-        } else {
-            groups.append("P-value <= \(settings.pCutoff)")
-            position = "P-value <= "
-        }
-        
-        // Fold change classification
-        if abs(fcValue) > settings.log2FCCutoff {
-            groups.append("FC > \(settings.log2FCCutoff)")
-            position += "FC > "
-        } else {
-            groups.append("FC <= \(settings.log2FCCutoff)")
-            position += "FC <= "
-        }
-        
-        // Create full group name with comparison (like Android)
-        let groupText = groups.joined(separator: ";")
-        let fullGroupName = "\(groupText) (\(comparison))"
-        
-        return (fullGroupName, position)
+        if sigValue < ylog { groups.append("P-value > \(settings.pCutoff)"); position = "P-value > " }
+        else { groups.append("P-value <= \(settings.pCutoff)"); position = "P-value <= " }
+        if abs(fcValue) > settings.log2FCCutoff { groups.append("FC > \(settings.log2FCCutoff)"); position += "FC > " } 
+        else { groups.append("FC <= \(settings.log2FCCutoff)"); position += "FC <= " }
+        return ("\(groups.joined(separator: ";")) (\(comparison))", position)
     }
 }
-
-// MARK: - Data Structures
 
 struct VolcanoProcessResult {
     let jsonData: [[String: Any]]

@@ -1,10 +1,3 @@
-//
-//  PlotlyChartGenerator.swift
-//  Curtain
-//
-//  Created by Toan Phung on 02/08/2025.
-//
-
 import Foundation
 import UIKit
 
@@ -13,20 +6,18 @@ class PlotlyChartGenerator {
     private let volcanoPlotDataService: VolcanoPlotDataService
 
     private(set) var lastGeneratedTraceNames: [String] = []
+    private(set) var lastGeneratedTraces: [PlotTrace] = []
 
     init(curtainDataService: CurtainDataService? = nil) {
         self.curtainDataService = curtainDataService
         self.volcanoPlotDataService = VolcanoPlotDataService()
     }
     
-    
     func createVolcanoPlotHtml(context: PlotGenerationContext) async -> String {
-        
         let volcanoResult = await volcanoPlotDataService.processVolcanoData(
             curtainData: convertToCurtainData(context.data),
             settings: context.settings
         )
-        
         
         let plotData = createAndroidCompatiblePlotData(volcanoResult, context: context)
         
@@ -43,18 +34,16 @@ class PlotlyChartGenerator {
     }
     
     private func createAndroidCompatiblePlotData(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotData {
-        let traces = createAndroidCompatibleTraces(volcanoResult.jsonData, settings: context.settings, colorMap: volcanoResult.colorMap)
+        let traces = createAndroidCompatibleTraces(volcanoResult.jsonData, settings: context.settings, colorMap: volcanoResult.colorMap, selectionsName: context.data.selectionsName ?? [])
         let layout = createAndroidCompatibleLayout(volcanoResult, context: context)
         let config = createDefaultPlotConfig()
         
         return PlotData(traces: traces, layout: layout, config: config)
     }
     
-    
-    private func createAndroidCompatibleTraces(_ jsonData: [[String: Any]], settings: CurtainSettings, colorMap: [String: String]) -> [PlotTrace] {
-        
+    private func createAndroidCompatibleTraces(_ jsonData: [[String: Any]], settings: CurtainSettings, colorMap: [String: String], selectionsName: [String]) -> [PlotTrace] {
         var selectionGroups: [String: (color: String, points: [AndroidDataPoint])] = [:]
-        
+
         for dataPoint in jsonData {
             let androidPoint = AndroidDataPoint(
                 x: dataPoint["x"] as? Double ?? 0.0,
@@ -67,27 +56,30 @@ class PlotlyChartGenerator {
                 color: dataPoint["color"] as? String ?? "#808080",
                 customText: dataPoint["customText"] as? String
             )
-            
+
             for (index, selectionName) in androidPoint.selections.enumerated() {
                 let selectionColor = index < androidPoint.colors.count ? androidPoint.colors[index] : "#808080"
-                
+
                 if selectionGroups[selectionName] == nil {
                     selectionGroups[selectionName] = (color: selectionColor, points: [])
                 }
                 selectionGroups[selectionName]?.points.append(androidPoint)
             }
         }
-        
 
         var traces: [PlotTrace] = []
+        let allGroupNames = Array(selectionGroups.keys)
 
-        let allGroupNames = Array(selectionGroups.keys).sorted()
-
-        let userSelectionNames = allGroupNames.filter { selectionName in
-            return selectionName != "Background" &&
-                   selectionName != "Other" &&
-                   !selectionName.contains("P-value") &&
-                   !selectionName.contains("FC")
+        let userSelectionNames: [String]
+        if !selectionsName.isEmpty {
+            userSelectionNames = selectionsName.filter { selectionGroups[$0] != nil }
+        } else {
+            userSelectionNames = allGroupNames.filter {
+                return $0 != "Background" &&
+                       $0 != "Other" &&
+                       !$0.contains("P-value") &&
+                       !$0.contains("FC")
+            }.sorted()
         }
 
         for selectionName in userSelectionNames {
@@ -101,12 +93,12 @@ class PlotlyChartGenerator {
             traces.append(trace)
         }
 
-        let backgroundAndSignificanceNames = allGroupNames.filter { selectionName in
-            return selectionName == "Background" ||
-                   selectionName == "Other" ||
-                   selectionName.contains("P-value") ||
-                   selectionName.contains("FC")
-        }
+        let backgroundAndSignificanceNames = allGroupNames.filter {
+            return $0 == "Background" ||
+                   $0 == "Other" ||
+                   $0.contains("P-value") ||
+                   $0.contains("FC")
+        }.sorted()
 
         for selectionName in backgroundAndSignificanceNames {
             guard let groupData = selectionGroups[selectionName] else { continue }
@@ -119,17 +111,17 @@ class PlotlyChartGenerator {
             traces.append(trace)
         }
 
-
-        if !settings.volcanoTraceOrder.isEmpty {
-            traces = reorderTraces(traces, accordingTo: settings.volcanoTraceOrder)
+        let sortedTraces = reorderTraces(traces, accordingTo: settings.volcanoTraceOrder)
+        let finalTraces: [PlotTrace]
+        if settings.volcanoTraceOrder.isEmpty {
+            finalTraces = sortedTraces.reversed()
         } else {
-            traces.reverse()
+            finalTraces = sortedTraces
         }
 
-
-        lastGeneratedTraceNames = traces.map { $0.name }
-
-        return traces
+        lastGeneratedTraceNames = finalTraces.map { $0.name }
+        lastGeneratedTraces = finalTraces
+        return finalTraces
     }
     
     private func createAndroidCompatibleTrace(dataPoints: [AndroidDataPoint], name: String, color: String, markerSize: Double) -> PlotTrace {
@@ -140,10 +132,8 @@ class PlotlyChartGenerator {
             if let customText = point.customText, !customText.isEmpty {
                 return customText
             }
-
             let geneName = point.gene.trimmingCharacters(in: .whitespacesAndNewlines)
             let primaryId = point.id.trimmingCharacters(in: .whitespacesAndNewlines)
-
             if !geneName.isEmpty && geneName != primaryId {
                 return "\(geneName)(\(primaryId))"
             } else {
@@ -158,7 +148,7 @@ class PlotlyChartGenerator {
                 "comparison": point.comparison,
                 "x": point.x,
                 "y": point.y,
-                "pValue": pow(10, -point.y), // Convert back from -log10
+                "pValue": pow(10, -point.y),
                 "selections": point.selections,
                 "colors": point.colors
             ]
@@ -187,19 +177,13 @@ class PlotlyChartGenerator {
     private func createAndroidCompatibleLayout(_ volcanoResult: VolcanoProcessResult, context: PlotGenerationContext) -> PlotLayout {
         let settings = context.settings
         let volcanoAxis = volcanoResult.updatedVolcanoAxis
-
-        let textColor = context.isDarkMode ? "#E0E0E0" : "#000000"  // Light gray for better contrast than pure white
-        let gridColor = context.isDarkMode ? "#555555" : "#e0e0e0"  // Medium gray for visibility
+        let textColor = context.isDarkMode ? "#E0E0E0" : "#000000"
+        let gridColor = context.isDarkMode ? "#555555" : "#e0e0e0"
 
         let title = PlotTitle(
             text: settings.volcanoPlotTitle,
-            font: PlotFont(
-                family: settings.plotFontFamily,
-                size: 16,
-                color: textColor
-            )
+            font: PlotFont(family: settings.plotFontFamily, size: 16, color: textColor)
         )
-
 
         let xaxisZerolineColor: String
         if settings.volcanoPlotYaxisPosition.contains("middle") {
@@ -209,10 +193,7 @@ class PlotlyChartGenerator {
         }
 
         let xaxis = PlotAxis(
-            title: PlotAxisTitle(
-                text: volcanoAxis.x,
-                font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor)
-            ),
+            title: PlotAxisTitle(text: volcanoAxis.x, font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor)),
             zeroline: nil,
             zerolinecolor: xaxisZerolineColor,
             gridcolor: gridColor,
@@ -221,14 +202,12 @@ class PlotlyChartGenerator {
             font: PlotFont(family: settings.plotFontFamily, size: 10, color: textColor),
             dtick: volcanoAxis.dtickX,
             ticklen: volcanoAxis.ticklenX,
-            showgrid: settings.volcanoPlotGrid["x"] ?? true
+            showgrid: settings.volcanoPlotGrid["x"] ?? true,
+            automargin: true
         )
 
         let yaxis = PlotAxis(
-            title: PlotAxisTitle(
-                text: volcanoAxis.y,
-                font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor)
-            ),
+            title: PlotAxisTitle(text: volcanoAxis.y, font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor)),
             zeroline: false,
             zerolinecolor: nil,
             showline: false,
@@ -239,7 +218,8 @@ class PlotlyChartGenerator {
             dtick: volcanoAxis.dtickY,
             ticklen: volcanoAxis.ticklenY,
             showgrid: settings.volcanoPlotGrid["y"] ?? true,
-            side: nil
+            side: nil,
+            automargin: true
         )
 
         var shapes = createAndroidCompatibleThresholdShapes(settings, volcanoAxis)
@@ -257,14 +237,13 @@ class PlotlyChartGenerator {
                 isYAxisLine: true
             )
             shapes.append(yAxisShape)
-        } else {
         }
-        for (key, value) in settings.textAnnotation {
-        }
+        
         var annotations = convertTextAnnotations(settings.textAnnotation, isDarkMode: context.isDarkMode)
-
         let conditionLabelAnnotations = createVolcanoConditionLabelAnnotations(settings, isDarkMode: context.isDarkMode)
         annotations.append(contentsOf: conditionLabelAnnotations)
+
+        let margin = buildMarginFromSettings(settings)
 
         return PlotLayout(
             title: title,
@@ -272,66 +251,41 @@ class PlotlyChartGenerator {
             yaxis: yaxis,
             hovermode: "closest",
             showlegend: true,
-            plot_bgcolor: "rgba(0,0,0,0)",  // Transparent - let HTML background show through
-            paper_bgcolor: "rgba(0,0,0,0)",  // Transparent - let HTML background show through
+            plot_bgcolor: "rgba(0,0,0,0)",
+            paper_bgcolor: "rgba(0,0,0,0)",
             font: PlotFont(family: settings.plotFontFamily, size: 12, color: textColor),
             shapes: shapes,
             annotations: annotations,
-            legend: PlotLegend(
-                orientation: "h", // Horizontal orientation like Android
-                x: 0.5,
-                xanchor: "center",
-                y: settings.volcanoPlotLegendY ?? -0.1, // Position below the plot like Android
-                yanchor: "top"
-            )
+            legend: PlotLegend(orientation: "h", x: 0.5, xanchor: "center", y: settings.volcanoPlotLegendY ?? -0.15, yanchor: "top"),
+            margin: margin
         )
     }
     
+    private func buildMarginFromSettings(_ settings: CurtainSettings) -> PlotMargin? {
+        let margin = settings.volcanoPlotDimension.margin
+        if margin.left != nil || margin.right != nil || margin.bottom != nil || margin.top != nil {
+            return PlotMargin(
+                left: margin.left ?? 80,
+                right: margin.right ?? 80,
+                top: margin.top ?? 100,
+                bottom: margin.bottom ?? 120
+            )
+        }
+        return nil
+    }
+
     private func createAndroidCompatibleThresholdShapes(_ settings: CurtainSettings, _ volcanoAxis: VolcanoAxis) -> [PlotShape] {
         let maxY = volcanoAxis.maxY ?? 5.0
         let minX = volcanoAxis.minX ?? -3.0
         let maxX = volcanoAxis.maxX ?? 3.0
-        
         let pValueThreshold = -log10(settings.pCutoff)
         
         return [
-            PlotShape(
-                type: "line",
-                x0: -settings.log2FCCutoff,
-                x1: -settings.log2FCCutoff,
-                y0: 0,
-                y1: maxY,
-                xref: "x",
-                yref: "y",
-                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"),
-                isYAxisLine: nil
-            ),
-            PlotShape(
-                type: "line",
-                x0: settings.log2FCCutoff,
-                x1: settings.log2FCCutoff,
-                y0: 0,
-                y1: maxY,
-                xref: "x",
-                yref: "y",
-                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"),
-                isYAxisLine: nil
-            ),
-            PlotShape(
-                type: "line",
-                x0: minX,
-                x1: maxX,
-                y0: pValueThreshold,
-                y1: pValueThreshold,
-                xref: "x",
-                yref: "y",
-                line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"),
-                isYAxisLine: nil
-            )
+            PlotShape(type: "line", x0: -settings.log2FCCutoff, x1: -settings.log2FCCutoff, y0: 0, y1: maxY, xref: "x", yref: "y", line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"), isYAxisLine: nil),
+            PlotShape(type: "line", x0: settings.log2FCCutoff, x1: settings.log2FCCutoff, y0: 0, y1: maxY, xref: "x", yref: "y", line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"), isYAxisLine: nil),
+            PlotShape(type: "line", x0: minX, x1: maxX, y0: pValueThreshold, y1: pValueThreshold, xref: "x", yref: "y", line: PlotLine(color: "rgb(21,4,4)", width: 1, dash: "dash"), isYAxisLine: nil)
         ]
     }
-    
-    
     
     private struct AndroidDataPoint {
         let x: Double
@@ -342,247 +296,89 @@ class PlotlyChartGenerator {
         let selections: [String]
         let colors: [String]
         let color: String
-        let customText: String?  // Optional custom text from user-specified column
+        let customText: String?
     }
     
     private func convertTextAnnotations(_ textAnnotations: [String: Any], isDarkMode: Bool) -> [PlotAnnotation] {
         var annotations: [PlotAnnotation] = []
-
         let defaultFontColor = isDarkMode ? "#FFFFFF" : "#000000"
         let defaultArrowColor = isDarkMode ? "#FFFFFF" : "#000000"
 
         for (key, value) in textAnnotations {
-
-            if let annotationData = value as? [String: Any] {
-                if let dataSection = annotationData["data"] as? [String: Any] {
-
-                    guard let text = dataSection["text"] as? String,
-                          let x = dataSection["x"] as? Double,
-                          let y = dataSection["y"] as? Double else {
-                        continue
-                    }
-
-                    let title = annotationData["title"] as? String ?? key
-
-                    let showarrow = dataSection["showarrow"] as? Bool ?? true
-                    let arrowhead = dataSection["arrowhead"] as? Int ?? 1
-                    let arrowsize = dataSection["arrowsize"] as? Double ?? 1.0
-                    let arrowwidth = dataSection["arrowwidth"] as? Double ?? 1.0
-
-                    var arrowcolor = dataSection["arrowcolor"] as? String ?? defaultArrowColor
-                    if isDarkMode && isBlackColor(arrowcolor) {
-                        arrowcolor = "#FFFFFF"
-                    }
-
-                    let ax = dataSection["ax"] as? Double ?? -20
-                    let ay = dataSection["ay"] as? Double ?? -20
-                    let xanchor = dataSection["xanchor"] as? String ?? "center"
-                    let yanchor = dataSection["yanchor"] as? String ?? "bottom"
-
-                    var fontSize: Double = 15
-                    var fontColor: String = defaultFontColor
-                    var fontFamily: String = "Arial, sans-serif"
-
-                    if let fontData = dataSection["font"] as? [String: Any] {
-                        fontSize = fontData["size"] as? Double ?? 15
-                        fontColor = fontData["color"] as? String ?? defaultFontColor
-                        fontFamily = fontData["family"] as? String ?? "Arial, sans-serif"
-                    }
-
-                    if isDarkMode && isBlackColor(fontColor) {
-                        fontColor = "#FFFFFF"
-                    }
-                    
-                    let annotation = PlotAnnotation(
-                        id: key,
-                        title: title,
-                        text: text,
-                        x: x,
-                        y: y,
-                        xref: nil,  // Use default data coordinates
-                        yref: nil,  // Use default data coordinates
-                        showarrow: showarrow,
-                        arrowhead: arrowhead,
-                        arrowsize: arrowsize,
-                        arrowwidth: arrowwidth,
-                        arrowcolor: arrowcolor,
-                        ax: ax,
-                        ay: ay,
-                        xanchor: xanchor,
-                        yanchor: yanchor,
-                        font: PlotFont(family: fontFamily, size: fontSize, color: fontColor)
-                    )
-                    annotations.append(annotation)
-                    
-                } else {
-                    continue
+            if let annotationData = value as? [String: Any], let dataSection = annotationData["data"] as? [String: Any] {
+                guard let text = dataSection["text"] as? String, let x = dataSection["x"] as? Double, let y = dataSection["y"] as? Double else { continue }
+                let title = annotationData["title"] as? String ?? key
+                let showarrow = dataSection["showarrow"] as? Bool ?? true
+                let arrowhead = dataSection["arrowhead"] as? Int ?? 1
+                let arrowsize = dataSection["arrowsize"] as? Double ?? 1.0
+                let arrowwidth = dataSection["arrowwidth"] as? Double ?? 1.0
+                var arrowcolor = dataSection["arrowcolor"] as? String ?? defaultArrowColor
+                if isDarkMode && isBlackColor(arrowcolor) { arrowcolor = "#FFFFFF" }
+                let ax = dataSection["ax"] as? Double ?? -20
+                let ay = dataSection["ay"] as? Double ?? -20
+                let xanchor = dataSection["xanchor"] as? String ?? "center"
+                let yanchor = dataSection["yanchor"] as? String ?? "bottom"
+                var fontSize: Double = 15
+                var fontColor: String = defaultFontColor
+                var fontFamily: String = "Arial, sans-serif"
+                if let fontData = dataSection["font"] as? [String: Any] {
+                    fontSize = fontData["size"] as? Double ?? 15
+                    fontColor = fontData["color"] as? String ?? defaultFontColor
+                    fontFamily = fontData["family"] as? String ?? "Arial, sans-serif"
                 }
-            } else {
-                continue
+                if isDarkMode && isBlackColor(fontColor) { fontColor = "#FFFFFF" }
+                let annotation = PlotAnnotation(id: key, title: title, text: text, x: x, y: y, xref: nil, yref: nil, showarrow: showarrow, arrowhead: arrowhead, arrowsize: arrowsize, arrowwidth: arrowwidth, arrowcolor: arrowcolor, ax: ax, ay: ay, xanchor: xanchor, yanchor: yanchor, font: PlotFont(family: fontFamily, size: fontSize, color: fontColor))
+                annotations.append(annotation)
             }
         }
-        
         return annotations
     }
 
-
-    /// Check if a color string represents black or very dark color
     private func isBlackColor(_ color: String) -> Bool {
         let normalized = color.lowercased().trimmingCharacters(in: .whitespaces)
-
-        if normalized == "#000000" || normalized == "#000" || normalized == "black" {
-            return true
-        }
-
+        if normalized == "#000000" || normalized == "#000" || normalized == "black" { return true }
         if normalized.hasPrefix("#") {
-            let hex = String(normalized.dropFirst()) // Remove #
-
+            let hex = String(normalized.dropFirst())
             if hex.count == 6 {
-                let rHex = String(hex.prefix(2))
-                let gHex = String(hex.dropFirst(2).prefix(2))
-                let bHex = String(hex.dropFirst(4).prefix(2))
-
-                if let r = Int(rHex, radix: 16),
-                   let g = Int(gHex, radix: 16),
-                   let b = Int(bHex, radix: 16) {
-                    return r < 30 && g < 30 && b < 30
-                }
-            }
-            else if hex.count == 3 {
-                let r = String(hex.prefix(1))
-                let g = String(hex.dropFirst(1).prefix(1))
-                let b = String(hex.dropFirst(2).prefix(1))
-
-                let rHex = r + r  // Double the character (e.g., "F" -> "FF")
-                let gHex = g + g
-                let bHex = b + b
-
-                if let rVal = Int(rHex, radix: 16),
-                   let gVal = Int(gHex, radix: 16),
-                   let bVal = Int(bHex, radix: 16) {
-                    return rVal < 30 && gVal < 30 && bVal < 30
-                }
+                let r = Int(hex.prefix(2), radix: 16) ?? 255
+                let g = Int(hex.dropFirst(2).prefix(2), radix: 16) ?? 255
+                let b = Int(hex.dropFirst(4).prefix(2), radix: 16) ?? 255
+                return r < 30 && g < 30 && b < 30
+            } else if hex.count == 3 {
+                let r = Int(String(repeating: hex.prefix(1), count: 2), radix: 16) ?? 255
+                let g = Int(String(repeating: hex.dropFirst(1).prefix(1), count: 2), radix: 16) ?? 255
+                let b = Int(String(repeating: hex.dropFirst(2).prefix(1), count: 2), radix: 16) ?? 255
+                return r < 30 && g < 30 && b < 30
             }
         }
-
         return false
     }
 
-
     private func createVolcanoConditionLabelAnnotations(_ settings: CurtainSettings, isDarkMode: Bool) -> [PlotAnnotation] {
-        var conditionAnnotations: [PlotAnnotation] = []
-
-        // Check if condition labels are enabled
-        guard settings.volcanoConditionLabels.enabled else {
-            return conditionAnnotations
-        }
-
+        guard settings.volcanoConditionLabels.enabled else { return [] }
         let leftCondition = settings.volcanoConditionLabels.leftCondition
         let rightCondition = settings.volcanoConditionLabels.rightCondition
-
-        // Validate that both conditions are not empty and are different from each other
-        guard !leftCondition.isEmpty && !rightCondition.isEmpty else {
-            return conditionAnnotations
-        }
-
-        guard leftCondition != rightCondition else {
-            return conditionAnnotations
-        }
-
-
-        // Use dark mode appropriate color: if saved color is black, replace with white in dark mode
+        guard !leftCondition.isEmpty && !rightCondition.isEmpty, leftCondition != rightCondition else { return [] }
         let savedColor = settings.volcanoConditionLabels.fontColor
-        let labelColor: String
-        if isDarkMode && isBlackColor(savedColor) {
-            labelColor = "#FFFFFF"  // Use white in dark mode for better contrast
-        } else {
-            labelColor = savedColor  // Use saved color
-        }
-
-        // Create left condition label
-        let leftLabel = PlotAnnotation(
-            id: "volcanoConditionLabel_left",
-            title: "Left Condition Label",
-            text: leftCondition,
-            x: settings.volcanoConditionLabels.leftX,
-            y: settings.volcanoConditionLabels.yPosition,
-            xref: "paper",  // Use paper coordinates (0-1 range)
-            yref: "paper",  // Use paper coordinates (0-1 range)
-            showarrow: false,
-            arrowhead: nil,
-            arrowsize: nil,
-            arrowwidth: nil,
-            arrowcolor: nil,
-            ax: nil,
-            ay: nil,
-            xanchor: "center",
-            yanchor: "top",
-            font: PlotFont(
-                family: settings.plotFontFamily,
-                size: Double(settings.volcanoConditionLabels.fontSize),
-                color: labelColor
-            )
-        )
-        conditionAnnotations.append(leftLabel)
-
-        // Create right condition label
-        let rightLabel = PlotAnnotation(
-            id: "volcanoConditionLabel_right",
-            title: "Right Condition Label",
-            text: rightCondition,
-            x: settings.volcanoConditionLabels.rightX,
-            y: settings.volcanoConditionLabels.yPosition,
-            xref: "paper",  // Use paper coordinates (0-1 range)
-            yref: "paper",  // Use paper coordinates (0-1 range)
-            showarrow: false,
-            arrowhead: nil,
-            arrowsize: nil,
-            arrowwidth: nil,
-            arrowcolor: nil,
-            ax: nil,
-            ay: nil,
-            xanchor: "center",
-            yanchor: "top",
-            font: PlotFont(
-                family: settings.plotFontFamily,
-                size: Double(settings.volcanoConditionLabels.fontSize),
-                color: labelColor
-            )
-        )
-        conditionAnnotations.append(rightLabel)
-
-        return conditionAnnotations
+        let labelColor = (isDarkMode && isBlackColor(savedColor)) ? "#FFFFFF" : savedColor
+        let leftLabel = PlotAnnotation(id: "volcanoConditionLabel_left", title: "Left Condition Label", text: leftCondition, x: settings.volcanoConditionLabels.leftX, y: settings.volcanoConditionLabels.yPosition, xref: "paper", yref: "paper", showarrow: false, arrowhead: nil, arrowsize: nil, arrowwidth: nil, arrowcolor: nil, ax: nil, ay: nil, xanchor: "center", yanchor: "top", font: PlotFont(family: settings.plotFontFamily, size: Double(settings.volcanoConditionLabels.fontSize), color: labelColor))
+        let rightLabel = PlotAnnotation(id: "volcanoConditionLabel_right", title: "Right Condition Label", text: rightCondition, x: settings.volcanoConditionLabels.rightX, y: settings.volcanoConditionLabels.yPosition, xref: "paper", yref: "paper", showarrow: false, arrowhead: nil, arrowsize: nil, arrowwidth: nil, arrowcolor: nil, ax: nil, ay: nil, xanchor: "center", yanchor: "top", font: PlotFont(family: settings.plotFontFamily, size: Double(settings.volcanoConditionLabels.fontSize), color: labelColor))
+        return [leftLabel, rightLabel]
     }
 
     private func createDefaultPlotConfig() -> PlotConfig {
-        return PlotConfig(
-            responsive: true,
-            displayModeBar: false,     // Android: always hidden
-            editable: false,           // Android: disable Plotly editing
-            scrollZoom: true,          // Android: enable scroll zoom
-            doubleClick: "reset"       // Android: enable double-click reset
-        )
+        return PlotConfig(responsive: true, displayModeBar: false, editable: false, scrollZoom: true, doubleClick: "reset")
     }
-    
     
     private func generateVolcanoHtmlTemplate(plotJSON: String, editMode: Bool, isDarkMode: Bool) -> String {
         let backgroundColor = isDarkMode ? "#1C1C1E" : "#ffffff"
         let textColor = isDarkMode ? "#E0E0E0" : "#000000"
-
         do {
             let htmlTemplate = try WebTemplateLoader.shared.loadHTMLTemplate(named: "volcano-plot")
             var volcanoJS = try WebTemplateLoader.shared.loadJavaScript(named: "volcano-plot")
-
             volcanoJS = volcanoJS.replacingOccurrences(of: "{{PLOT_DATA}}", with: plotJSON)
             volcanoJS = volcanoJS.replacingOccurrences(of: "{{EDIT_MODE}}", with: editMode ? "true" : "false")
-
-            let substitutions: [String: String] = [
-                "BACKGROUND_COLOR": backgroundColor,
-                "TEXT_COLOR": textColor,
-                "PLOTLY_JS": getInlinePlotlyJS(),
-                "VOLCANO_PLOT_JS": volcanoJS
-            ]
-
+            let substitutions = ["BACKGROUND_COLOR": backgroundColor, "TEXT_COLOR": textColor, "PLOTLY_JS": getInlinePlotlyJS(), "VOLCANO_PLOT_JS": volcanoJS]
             return WebTemplateLoader.shared.render(template: htmlTemplate, substitutions: substitutions)
         } catch {
             return generateErrorHtml("Failed to load volcano plot template: \(error.localizedDescription)")
@@ -590,54 +386,37 @@ class PlotlyChartGenerator {
     }
     
     private func getInlinePlotlyJS() -> String {
-        // Try to read plotly.min.js from the bundle
-        if let plotlyURL = Bundle.main.url(forResource: "plotly.min", withExtension: "js"),
-           let plotlyContent = try? String(contentsOf: plotlyURL, encoding: .utf8) {
+        if let plotlyURL = Bundle.main.url(forResource: "plotly.min", withExtension: "js"), let plotlyContent = try? String(contentsOf: plotlyURL, encoding: .utf8) {
             return plotlyContent
         } else {
-            // Return a minimal fallback that will trigger the error handler
             return "console.error('Plotly.js not found in bundle');"
         }
     }
     
-    /// Get marker size for a specific group, checking markerSizeMap first, then falling back to default
     private func getMarkerSize(for groupName: String, settings: CurtainSettings) -> Double {
-        // Check if there's a custom size for this group in markerSizeMap
-        if let customSize = settings.markerSizeMap[groupName] as? Int {
-            return Double(customSize)
-        } else if let customSize = settings.markerSizeMap[groupName] as? Double {
-            return customSize
-        }
-
-        // Fall back to default marker size
+        if let customSize = settings.markerSizeMap[groupName] as? Int { return Double(customSize) }
+        else if let customSize = settings.markerSizeMap[groupName] as? Double { return customSize }
         return settings.scatterPlotMarkerSize
     }
 
-    /// Reorder traces according to volcanoTraceOrder setting (matches Angular sortGraphDataByOrder)
     private func reorderTraces(_ traces: [PlotTrace], accordingTo order: [String]) -> [PlotTrace] {
-
-        // Create a dictionary for quick lookup
-        var tracesByName: [String: PlotTrace] = [:]
-        for trace in traces {
-            tracesByName[trace.name] = trace
+        if order.isEmpty {
+            return traces
         }
 
-        var reorderedTraces: [PlotTrace] = []
+        var tracesByName: [String: PlotTrace] = [:]
+        for trace in traces { tracesByName[trace.name] = trace }
 
-        // Add traces in the specified order (matching Angular's orderedTraces)
+        var reorderedTraces: [PlotTrace] = []
         for traceName in order {
             if let trace = tracesByName[traceName] {
                 reorderedTraces.append(trace)
                 tracesByName.removeValue(forKey: traceName)
-            } else {
             }
         }
 
-        // Add any remaining traces that weren't in the order (matching Angular's unorderedTraces)
         for trace in traces {
-            if tracesByName[trace.name] != nil {
-                reorderedTraces.append(trace)
-            }
+            if tracesByName[trace.name] != nil { reorderedTraces.append(trace) }
         }
 
         return reorderedTraces
@@ -646,16 +425,10 @@ class PlotlyChartGenerator {
     private func generateErrorHtml(_ message: String) -> String {
         do {
             let htmlTemplate = try WebTemplateLoader.shared.loadHTMLTemplate(named: "error")
-            let substitutions: [String: String] = [
-                "ERROR_TITLE": "Plot Generation Error",
-                "ERROR_MESSAGE": message
-            ]
+            let substitutions = ["ERROR_TITLE": "Plot Generation Error", "ERROR_MESSAGE": message]
             return WebTemplateLoader.shared.render(template: htmlTemplate, substitutions: substitutions)
         } catch {
-            return """
-            <!DOCTYPE html>
-            <html><body><div style="text-align:center;padding:40px;"><h3>Error</h3><p>\(message)</p></div></body></html>
-            """
+            return "<!DOCTYPE html><html><body><div style=\"text-align:center;padding:40px;\"><h3>Error</h3><p>\(message)</p></div></body></html>"
         }
     }
 }

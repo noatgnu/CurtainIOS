@@ -14,7 +14,7 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
 
     var parent: PlotlyWebView
-    private let chartGenerator: PlotlyChartGenerator
+    let chartGenerator: PlotlyChartGenerator
     private var isHtmlLoaded = false
     private let bridgeService: PlotlyBridgeService
     private let colorResolver: ProteinColorResolver

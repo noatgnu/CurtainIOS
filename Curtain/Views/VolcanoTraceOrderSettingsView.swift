@@ -7,14 +7,39 @@
 
 import SwiftUI
 
-// MARK: - Volcano Trace Order Settings View
+struct TraceItem: Identifiable {
+    let id = UUID()
+    let name: String
+    let color: String
+    let originalIndex: Int
+}
+
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3:
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6:
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8:
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(.sRGB, red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255, opacity: Double(a) / 255)
+    }
+}
 
 struct VolcanoTraceOrderSettingsView: View {
     @Binding var curtainData: CurtainData
+    let traces: [PlotTrace]
     @Environment(\.dismiss) private var dismiss
 
-    // Local state for editing
-    @State private var traceOrder: [String] = []
+    @State private var traceItems: [TraceItem] = []
 
     var body: some View {
         NavigationView {
@@ -38,37 +63,45 @@ struct VolcanoTraceOrderSettingsView: View {
                     }
                 }
 
-                // Trace Order Section
-                if !traceOrder.isEmpty {
+                if !traceItems.isEmpty {
                     Section {
-                        ForEach(traceOrder, id: \.self) { traceName in
-                            HStack {
-                                Text(traceName)
+                        ForEach(traceItems) { item in
+                            HStack(spacing: 12) {
+                                Image(systemName: "line.3.horizontal")
+                                    .foregroundColor(.secondary)
+                                    .font(.caption)
+
+                                Circle()
+                                    .fill(Color(hex: item.color))
+                                    .frame(width: 12, height: 12)
+
+                                Text(item.name)
                                     .font(.subheadline)
 
                                 Spacer()
 
-                                // Position indicator
-                                if let index = traceOrder.firstIndex(of: traceName) {
-                                    Text("#\(index + 1)")
+                                if let index = traceItems.firstIndex(where: { $0.id == item.id }) {
+                                    Text("\(index + 1)")
                                         .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(.white)
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
-                                        .background(Color.secondary.opacity(0.2))
+                                        .background(Color.secondary)
                                         .cornerRadius(4)
                                 }
                             }
                         }
                         .onMove { source, destination in
-                            traceOrder.move(fromOffsets: source, toOffset: destination)
+                            traceItems.move(fromOffsets: source, toOffset: destination)
                         }
                     } header: {
                         Text("Trace Rendering Order (Drag to Reorder)")
+                    } footer: {
+                        Text("Traces at the bottom of the list will appear on top in the plot.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
                     .environment(\.editMode, .constant(.active))
-
-                    // Instructions Section
                     Section {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -179,48 +212,26 @@ struct VolcanoTraceOrderSettingsView: View {
         }
     }
 
-    // MARK: - Helper Methods
-
     private func loadSettings() {
-        // Get available traces from the actual rendered plot (matching Angular behavior)
-        // Angular passes this.graphData to the modal, which contains the actual plotted traces
-        let allTraces: [String]
-        if let renderedTraces = PlotlyCoordinator.sharedCoordinator?.renderedTraceNames {
-            allTraces = renderedTraces
-        } else {
-            // Fallback to colorMap if coordinator data not available yet
-            allTraces = Array(curtainData.settings.colorMap.keys).sorted()
+        traceItems = traces.enumerated().map { index, trace in
+            TraceItem(
+                name: trace.name,
+                color: getTraceColor(trace),
+                originalIndex: index
+            )
         }
+    }
 
-        // Initialize with current custom order if it exists, matching Angular behavior
-        if !curtainData.settings.volcanoTraceOrder.isEmpty {
-
-            // Start with the configured order
-            traceOrder = curtainData.settings.volcanoTraceOrder
-
-            // Add any new traces that aren't in the saved order
-            for traceName in allTraces {
-                if !traceOrder.contains(traceName) {
-                    traceOrder.append(traceName)
-                }
-            }
-
-            // Remove any traces that no longer exist
-            let beforeCount = traceOrder.count
-            traceOrder = traceOrder.filter { allTraces.contains($0) }
-            if traceOrder.count < beforeCount {
-            }
-        } else {
-            // No custom order - use the CURRENT ACTUAL render order from the plot
-            // (allTraces is already renderedTraceNames which has the correct order)
-            traceOrder = allTraces
+    private func getTraceColor(_ trace: PlotTrace) -> String {
+        if let color = trace.marker?.color {
+            return color
         }
-
+        return "#999999"
     }
 
     private func saveChanges() {
+        let order = traceItems.map { $0.name }
 
-        // Create updated settings with the new trace order
         let updatedSettings = CurtainSettings(
             fetchUniprot: curtainData.settings.fetchUniprot,
             inputDataCols: curtainData.settings.inputDataCols,
@@ -269,7 +280,7 @@ struct VolcanoTraceOrderSettingsView: View {
             viewPeptideCount: curtainData.settings.viewPeptideCount,
             peptideCountData: curtainData.settings.peptideCountData,
             volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
-            volcanoTraceOrder: traceOrder,  // ← Updated trace order
+            volcanoTraceOrder: order,
             volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
             customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
             barChartConditionBracket: curtainData.settings.barChartConditionBracket,
@@ -311,13 +322,92 @@ struct VolcanoTraceOrderSettingsView: View {
     }
 
     private func resetToDefaultOrder() {
-        // Reset to the default render order (from the current plot)
-        if let renderedTraces = PlotlyCoordinator.sharedCoordinator?.renderedTraceNames {
-            traceOrder = renderedTraces
-        } else {
-            // Fallback to alphabetical if no render data available
-            traceOrder = Array(curtainData.settings.colorMap.keys).sorted()
-        }
+        let updatedSettings = CurtainSettings(
+            fetchUniprot: curtainData.settings.fetchUniprot,
+            inputDataCols: curtainData.settings.inputDataCols,
+            probabilityFilterMap: curtainData.settings.probabilityFilterMap,
+            barchartColorMap: curtainData.settings.barchartColorMap,
+            pCutoff: curtainData.settings.pCutoff,
+            log2FCCutoff: curtainData.settings.log2FCCutoff,
+            description: curtainData.settings.description,
+            uniprot: curtainData.settings.uniprot,
+            colorMap: curtainData.settings.colorMap,
+            academic: curtainData.settings.academic,
+            backGroundColorGrey: curtainData.settings.backGroundColorGrey,
+            currentComparison: curtainData.settings.currentComparison,
+            version: curtainData.settings.version,
+            currentId: curtainData.settings.currentId,
+            fdrCurveText: curtainData.settings.fdrCurveText,
+            fdrCurveTextEnable: curtainData.settings.fdrCurveTextEnable,
+            prideAccession: curtainData.settings.prideAccession,
+            project: curtainData.settings.project,
+            sampleOrder: curtainData.settings.sampleOrder,
+            sampleVisible: curtainData.settings.sampleVisible,
+            conditionOrder: curtainData.settings.conditionOrder,
+            sampleMap: curtainData.settings.sampleMap,
+            volcanoAxis: curtainData.settings.volcanoAxis,
+            textAnnotation: curtainData.settings.textAnnotation,
+            volcanoPlotTitle: curtainData.settings.volcanoPlotTitle,
+            visible: curtainData.settings.visible,
+            volcanoPlotGrid: curtainData.settings.volcanoPlotGrid,
+            volcanoPlotDimension: curtainData.settings.volcanoPlotDimension,
+            volcanoAdditionalShapes: curtainData.settings.volcanoAdditionalShapes,
+            volcanoPlotLegendX: curtainData.settings.volcanoPlotLegendX,
+            volcanoPlotLegendY: curtainData.settings.volcanoPlotLegendY,
+            defaultColorList: curtainData.settings.defaultColorList,
+            scatterPlotMarkerSize: curtainData.settings.scatterPlotMarkerSize,
+            plotFontFamily: curtainData.settings.plotFontFamily,
+            stringDBColorMap: curtainData.settings.stringDBColorMap,
+            interactomeAtlasColorMap: curtainData.settings.interactomeAtlasColorMap,
+            proteomicsDBColor: curtainData.settings.proteomicsDBColor,
+            networkInteractionSettings: curtainData.settings.networkInteractionSettings,
+            rankPlotColorMap: curtainData.settings.rankPlotColorMap,
+            rankPlotAnnotation: curtainData.settings.rankPlotAnnotation,
+            legendStatus: curtainData.settings.legendStatus,
+            selectedComparison: curtainData.settings.selectedComparison,
+            imputationMap: curtainData.settings.imputationMap,
+            enableImputation: curtainData.settings.enableImputation,
+            viewPeptideCount: curtainData.settings.viewPeptideCount,
+            peptideCountData: curtainData.settings.peptideCountData,
+            volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
+            volcanoTraceOrder: [],
+            volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
+            barChartConditionBracket: curtainData.settings.barChartConditionBracket,
+            columnSize: curtainData.settings.columnSize,
+            chartYAxisLimits: curtainData.settings.chartYAxisLimits,
+            individualYAxisLimits: curtainData.settings.individualYAxisLimits,
+            violinPointPos: curtainData.settings.violinPointPos,
+            networkInteractionData: curtainData.settings.networkInteractionData,
+            enrichrGeneRankMap: curtainData.settings.enrichrGeneRankMap,
+            enrichrRunList: curtainData.settings.enrichrRunList,
+            extraData: curtainData.settings.extraData,
+            enableMetabolomics: curtainData.settings.enableMetabolomics,
+            metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
+            encrypted: curtainData.settings.encrypted,
+            dataAnalysisContact: curtainData.settings.dataAnalysisContact,
+            markerSizeMap: curtainData.settings.markerSizeMap
+        )
+
+        let updatedCurtainData = CurtainData(
+            raw: curtainData.raw,
+            rawForm: curtainData.rawForm,
+            differentialForm: curtainData.differentialForm,
+            processed: curtainData.processed,
+            password: curtainData.password,
+            selections: curtainData.selections,
+            selectionsMap: curtainData.selectionsMap,
+            selectedMap: curtainData.selectedMap,
+            selectionsName: curtainData.selectionsName,
+            settings: updatedSettings,
+            fetchUniprot: curtainData.fetchUniprot,
+            annotatedData: curtainData.annotatedData,
+            extraData: curtainData.extraData,
+            permanent: curtainData.permanent
+        )
+
+        curtainData = updatedCurtainData
+        dismiss()
     }
 }
 

@@ -621,10 +621,13 @@ struct VolcanoPlotTab: View {
                 ))
             }
             .sheet(isPresented: $showingTraceOrderSettings) {
-                VolcanoTraceOrderSettingsView(curtainData: Binding(
-                    get: { data! },
-                    set: { newValue in data = newValue }
-                ))
+                VolcanoTraceOrderSettingsView(
+                    curtainData: Binding(
+                        get: { data! },
+                        set: { newValue in data = newValue }
+                    ),
+                    traces: PlotlyCoordinator.sharedCoordinator?.chartGenerator.lastGeneratedTraces ?? []
+                )
             }
             .sheet(isPresented: $showingYAxisPositionSettings) {
                 VolcanoYAxisPositionSettingsView(curtainData: Binding(
