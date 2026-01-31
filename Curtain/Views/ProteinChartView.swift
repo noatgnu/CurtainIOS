@@ -57,22 +57,12 @@ struct ProteinChartView: View {
     }
     
     private var displayName: String {
-        // Use UniProt data directly from curtainData (proper approach)
-        if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
-           let uniprotRecord = uniprotDB[currentProteinId] as? [String: Any],
-           let geneNames = uniprotRecord["Gene Names"] as? String,
-           !geneNames.isEmpty {
-            // Parse the first gene name from Gene Names string (can be space or semicolon separated)
-            let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
-                .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .first
-            
-            if let geneName = firstGeneName, geneName != currentProteinId {
-                return "\(geneName) (\(currentProteinId))"
-            }
+        // Use unified gene name resolution (SQLite first, then extraData fallback)
+        if let geneName = curtainData.getPrimaryGeneNameForProtein(currentProteinId),
+           geneName != currentProteinId {
+            return "\(geneName) (\(currentProteinId))"
         }
-        
+
         return currentProteinId
     }
     
@@ -424,16 +414,25 @@ struct ProteinChartWebView: UIViewRepresentable {
 // MARK: - Protein Chart Generator
 
 class ProteinChartGenerator {
-    
+
+    private let proteomicsDataService = ProteomicsDataService.shared
+    private let proteomicsDataDatabaseManager = ProteomicsDataDatabaseManager.shared
+
     func generateProteinChart(proteinId: String, curtainData: CurtainData, chartType: ProteinChartType, isDarkMode: Bool) async throws -> String {
 
-        // Check if we have raw CSV data to parse
-        guard let rawCSV = curtainData.raw, !rawCSV.isEmpty else {
+        let chartData: ProteinChartData
+
+        // Check if SQLite data is available
+        let linkId = curtainData.linkId
+        if !linkId.isEmpty && proteomicsDataDatabaseManager.checkDataExists(linkId) {
+            // Use SQLite-based data retrieval
+            chartData = try await parseRawDataFromSQLite(proteinId: proteinId, linkId: linkId, curtainData: curtainData)
+        } else if let rawCSV = curtainData.raw, !rawCSV.isEmpty {
+            // Fallback to in-memory CSV parsing
+            chartData = try await parseRawDataForProtein(proteinId: proteinId, rawCSV: rawCSV, curtainData: curtainData)
+        } else {
             throw ChartGenerationError.noRawData
         }
-
-        // Parse the raw CSV data to extract sample-level intensity values
-        let chartData = try await parseRawDataForProtein(proteinId: proteinId, rawCSV: rawCSV, curtainData: curtainData)
 
 
         guard !chartData.proteinValues.isEmpty else {
@@ -446,6 +445,66 @@ class ProteinChartGenerator {
         return generateChartHtmlTemplate(plotJSON: plotJSON, chartType: chartType)
     }
     
+    /// Parse raw data from SQLite database for chart generation
+    private func parseRawDataFromSQLite(proteinId: String, linkId: String, curtainData: CurtainData) async throws -> ProteinChartData {
+
+        // Get raw data for this protein from SQLite
+        let rawDataEntries = try proteomicsDataService.getRawDataForProtein(linkId: linkId, primaryId: proteinId)
+
+        print("[ProteinChartGenerator] parseRawDataFromSQLite for \(proteinId): found \(rawDataEntries.count) raw entries")
+
+        guard !rawDataEntries.isEmpty else {
+            print("[ProteinChartGenerator] No raw data found for protein \(proteinId)")
+            throw ChartGenerationError.invalidProteinData
+        }
+
+        // Get processed settings for condition mapping
+        let processedSettings = await curtainData.getProcessedSettingsAsync()
+        let conditionOrder = processedSettings.conditionOrder
+
+        // Build proteinValues dictionary from SQLite data
+        var proteinValues: [String: Double] = [:]
+        for entry in rawDataEntries {
+            proteinValues[entry.sampleName] = entry.sampleValue
+        }
+
+        // Organize by conditions, respecting sampleVisible filter
+        var conditionData: [String: [Double]] = [:]
+        var conditionSamples: [String: [String]] = [:]
+
+        for condition in conditionOrder {
+            conditionData[condition] = []
+            conditionSamples[condition] = []
+
+            // Find all samples that belong to this condition
+            let samplesForCondition = processedSettings.sampleMap.compactMap { (sampleName, metadata) -> String? in
+                if let sampleCondition = metadata["condition"], sampleCondition == condition {
+                    return sampleName
+                }
+                return nil
+            }
+
+            for sample in samplesForCondition {
+                // Apply sampleVisible filter
+                let isVisible = processedSettings.sampleVisible[sample] ?? true
+
+                if isVisible, let value = proteinValues[sample] {
+                    conditionData[condition]?.append(value)
+                    conditionSamples[condition]?.append(sample)
+                }
+            }
+        }
+
+        return ProteinChartData(
+            proteinId: proteinId,
+            samples: Array(proteinValues.keys),
+            conditions: conditionOrder,
+            conditionData: conditionData,
+            conditionSamples: conditionSamples,
+            proteinValues: proteinValues
+        )
+    }
+
     private func parseRawDataForProtein(proteinId: String, rawCSV: String, curtainData: CurtainData) async throws -> ProteinChartData {
 
         let primaryIdColumn = curtainData.rawForm.primaryIDs
@@ -1521,7 +1580,7 @@ class ProteinChartGenerator {
         // 3. Default palette assignment
         
         // First priority: barchartColorMap (protein-specific overrides)
-        if let color = curtainData.settings.barchartColorMap[condition] as? String, !color.isEmpty {
+        if let color = curtainData.settings.barchartColorMap[condition]?.value as? String, !color.isEmpty {
             return color
         }
         
@@ -1550,22 +1609,12 @@ class ProteinChartGenerator {
     
     
     private func getProteinDisplayName(_ proteinId: String, curtainData: CurtainData) -> String {
-        // Use UniProt data directly from curtainData (proper approach)
-        if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
-           let uniprotRecord = uniprotDB[proteinId] as? [String: Any],
-           let geneNames = uniprotRecord["Gene Names"] as? String,
-           !geneNames.isEmpty {
-            // Parse the first gene name from Gene Names string (can be space or semicolon separated)
-            let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
-                .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .first
-            
-            if let geneName = firstGeneName, geneName != proteinId {
-                return "\(geneName) (\(proteinId))"
-            }
+        // Use unified gene name resolution (SQLite first, then extraData fallback)
+        if let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId),
+           geneName != proteinId {
+            return "\(geneName) (\(proteinId))"
         }
-        
+
         return proteinId
     }
 
@@ -1585,7 +1634,7 @@ class ProteinChartGenerator {
 
         // PRIORITY 1: Check for individual protein-specific limits (highest priority)
         if let proteinId = proteinId,
-           let individualLimitsForProtein = curtainData.settings.individualYAxisLimits[proteinId] as? [String: [String: Double]],
+           let individualLimitsForProtein = curtainData.settings.individualYAxisLimits[proteinId]?.value as? [String: [String: Double]],
            let chartLimitsDict = individualLimitsForProtein[settingsKey] {
             // Extract min/max from the dictionary
             let minY = chartLimitsDict["min"] ?? defaultRange[0]

@@ -37,12 +37,24 @@ struct DataCite: Codable {
 struct DataFilterList: Codable, Identifiable {
     let id: Int
     let name: String
+    let category: String
     let data: String
     let isDefault: Bool
-    
+    let user: Int?
+
     enum CodingKeys: String, CodingKey {
-        case id, name, data
+        case id, name, category, data, user
         case isDefault = "default"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        category = try container.decodeIfPresent(String.self, forKey: .category) ?? ""
+        data = try container.decodeIfPresent(String.self, forKey: .data) ?? ""
+        isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
+        user = try container.decodeIfPresent(Int.self, forKey: .user)
     }
 }
 

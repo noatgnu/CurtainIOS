@@ -8,12 +8,12 @@
 import Foundation
 
 
-struct CurtainSettings {
+struct CurtainSettings: Codable {
     // Core Analysis Settings
     let fetchUniprot: Bool
-    let inputDataCols: [String: Any]
-    let probabilityFilterMap: [String: Any]
-    let barchartColorMap: [String: Any]
+    let inputDataCols: [String: AnyCodable]
+    let probabilityFilterMap: [String: AnyCodable]
+    let barchartColorMap: [String: AnyCodable]
     let pCutoff: Double
     let log2FCCutoff: Double
     let description: String
@@ -39,12 +39,12 @@ struct CurtainSettings {
     
     // Volcano Plot Settings
     let volcanoAxis: VolcanoAxis
-    let textAnnotation: [String: Any]
+    let textAnnotation: [String: AnyCodable]
     let volcanoPlotTitle: String
-    let visible: [String: Any]
+    let visible: [String: AnyCodable]
     let volcanoPlotGrid: [String: Bool]
     let volcanoPlotDimension: VolcanoPlotDimension
-    let volcanoAdditionalShapes: [Any]
+    let volcanoAdditionalShapes: [AnyCodable]
     let volcanoPlotLegendX: Double?
     let volcanoPlotLegendY: Double?
     
@@ -60,16 +60,16 @@ struct CurtainSettings {
     let networkInteractionSettings: [String: String]
     
     // Plot Settings
-    let rankPlotColorMap: [String: Any]
-    let rankPlotAnnotation: [String: Any]
-    let legendStatus: [String: Any]
+    let rankPlotColorMap: [String: AnyCodable]
+    let rankPlotAnnotation: [String: AnyCodable]
+    let legendStatus: [String: AnyCodable]
     
     // Additional Settings
     let selectedComparison: [String]?
-    let imputationMap: [String: Any]
+    let imputationMap: [String: AnyCodable]
     let enableImputation: Bool
     let viewPeptideCount: Bool
-    let peptideCountData: [String: Any]
+    let peptideCountData: [String: AnyCodable]
 
     // Volcano Plot Advanced Settings
     let volcanoConditionLabels: VolcanoConditionLabels
@@ -81,14 +81,14 @@ struct CurtainSettings {
     let barChartConditionBracket: BarChartConditionBracket
     let columnSize: [String: Int]
     let chartYAxisLimits: [String: ChartYAxisLimits]
-    let individualYAxisLimits: [String: Any]
+    let individualYAxisLimits: [String: AnyCodable]
 
     // Violin Plot Settings
     let violinPointPos: Double
 
     // Advanced Data Features
-    let networkInteractionData: [Any]
-    let enrichrGeneRankMap: [String: Any]
+    let networkInteractionData: [AnyCodable]
+    let enrichrGeneRankMap: [String: AnyCodable]
     let enrichrRunList: [String]
     let extraData: [ExtraDataItem]
 
@@ -99,7 +99,7 @@ struct CurtainSettings {
     // Additional Metadata
     let encrypted: Bool
     let dataAnalysisContact: String
-    let markerSizeMap: [String: Any]
+    let markerSizeMap: [String: AnyCodable]
 
     init() {
         self.fetchUniprot = true
@@ -174,9 +174,9 @@ struct CurtainSettings {
     
     init(
         fetchUniprot: Bool = true,
-        inputDataCols: [String: Any] = [:],
-        probabilityFilterMap: [String: Any] = [:],
-        barchartColorMap: [String: Any] = [:],
+        inputDataCols: [String: AnyCodable] = [:],
+        probabilityFilterMap: [String: AnyCodable] = [:],
+        barchartColorMap: [String: AnyCodable] = [:],
         pCutoff: Double = 0.05,
         log2FCCutoff: Double = 0.6,
         description: String = "",
@@ -196,12 +196,12 @@ struct CurtainSettings {
         conditionOrder: [String] = [],
         sampleMap: [String: [String: String]] = [:],
         volcanoAxis: VolcanoAxis = VolcanoAxis(),
-        textAnnotation: [String: Any] = [:],
+        textAnnotation: [String: AnyCodable] = [:],
         volcanoPlotTitle: String = "",
-        visible: [String: Any] = [:],
+        visible: [String: AnyCodable] = [:],
         volcanoPlotGrid: [String: Bool] = ["x": true, "y": true],
         volcanoPlotDimension: VolcanoPlotDimension = VolcanoPlotDimension(),
-        volcanoAdditionalShapes: [Any] = [],
+        volcanoAdditionalShapes: [AnyCodable] = [],
         volcanoPlotLegendX: Double? = nil,
         volcanoPlotLegendY: Double? = nil,
         defaultColorList: [String] = CurtainSettings.defaultColors(),
@@ -211,14 +211,14 @@ struct CurtainSettings {
         interactomeAtlasColorMap: [String: String] = CurtainSettings.defaultInteractomeColors(),
         proteomicsDBColor: String = "#ff7f0e",
         networkInteractionSettings: [String: String] = CurtainSettings.defaultNetworkInteractionSettings(),
-        rankPlotColorMap: [String: Any] = [:],
-        rankPlotAnnotation: [String: Any] = [:],
-        legendStatus: [String: Any] = [:],
+        rankPlotColorMap: [String: AnyCodable] = [:],
+        rankPlotAnnotation: [String: AnyCodable] = [:],
+        legendStatus: [String: AnyCodable] = [:],
         selectedComparison: [String]? = nil,
-        imputationMap: [String: Any] = [:],
+        imputationMap: [String: AnyCodable] = [:],
         enableImputation: Bool = false,
         viewPeptideCount: Bool = false,
-        peptideCountData: [String: Any] = [:],
+        peptideCountData: [String: AnyCodable] = [:],
         volcanoConditionLabels: VolcanoConditionLabels = VolcanoConditionLabels(),
         volcanoTraceOrder: [String] = [],
         volcanoPlotYaxisPosition: [String] = ["middle"],
@@ -230,17 +230,17 @@ struct CurtainSettings {
             "averageBarChart": ChartYAxisLimits(),
             "violinPlot": ChartYAxisLimits()
         ],
-        individualYAxisLimits: [String: Any] = [:],
+        individualYAxisLimits: [String: AnyCodable] = [:],
         violinPointPos: Double = -2.0,
-        networkInteractionData: [Any] = [],
-        enrichrGeneRankMap: [String: Any] = [:],
+        networkInteractionData: [AnyCodable] = [],
+        enrichrGeneRankMap: [String: AnyCodable] = [:],
         enrichrRunList: [String] = [],
         extraData: [ExtraDataItem] = [],
         enableMetabolomics: Bool = false,
         metabolomicsColumnMap: MetabolomicsColumnMap = MetabolomicsColumnMap(),
         encrypted: Bool = false,
         dataAnalysisContact: String = "",
-        markerSizeMap: [String: Any] = [:]
+        markerSizeMap: [String: AnyCodable] = [:]
     ) {
         self.fetchUniprot = fetchUniprot
         self.inputDataCols = inputDataCols
@@ -351,7 +351,7 @@ struct CurtainSettings {
 }
 
 
-struct Project {
+struct Project: Codable {
     let title: String
     let projectDescription: String
     let organisms: [NameItem]
@@ -361,7 +361,7 @@ struct Project {
     let sampleProcessingProtocol: String
     let dataProcessingProtocol: String
     let accession: String
-    let sampleAnnotations: [String: Any]
+    let sampleAnnotations: [String: AnyCodable]
     
     init() {
         self.title = ""
@@ -386,7 +386,7 @@ struct Project {
         sampleProcessingProtocol: String,
         dataProcessingProtocol: String,
         accession: String,
-        sampleAnnotations: [String: Any]
+        sampleAnnotations: [String: AnyCodable]
     ) {
         self.title = title
         self.projectDescription = projectDescription
@@ -401,7 +401,7 @@ struct Project {
     }
 }
 
-struct NameItem {
+struct NameItem: Codable {
     let name: String
     let cvLabel: String?
     
@@ -416,7 +416,7 @@ struct NameItem {
     }
 }
 
-struct VolcanoAxis {
+struct VolcanoAxis: Codable {
     let minX: Double?
     let maxX: Double?
     let minY: Double?
@@ -466,7 +466,7 @@ struct VolcanoAxis {
     }
 }
 
-struct VolcanoPlotDimension {
+struct VolcanoPlotDimension: Codable {
     let width: Int
     let height: Int
     let margin: VolcanoPlotMargin
@@ -484,7 +484,7 @@ struct VolcanoPlotDimension {
     }
 }
 
-struct VolcanoPlotMargin {
+struct VolcanoPlotMargin: Codable {
     let left: Int?
     let right: Int?
     let bottom: Int?
@@ -505,7 +505,7 @@ struct VolcanoPlotMargin {
     }
 }
 
-struct VolcanoConditionLabels {
+struct VolcanoConditionLabels: Codable {
     let enabled: Bool
     let leftCondition: String
     let rightCondition: String
@@ -547,7 +547,7 @@ struct VolcanoConditionLabels {
     }
 }
 
-struct BarChartConditionBracket {
+struct BarChartConditionBracket: Codable {
     let showBracket: Bool
     let bracketHeight: Double
     let bracketColor: String
@@ -573,7 +573,7 @@ struct BarChartConditionBracket {
     }
 }
 
-struct ChartYAxisLimits {
+struct ChartYAxisLimits: Codable {
     let min: Double?
     let max: Double?
 
@@ -588,7 +588,7 @@ struct ChartYAxisLimits {
     }
 }
 
-struct MetabolomicsColumnMap {
+struct MetabolomicsColumnMap: Codable {
     let polarity: String?
     let formula: String?
     let abbreviation: String?
@@ -614,7 +614,7 @@ struct MetabolomicsColumnMap {
     }
 }
 
-struct ExtraDataItem {
+struct ExtraDataItem: Codable {
     let name: String
     let content: String
     let type: String
@@ -632,15 +632,70 @@ struct ExtraDataItem {
     }
 }
 
+// MARK: - AnyCodable Helper
+
+public struct AnyCodable: Codable {
+    public let value: Any
+    
+    public init<T>(_ value: T?) {
+        self.value = value ?? ()
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        
+        if container.decodeNil() {
+            self.value = ()
+        } else if let bool = try? container.decode(Bool.self) {
+            self.value = bool
+        } else if let int = try? container.decode(Int.self) {
+            self.value = int
+        } else if let double = try? container.decode(Double.self) {
+            self.value = double
+        } else if let string = try? container.decode(String.self) {
+            self.value = string
+        } else if let array = try? container.decode([AnyCodable].self) {
+            self.value = array.map { $0.value }
+        } else if let dictionary = try? container.decode([String: AnyCodable].self) {
+            self.value = dictionary.mapValues { $0.value }
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "AnyCodable value cannot be decoded")
+        }
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        
+        switch value {
+        case let bool as Bool:
+            try container.encode(bool)
+        case let int as Int:
+            try container.encode(int)
+        case let double as Double:
+            try container.encode(double)
+        case let string as String:
+            try container.encode(string)
+        case let array as [Any]:
+            try container.encode(array.map { AnyCodable($0) })
+        case let dictionary as [String: Any]:
+            try container.encode(dictionary.mapValues { AnyCodable($0) })
+        case is Void:
+            try container.encodeNil()
+        default:
+            throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: container.codingPath, debugDescription: "AnyCodable value cannot be encoded"))
+        }
+    }
+}
+
 
 extension CurtainSettings {
     
     static func fromDictionary(_ map: [String: Any]) -> CurtainSettings {
         return CurtainSettings(
             fetchUniprot: map["fetchUniprot"] as? Bool ?? true,
-            inputDataCols: map["inputDataCols"] as? [String: Any] ?? [:],
-            probabilityFilterMap: map["probabilityFilterMap"] as? [String: Any] ?? [:],
-            barchartColorMap: map["barchartColorMap"] as? [String: Any] ?? [:],
+            inputDataCols: toAnyCodableMap(map["inputDataCols"] as? [String: Any]),
+            probabilityFilterMap: toAnyCodableMap(map["probabilityFilterMap"] as? [String: Any]),
+            barchartColorMap: toAnyCodableMap(map["barchartColorMap"] as? [String: Any]),
             pCutoff: map["pCutoff"] as? Double ?? 0.05,
             log2FCCutoff: map["log2FCCutoff"] as? Double ?? 0.6,
             description: map["description"] as? String ?? "",
@@ -660,12 +715,12 @@ extension CurtainSettings {
             conditionOrder: map["conditionOrder"] as? [String] ?? [],
             sampleMap: map["sampleMap"] as? [String: [String: String]] ?? [:],
             volcanoAxis: VolcanoAxis.fromDictionary(map["volcanoAxis"] as? [String: Any]),
-            textAnnotation: map["textAnnotation"] as? [String: Any] ?? [:],
+            textAnnotation: toAnyCodableMap(map["textAnnotation"] as? [String: Any]),
             volcanoPlotTitle: map["volcanoPlotTitle"] as? String ?? "",
-            visible: map["visible"] as? [String: Any] ?? [:],
+            visible: toAnyCodableMap(map["visible"] as? [String: Any]),
             volcanoPlotGrid: map["volcanoPlotGrid"] as? [String: Bool] ?? ["x": true, "y": true],
             volcanoPlotDimension: VolcanoPlotDimension.fromDictionary(map["volcanoPlotDimension"] as? [String: Any]),
-            volcanoAdditionalShapes: map["volcanoAdditionalShapes"] as? [Any] ?? [],
+            volcanoAdditionalShapes: toAnyCodableList(map["volcanoAdditionalShapes"] as? [Any]),
             volcanoPlotLegendX: map["volcanoPlotLegendX"] as? Double,
             volcanoPlotLegendY: map["volcanoPlotLegendY"] as? Double,
             defaultColorList: map["defaultColorList"] as? [String] ?? CurtainSettings.defaultColors(),
@@ -675,14 +730,14 @@ extension CurtainSettings {
             interactomeAtlasColorMap: map["interactomeAtlasColorMap"] as? [String: String] ?? CurtainSettings.defaultInteractomeColors(),
             proteomicsDBColor: map["proteomicsDBColor"] as? String ?? "#ff7f0e",
             networkInteractionSettings: map["networkInteractionSettings"] as? [String: String] ?? CurtainSettings.defaultNetworkInteractionSettings(),
-            rankPlotColorMap: map["rankPlotColorMap"] as? [String: Any] ?? [:],
-            rankPlotAnnotation: map["rankPlotAnnotation"] as? [String: Any] ?? [:],
-            legendStatus: map["legendStatus"] as? [String: Any] ?? [:],
+            rankPlotColorMap: toAnyCodableMap(map["rankPlotColorMap"] as? [String: Any]),
+            rankPlotAnnotation: toAnyCodableMap(map["rankPlotAnnotation"] as? [String: Any]),
+            legendStatus: toAnyCodableMap(map["legendStatus"] as? [String: Any]),
             selectedComparison: map["selectedComparison"] as? [String],
-            imputationMap: map["imputationMap"] as? [String: Any] ?? [:],
+            imputationMap: toAnyCodableMap(map["imputationMap"] as? [String: Any]),
             enableImputation: map["enableImputation"] as? Bool ?? false,
             viewPeptideCount: map["viewPeptideCount"] as? Bool ?? false,
-            peptideCountData: map["peptideCountData"] as? [String: Any] ?? [:],
+            peptideCountData: toAnyCodableMap(map["peptideCountData"] as? [String: Any]),
             volcanoConditionLabels: VolcanoConditionLabels.fromDictionary(map["volcanoConditionLabels"] as? [String: Any]),
             volcanoTraceOrder: map["volcanoTraceOrder"] as? [String] ?? [],
             volcanoPlotYaxisPosition: map["volcanoPlotYaxisPosition"] as? [String] ?? ["middle"],
@@ -690,18 +745,32 @@ extension CurtainSettings {
             barChartConditionBracket: BarChartConditionBracket.fromDictionary(map["barChartConditionBracket"] as? [String: Any]),
             columnSize: map["columnSize"] as? [String: Int] ?? [:],
             chartYAxisLimits: ChartYAxisLimits.fromChartDictionary(map["chartYAxisLimits"] as? [String: Any]),
-            individualYAxisLimits: map["individualYAxisLimits"] as? [String: Any] ?? [:],
+            individualYAxisLimits: toAnyCodableMap(map["individualYAxisLimits"] as? [String: Any]),
             violinPointPos: map["violinPointPos"] as? Double ?? -2.0,
-            networkInteractionData: map["networkInteractionData"] as? [Any] ?? [],
-            enrichrGeneRankMap: map["enrichrGeneRankMap"] as? [String: Any] ?? [:],
+            networkInteractionData: toAnyCodableList(map["networkInteractionData"] as? [Any]),
+            enrichrGeneRankMap: toAnyCodableMap(map["enrichrGeneRankMap"] as? [String: Any]),
             enrichrRunList: map["enrichrRunList"] as? [String] ?? [],
             extraData: ExtraDataItem.fromDictionaryArray(map["extraData"] as? [[String: Any]]),
             enableMetabolomics: map["enableMetabolomics"] as? Bool ?? false,
             metabolomicsColumnMap: MetabolomicsColumnMap.fromDictionary(map["metabolomicsColumnMap"] as? [String: Any]),
             encrypted: map["encrypted"] as? Bool ?? false,
             dataAnalysisContact: map["dataAnalysisContact"] as? String ?? "",
-            markerSizeMap: map["markerSizeMap"] as? [String: Any] ?? [:]
+            markerSizeMap: toAnyCodableMap(map["markerSizeMap"] as? [String: Any])
         )
+    }
+    
+    static func toAnyCodableMap(_ map: [String: Any]?) -> [String: AnyCodable] {
+        guard let map = map else { return [:] }
+        var result: [String: AnyCodable] = [:]
+        for (key, value) in map {
+            result[key] = AnyCodable(value)
+        }
+        return result
+    }
+    
+    static func toAnyCodableList(_ list: [Any]?) -> [AnyCodable] {
+        guard let list = list else { return [] }
+        return list.map { AnyCodable($0) }
     }
     
     static func fromJSON(_ jsonString: String) -> CurtainSettings? {
@@ -717,9 +786,9 @@ extension CurtainSettings {
         var dict: [String: Any] = [:]
         
         dict["fetchUniprot"] = fetchUniprot
-        dict["inputDataCols"] = inputDataCols
-        dict["probabilityFilterMap"] = probabilityFilterMap
-        dict["barchartColorMap"] = barchartColorMap
+        dict["inputDataCols"] = inputDataCols.mapValues { $0.value }
+        dict["probabilityFilterMap"] = probabilityFilterMap.mapValues { $0.value }
+        dict["barchartColorMap"] = barchartColorMap.mapValues { $0.value }
         dict["pCutoff"] = pCutoff
         dict["log2FCCutoff"] = log2FCCutoff
         dict["description"] = description
@@ -739,12 +808,12 @@ extension CurtainSettings {
         dict["conditionOrder"] = conditionOrder
         dict["sampleMap"] = sampleMap
         dict["volcanoAxis"] = volcanoAxis.toDictionary()
-        dict["textAnnotation"] = textAnnotation
+        dict["textAnnotation"] = textAnnotation.mapValues { $0.value }
         dict["volcanoPlotTitle"] = volcanoPlotTitle
-        dict["visible"] = visible
+        dict["visible"] = visible.mapValues { $0.value }
         dict["volcanoPlotGrid"] = volcanoPlotGrid
         dict["volcanoPlotDimension"] = volcanoPlotDimension.toDictionary()
-        dict["volcanoAdditionalShapes"] = volcanoAdditionalShapes
+        dict["volcanoAdditionalShapes"] = volcanoAdditionalShapes.map { $0.value }
         dict["volcanoPlotLegendX"] = volcanoPlotLegendX
         dict["volcanoPlotLegendY"] = volcanoPlotLegendY
         dict["defaultColorList"] = defaultColorList
@@ -754,14 +823,14 @@ extension CurtainSettings {
         dict["interactomeAtlasColorMap"] = interactomeAtlasColorMap
         dict["proteomicsDBColor"] = proteomicsDBColor
         dict["networkInteractionSettings"] = networkInteractionSettings
-        dict["rankPlotColorMap"] = rankPlotColorMap
-        dict["rankPlotAnnotation"] = rankPlotAnnotation
-        dict["legendStatus"] = legendStatus
+        dict["rankPlotColorMap"] = rankPlotColorMap.mapValues { $0.value }
+        dict["rankPlotAnnotation"] = rankPlotAnnotation.mapValues { $0.value }
+        dict["legendStatus"] = legendStatus.mapValues { $0.value }
         dict["selectedComparison"] = selectedComparison
-        dict["imputationMap"] = imputationMap
+        dict["imputationMap"] = imputationMap.mapValues { $0.value }
         dict["enableImputation"] = enableImputation
         dict["viewPeptideCount"] = viewPeptideCount
-        dict["peptideCountData"] = peptideCountData
+        dict["peptideCountData"] = peptideCountData.mapValues { $0.value }
         dict["volcanoConditionLabels"] = volcanoConditionLabels.toDictionary()
         dict["volcanoTraceOrder"] = volcanoTraceOrder
         dict["volcanoPlotYaxisPosition"] = volcanoPlotYaxisPosition
@@ -769,17 +838,17 @@ extension CurtainSettings {
         dict["barChartConditionBracket"] = barChartConditionBracket.toDictionary()
         dict["columnSize"] = columnSize
         dict["chartYAxisLimits"] = chartYAxisLimits.mapValues { $0.toDictionary() }
-        dict["individualYAxisLimits"] = individualYAxisLimits
+        dict["individualYAxisLimits"] = individualYAxisLimits.mapValues { $0.value }
         dict["violinPointPos"] = violinPointPos
-        dict["networkInteractionData"] = networkInteractionData
-        dict["enrichrGeneRankMap"] = enrichrGeneRankMap
+        dict["networkInteractionData"] = networkInteractionData.map { $0.value }
+        dict["enrichrGeneRankMap"] = enrichrGeneRankMap.mapValues { $0.value }
         dict["enrichrRunList"] = enrichrRunList
         dict["extraData"] = extraData.map { $0.toDictionary() }
         dict["enableMetabolomics"] = enableMetabolomics
         dict["metabolomicsColumnMap"] = metabolomicsColumnMap.toDictionary()
         dict["encrypted"] = encrypted
         dict["dataAnalysisContact"] = dataAnalysisContact
-        dict["markerSizeMap"] = markerSizeMap
+        dict["markerSizeMap"] = markerSizeMap.mapValues { $0.value }
 
         return dict
     }
@@ -810,7 +879,7 @@ extension Project {
             sampleProcessingProtocol: map["sampleProcessingProtocol"] as? String ?? "",
             dataProcessingProtocol: map["dataProcessingProtocol"] as? String ?? "",
             accession: map["accession"] as? String ?? "",
-            sampleAnnotations: map["sampleAnnotations"] as? [String: Any] ?? [:]
+            sampleAnnotations: CurtainSettings.toAnyCodableMap(map["sampleAnnotations"] as? [String: Any])
         )
     }
     
@@ -825,7 +894,7 @@ extension Project {
             "sampleProcessingProtocol": sampleProcessingProtocol,
             "dataProcessingProtocol": dataProcessingProtocol,
             "accession": accession,
-            "sampleAnnotations": sampleAnnotations
+            "sampleAnnotations": sampleAnnotations.mapValues { $0.value }
         ]
     }
 }

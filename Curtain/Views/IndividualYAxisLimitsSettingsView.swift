@@ -40,19 +40,10 @@ struct IndividualYAxisLimitsSettingsView: View {
     }
 
     private var displayName: String {
-        // Try to get gene name from UniProt
-        if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
-           let uniprotRecord = uniprotDB[proteinId] as? [String: Any],
-           let geneNames = uniprotRecord["Gene Names"] as? String,
-           !geneNames.isEmpty {
-            let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .first
-
-            if let geneName = firstGeneName, geneName != proteinId {
-                return "\(geneName) (\(proteinId))"
-            }
+        // Use unified gene name resolution (SQLite first, then extraData fallback)
+        if let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId),
+           geneName != proteinId {
+            return "\(geneName) (\(proteinId))"
         }
 
         return proteinId
@@ -167,7 +158,7 @@ struct IndividualYAxisLimitsSettingsView: View {
 
     private func loadCurrentSettings() {
         // Try to load existing individual limits for this protein
-        if let individualLimitsForProtein = curtainData.settings.individualYAxisLimits[proteinId] as? [String: [String: Double]] {
+        if let individualLimitsForProtein = curtainData.settings.individualYAxisLimits[proteinId]?.value as? [String: [String: Double]] {
             // Bar Chart
             if let barChartLimits = individualLimitsForProtein["barChart"] {
                 if let min = barChartLimits["min"] {
@@ -276,7 +267,7 @@ struct IndividualYAxisLimitsSettingsView: View {
                 }
             }
 
-            updatedIndividualLimits[proteinId] = proteinLimits
+            updatedIndividualLimits[proteinId] = AnyCodable(proteinLimits)
         } else {
             // No limits set, remove this protein's entry
             updatedIndividualLimits.removeValue(forKey: proteinId)

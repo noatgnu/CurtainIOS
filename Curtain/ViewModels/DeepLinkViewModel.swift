@@ -19,6 +19,11 @@ class DeepLinkViewModel {
     // Regular Curtain session state
     var pendingCurtainSession: DeepLinkResult?
 
+    // Collection state
+    var pendingCollectionId: Int?
+    var pendingCollectionApiUrl: String?
+    var pendingCollectionFrontendUrl: String?
+
     /// Handle a deep link result from DeepLinkHandler
     func handleDeepLinkResult(_ result: DeepLinkResult) {
         guard result.isValid else {
@@ -36,6 +41,13 @@ class DeepLinkViewModel {
         case .curtainSession:
             pendingCurtainSession = result
 
+        case .collection:
+            if let collectionId = result.collectionId {
+                pendingCollectionId = collectionId
+                pendingCollectionApiUrl = result.collectionApiUrl
+                pendingCollectionFrontendUrl = result.frontendUrl
+            }
+
         case .invalid:
             break
         }
@@ -51,5 +63,12 @@ class DeepLinkViewModel {
     /// Clear Curtain session state after processing
     func clearCurtainSessionState() {
         pendingCurtainSession = nil
+    }
+
+    /// Clear collection state after processing
+    func clearCollectionState() {
+        pendingCollectionId = nil
+        pendingCollectionApiUrl = nil
+        pendingCollectionFrontendUrl = nil
     }
 }

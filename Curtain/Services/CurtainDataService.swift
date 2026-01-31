@@ -37,6 +37,121 @@ class CurtainDataService {
     
     // MARK: - Main Parsing Method 
     
+    func restoreFromDatabase(dbPath: URL, settingsEntity: CurtainSettingsEntity, metadataURL: URL? = nil) async {
+        guard let settings = settingsEntity.getSettings(),
+              let rawForm = settingsEntity.getRawForm(),
+              let diffForm = settingsEntity.getDifferentialForm() else {
+            return
+        }
+
+        self.curtainSettings = settings
+
+        // Populate CurtainData
+        self.curtainData = AppData()
+        self.curtainData.rawForm = RawForm(
+            primaryIDs: rawForm.primaryIDs,
+            samples: rawForm.samples,
+            log2: rawForm.log2
+        )
+        self.curtainData.differentialForm = DifferentialForm(
+            primaryIDs: diffForm.primaryIDs,
+            geneNames: diffForm.geneNames,
+            foldChange: diffForm.foldChange,
+            transformFC: diffForm.transformFC,
+            significant: diffForm.significant,
+            transformSignificant: diffForm.transformSignificant,
+            comparison: diffForm.comparison,
+            comparisonSelect: diffForm.comparisonSelect,
+            reverseFoldChange: diffForm.reverseFoldChange
+        )
+
+        // First, try to load data from SQLite CurtainMetadata
+        // This has the BUILT settings (with sampleMap, conditionOrder, colorMap)
+        // which were computed by buildSettingsFromSamples during initial ingestion
+        let linkId = settingsEntity.linkId
+        if let sqliteData = ProteomicsDataService.shared.loadCurtainDataFromDatabase(linkId: linkId) {
+            print("[CurtainDataService] Loaded data from SQLite for linkId: \(linkId)")
+            print("[CurtainDataService]   selectedMap count: \(sqliteData.selectedMap?.count ?? 0)")
+            print("[CurtainDataService]   sampleMap count: \(sqliteData.settings.sampleMap.count)")
+            print("[CurtainDataService]   conditionOrder: \(sqliteData.settings.conditionOrder)")
+            curtainData.selectedMap = sqliteData.selectedMap ?? [:]
+            curtainData.selectOperationNames = sqliteData.selectionsName ?? []
+            curtainData.selected = sqliteData.selections ?? [:]
+
+            // Use SQLite settings which have built sampleMap/conditionOrder/colorMap
+            // These were computed by buildSettingsFromSamples during initial ingestion
+            if !sqliteData.settings.sampleMap.isEmpty {
+                self.curtainSettings = sqliteData.settings
+                print("[CurtainDataService] Using built settings from SQLite (sampleMap has \(sqliteData.settings.sampleMap.count) entries)")
+            }
+        }
+
+        // Load Metadata from sidecar JSON if available (for extraData like UniProt)
+        print("[CurtainDataService] metadataURL: \(metadataURL?.path ?? "nil")")
+        if let metadataURL = metadataURL,
+           let data = try? Data(contentsOf: metadataURL),
+           let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+
+            print("[CurtainDataService] Successfully loaded JSON from \(metadataURL.path)")
+            // Re-use logic from restoreSettings to parse extraData
+            if let extraDataObj = jsonObject["extraData"] as? [String: Any] {
+                print("[CurtainDataService] Found extraData in JSON")
+                if let uniprotObj = extraDataObj["uniprot"] as? [String: Any] {
+                    print("[CurtainDataService] Found uniprot data, db count: \((uniprotObj["db"] as? [String: Any])?.count ?? 0)")
+                }
+                // Process Uniprot data
+                if let uniprotObj = extraDataObj["uniprot"] as? [String: Any] {
+                    uniprotData.results = convertToMutableMap(uniprotObj["results"]) ?? [:]
+                    uniprotData.dataMap = convertToMutableMap(uniprotObj["dataMap"])
+                    uniprotData.accMap = convertToMutableAccMap(uniprotObj["accMap"])
+                    uniprotData.db = convertToMutableMap(uniprotObj["db"])
+                    uniprotData.organism = uniprotObj["organism"] as? String ?? ""
+                    uniprotData.geneNameToAcc = convertToMutableMap(uniprotObj["geneNameToAcc"])
+                }
+
+                if let dataObj = extraDataObj["data"] as? [String: Any] {
+                    // We might not need full dataMap if using SQLite, but keep for compatibility if needed
+                    curtainData.dataMap = convertToMutableMap(dataObj["dataMap"])
+                    curtainData.genesMap = processGenesMap(dataObj["genesMap"])
+                    curtainData.primaryIDsMap = processPrimaryIDsMap(dataObj["primaryIDsmap"])
+                    curtainData.allGenes = dataObj["allGenes"] as? [String] ?? []
+                }
+
+                performPostExtraDataProcessing()
+            }
+
+            // Fallback: Restore selections from JSON if not already loaded from SQLite
+            if curtainSettings.version == 2.0 && curtainData.selectedMap.isEmpty {
+                curtainData.selected = jsonObject["selections"] as? [String: [Any]] ?? [:]
+                curtainData.selectedMap = jsonObject["selectionsMap"] as? [String: [String: Bool]] ?? [:]
+                curtainData.selectOperationNames = jsonObject["selectionsName"] as? [String] ?? []
+            }
+
+            // Ensure denormalized mapping tables exist (for gene name resolution)
+            let geneNameToAccTyped = uniprotData.geneNameToAcc as? [String: [String: Any]]
+            let extraData = ExtraData(
+                uniprot: UniprotExtraData(
+                    results: uniprotData.results,
+                    dataMap: uniprotData.dataMap,
+                    db: uniprotData.db,
+                    organism: uniprotData.organism,
+                    accMap: uniprotData.accMap,
+                    geneNameToAcc: geneNameToAccTyped
+                ),
+                data: nil
+            )
+            let tempCurtainData = CurtainData(extraData: extraData)
+            ProteinMappingService.shared.ensureMappingsExist(linkId: linkId, curtainData: tempCurtainData)
+        } else {
+            // No metadata file - still try to ensure mappings from existing SQLite data
+            // This handles the case where geneNames are already in processed_proteomics_data
+            // but mapping tables haven't been built yet
+            print("[CurtainDataService] No metadata file, ensuring mappings from SQLite data only")
+            let tempCurtainData = CurtainData(extraData: nil)
+            ProteinMappingService.shared.ensureMappingsExist(linkId: linkId, curtainData: tempCurtainData)
+        }
+    }
+
     func restoreSettings(from jsonObject: Any) async throws {
         
         // Parse the main JSON object 
@@ -345,38 +460,36 @@ class CurtainDataService {
     
     
     private func convertToMutableMap(_ data: Any?) -> [String: Any]? {
+        guard let data = data else { return nil }
         
-        guard let dataMap = data as? [String: Any] else {
-            if let arrayData = data as? [[Any]] {
-                return convertArrayToMap(arrayData)
+        if let dataMap = data as? [String: Any] {
+            // Check for JavaScript Map serialization format: {value: [[key, value], ...]}
+            if let mapValue = dataMap["value"] as? [[Any]] {
+                return convertArrayToMap(mapValue)
             }
-            return data as? [String: Any]
+            return dataMap
         }
         
-        
-        // Check for JavaScript Map serialization format: {value: [[key, value], ...]}
-        if let mapValue = dataMap["value"] as? [[Any]] {
-            return convertArrayToMap(mapValue)
+        if let arrayData = data as? [[Any]] {
+            return convertArrayToMap(arrayData)
         }
         
-        // Return the dictionary as-is if it's not in the special format
-        return dataMap
+        return nil
     }
     
     private func convertArrayToMap(_ arrayData: [[Any]]) -> [String: Any] {
         var result: [String: Any] = [:]
-        for (index, pair) in arrayData.enumerated() {
+        for pair in arrayData {
             if pair.count >= 2,
                let key = pair[0] as? String {
-                result[key] = pair[1]
-                
-                // Debug first few pairs to understand data structure
-                if index < 3 {
-                    if let dict = pair[1] as? [String: Any] {
-                        // Show first few key-value pairs from the protein data
-                        for (_, _) in dict.prefix(3) {
-                        }
-                    }
+                let value = pair[1]
+                // Recursively convert if it looks like a Map serialization
+                if let dictValue = value as? [String: Any], dictValue["value"] != nil {
+                    result[key] = convertToMutableMap(dictValue) ?? value
+                } else if let innerArray = value as? [[Any]] {
+                    result[key] = convertArrayToMap(innerArray)
+                } else {
+                    result[key] = value
                 }
             }
         }
@@ -450,9 +563,9 @@ class CurtainDataService {
     private func manualDeserializeSettingsFromMap(_ map: [String: Any]) -> CurtainSettings {
         // Extract values into variables to help compiler type-checking
         let fetchUniprot = map["fetchUniprot"] as? Bool ?? true
-        let inputDataCols = map["inputDataCols"] as? [String: Any] ?? [:]
-        let probabilityFilterMap = map["probabilityFilterMap"] as? [String: Any] ?? [:]
-        let barchartColorMap = map["barchartColorMap"] as? [String: Any] ?? [:]
+        let inputDataCols = toAnyCodableMap(map["inputDataCols"] as? [String: Any])
+        let probabilityFilterMap = toAnyCodableMap(map["probabilityFilterMap"] as? [String: Any])
+        let barchartColorMap = toAnyCodableMap(map["barchartColorMap"] as? [String: Any])
         let pCutoff = map["pCutoff"] as? Double ?? 0.05
         let log2FCCutoff = map["log2FCCutoff"] as? Double ?? 0.6
         let description = map["description"] as? String ?? ""
@@ -471,14 +584,14 @@ class CurtainDataService {
         let sampleVisible = map["sampleVisible"] as? [String: Bool] ?? [:]
         let conditionOrder = map["conditionOrder"] as? [String] ?? []
         let volcanoAxis = parseVolcanoAxis(map["volcanoAxis"])
-        let textAnnotation = map["textAnnotation"] as? [String: Any] ?? [:]
+        let textAnnotation = toAnyCodableMap(map["textAnnotation"] as? [String: Any])
         let volcanoPlotTitle = map["volcanoPlotTitle"] as? String ?? ""
-        let visible = map["visible"] as? [String: Any] ?? [:]
+        let visible = toAnyCodableMap(map["visible"] as? [String: Any])
         let defaultColorList = map["defaultColorList"] as? [String] ?? CurtainSettings.defaultColors()
         let scatterPlotMarkerSize = map["scatterPlotMarkerSize"] as? Double ?? 10.0
-        let rankPlotColorMap = map["rankPlotColorMap"] as? [String: Any] ?? [:]
-        let rankPlotAnnotation = map["rankPlotAnnotation"] as? [String: Any] ?? [:]
-        let legendStatus = map["legendStatus"] as? [String: Any] ?? [:]
+        let rankPlotColorMap = toAnyCodableMap(map["rankPlotColorMap"] as? [String: Any])
+        let rankPlotAnnotation = toAnyCodableMap(map["rankPlotAnnotation"] as? [String: Any])
+        let legendStatus = toAnyCodableMap(map["legendStatus"] as? [String: Any])
         let stringDBColorMap = map["stringDBColorMap"] as? [String: String] ?? CurtainSettings.defaultStringDBColors()
         let interactomeAtlasColorMap = map["interactomeAtlasColorMap"] as? [String: String] ?? CurtainSettings.defaultInteractomeColors()
         let proteomicsDBColor = map["proteomicsDBColor"] as? String ?? "#ff7f0e"
@@ -486,15 +599,34 @@ class CurtainDataService {
         let plotFontFamily = map["plotFontFamily"] as? String ?? "Arial"
         let volcanoPlotGrid = parseVolcanoPlotGrid(map["volcanoPlotGrid"])
         let volcanoPlotDimension = parseVolcanoPlotDimension(map["volcanoPlotDimension"])
-        let volcanoAdditionalShapes = map["volcanoAdditionalShapes"] as? [Any] ?? []
+        let volcanoAdditionalShapes = toAnyCodableList(map["volcanoAdditionalShapes"] as? [Any])
         let volcanoPlotLegendX = map["volcanoPlotLegendX"] as? Double
         let volcanoPlotLegendY = map["volcanoPlotLegendY"] as? Double
         let sampleMap = map["sampleMap"] as? [String: [String: String]] ?? [:]
         let selectedComparison = map["selectedComparison"] as? [String]
-        let imputationMap = map["imputationMap"] as? [String: Any] ?? [:]
+        let imputationMap = toAnyCodableMap(map["imputationMap"] as? [String: Any])
         let enableImputation = map["enableImputation"] as? Bool ?? false
         let viewPeptideCount = map["viewPeptideCount"] as? Bool ?? false
-        let peptideCountData = map["peptideCountData"] as? [String: Any] ?? [:]
+        let peptideCountData = toAnyCodableMap(map["peptideCountData"] as? [String: Any])
+        
+        let volcanoConditionLabels = parseVolcanoConditionLabels(map["volcanoConditionLabels"])
+        let volcanoTraceOrder = map["volcanoTraceOrder"] as? [String] ?? []
+        let volcanoPlotYaxisPosition = map["volcanoPlotYaxisPosition"] as? [String] ?? ["middle"]
+        let customVolcanoTextCol = map["customVolcanoTextCol"] as? String ?? ""
+        let barChartConditionBracket = parseBarChartConditionBracket(map["barChartConditionBracket"])
+        let columnSize = map["columnSize"] as? [String: Int] ?? [:]
+        let chartYAxisLimits = parseChartYAxisLimits(map["chartYAxisLimits"])
+        let individualYAxisLimits = toAnyCodableMap(map["individualYAxisLimits"] as? [String: Any])
+        let violinPointPos = map["violinPointPos"] as? Double ?? -2.0
+        let networkInteractionData = toAnyCodableList(map["networkInteractionData"] as? [Any])
+        let enrichrGeneRankMap = toAnyCodableMap(map["enrichrGeneRankMap"] as? [String: Any])
+        let enrichrRunList = map["enrichrRunList"] as? [String] ?? []
+        let extraData = parseExtraDataItems(map["extraData"])
+        let enableMetabolomics = map["enableMetabolomics"] as? Bool ?? false
+        let metabolomicsColumnMap = parseMetabolomicsColumnMap(map["metabolomicsColumnMap"])
+        let encrypted = map["encrypted"] as? Bool ?? false
+        let dataAnalysisContact = map["dataAnalysisContact"] as? String ?? ""
+        let markerSizeMap = toAnyCodableMap(map["markerSizeMap"] as? [String: Any])
         
         return CurtainSettings(
             fetchUniprot: fetchUniprot,
@@ -542,8 +674,40 @@ class CurtainDataService {
             imputationMap: imputationMap,
             enableImputation: enableImputation,
             viewPeptideCount: viewPeptideCount,
-            peptideCountData: peptideCountData
+            peptideCountData: peptideCountData,
+            volcanoConditionLabels: volcanoConditionLabels,
+            volcanoTraceOrder: volcanoTraceOrder,
+            volcanoPlotYaxisPosition: volcanoPlotYaxisPosition,
+            customVolcanoTextCol: customVolcanoTextCol,
+            barChartConditionBracket: barChartConditionBracket,
+            columnSize: columnSize,
+            chartYAxisLimits: chartYAxisLimits,
+            individualYAxisLimits: individualYAxisLimits,
+            violinPointPos: violinPointPos,
+            networkInteractionData: networkInteractionData,
+            enrichrGeneRankMap: enrichrGeneRankMap,
+            enrichrRunList: enrichrRunList,
+            extraData: extraData,
+            enableMetabolomics: enableMetabolomics,
+            metabolomicsColumnMap: metabolomicsColumnMap,
+            encrypted: encrypted,
+            dataAnalysisContact: dataAnalysisContact,
+            markerSizeMap: markerSizeMap
         )
+    }
+    
+    private func toAnyCodableMap(_ map: [String: Any]?) -> [String: AnyCodable] {
+        guard let map = map else { return [:] }
+        var result: [String: AnyCodable] = [:]
+        for (key, value) in map {
+            result[key] = AnyCodable(value)
+        }
+        return result
+    }
+    
+    private func toAnyCodableList(_ list: [Any]?) -> [AnyCodable] {
+        guard let list = list else { return [] }
+        return list.map { AnyCodable($0) }
     }
     
     
@@ -562,7 +726,7 @@ class CurtainDataService {
             sampleProcessingProtocol: map["sampleProcessingProtocol"] as? String ?? "",
             dataProcessingProtocol: map["dataProcessingProtocol"] as? String ?? "",
             accession: map["accession"] as? String ?? "",
-            sampleAnnotations: map["sampleAnnotations"] as? [String: Any] ?? [:]
+            sampleAnnotations: toAnyCodableMap(map["sampleAnnotations"] as? [String: Any])
         )
     }
     
@@ -636,6 +800,84 @@ class CurtainDataService {
             top: map["t"] as? Int
         )
     }
+    
+    private func parseVolcanoConditionLabels(_ data: Any?) -> VolcanoConditionLabels {
+        guard let map = data as? [String: Any] else {
+            return VolcanoConditionLabels()
+        }
+        return VolcanoConditionLabels(
+            enabled: map["enabled"] as? Bool ?? false,
+            leftCondition: map["leftCondition"] as? String ?? "",
+            rightCondition: map["rightCondition"] as? String ?? "",
+            leftX: (map["leftX"] as? NSNumber)?.doubleValue ?? 0.25,
+            rightX: (map["rightX"] as? NSNumber)?.doubleValue ?? 0.75,
+            yPosition: (map["yPosition"] as? NSNumber)?.doubleValue ?? -0.1,
+            fontSize: map["fontSize"] as? Int ?? 14,
+            fontColor: map["fontColor"] as? String ?? "#000000"
+        )
+    }
+    
+    private func parseBarChartConditionBracket(_ data: Any?) -> BarChartConditionBracket {
+        guard let map = data as? [String: Any] else {
+            return BarChartConditionBracket()
+        }
+        return BarChartConditionBracket(
+            showBracket: map["showBracket"] as? Bool ?? false,
+            bracketHeight: (map["bracketHeight"] as? NSNumber)?.doubleValue ?? 0.05,
+            bracketColor: map["bracketColor"] as? String ?? "#000000",
+            bracketWidth: map["bracketWidth"] as? Int ?? 2
+        )
+    }
+    
+    private func parseChartYAxisLimits(_ data: Any?) -> [String: ChartYAxisLimits] {
+        guard let map = data as? [String: Any] else {
+            return [
+                "barChart": ChartYAxisLimits(),
+                "averageBarChart": ChartYAxisLimits(),
+                "violinPlot": ChartYAxisLimits()
+            ]
+        }
+        
+        var result: [String: ChartYAxisLimits] = [:]
+        for (key, value) in map {
+            if let limitsMap = value as? [String: Any] {
+                result[key] = ChartYAxisLimits(
+                    min: (limitsMap["min"] as? NSNumber)?.doubleValue,
+                    max: (limitsMap["max"] as? NSNumber)?.doubleValue
+                )
+            }
+        }
+        // Ensure defaults
+        if result["barChart"] == nil { result["barChart"] = ChartYAxisLimits() }
+        if result["averageBarChart"] == nil { result["averageBarChart"] = ChartYAxisLimits() }
+        if result["violinPlot"] == nil { result["violinPlot"] = ChartYAxisLimits() }
+        return result
+    }
+    
+    private func parseMetabolomicsColumnMap(_ data: Any?) -> MetabolomicsColumnMap {
+        guard let map = data as? [String: Any] else {
+            return MetabolomicsColumnMap()
+        }
+        return MetabolomicsColumnMap(
+            polarity: map["polarity"] as? String,
+            formula: map["formula"] as? String,
+            abbreviation: map["abbreviation"] as? String,
+            smiles: map["smiles"] as? String
+        )
+    }
+    
+    private func parseExtraDataItems(_ data: Any?) -> [ExtraDataItem] {
+        guard let array = data as? [[String: Any]] else {
+            return []
+        }
+        return array.map { item in
+            ExtraDataItem(
+                name: item["name"] as? String ?? "",
+                content: item["content"] as? String ?? "",
+                type: item["type"] as? String ?? ""
+            )
+        }
+    }
 }
 
 
@@ -661,6 +903,7 @@ class AppData {
     var selectOperationNames: [String] = []
     var raw: InputFile?
     var differential: InputFile?
+    var dbPath: URL?
 }
 
 struct RawForm {

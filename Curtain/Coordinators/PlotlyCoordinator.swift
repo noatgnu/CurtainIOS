@@ -273,10 +273,32 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
         let plotY = pointData["y"] as? Double ?? -log10(pValue)
 
         let volcanoDataService = VolcanoPlotDataService()
-        let volcanoResult = await volcanoDataService.processVolcanoData(
-            curtainData: convertToAppData(parent.curtainData),
-            settings: parent.curtainData.settings
-        )
+        let proteomicsDataDatabaseManager = ProteomicsDataDatabaseManager.shared
+
+        let volcanoResult: VolcanoProcessResult
+        let linkId = parent.curtainData.linkId
+
+        // Try SQLite first if data exists
+        if !linkId.isEmpty && proteomicsDataDatabaseManager.checkDataExists(linkId) {
+            do {
+                volcanoResult = try volcanoDataService.processVolcanoData(
+                    linkId: linkId,
+                    settings: parent.curtainData.settings,
+                    differentialForm: parent.curtainData.differentialForm
+                )
+            } catch {
+                print("[PlotlyCoordinator] SQLite query failed, falling back to in-memory: \(error)")
+                volcanoResult = await volcanoDataService.processVolcanoData(
+                    curtainData: convertToAppData(parent.curtainData),
+                    settings: parent.curtainData.settings
+                )
+            }
+        } else {
+            volcanoResult = await volcanoDataService.processVolcanoData(
+                curtainData: convertToAppData(parent.curtainData),
+                settings: parent.curtainData.settings
+            )
+        }
 
         var proteinCount = 0
         let allProteins = volcanoResult.jsonData.compactMap { dataPoint -> ProteinPoint? in

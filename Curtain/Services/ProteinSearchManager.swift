@@ -26,16 +26,17 @@ class ProteinSearchManager: ObservableObject {
     private let defaultColors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F", "#AED6F1", "#F8C471"]
     
     // MARK: - Core Search List Management
-    
+
     func createSearchList(
         name: String,
         searchText: String,
         searchType: SearchType,
         curtainData: inout CurtainData,
         color: String? = nil,
-        description: String? = nil
+        description: String? = nil,
+        useRegex: Bool = false
     ) async -> SearchList? {
-        
+
         await MainActor.run {
             isLoading = true
             errorMessage = nil
@@ -43,16 +44,34 @@ class ProteinSearchManager: ObservableObject {
             proteinsFound = 0
         }
 
-        // Perform batch search 
+        // Perform batch search
         await MainActor.run {
             searchProgress = "Searching for proteins..."
         }
 
-        let searchResults = await searchService.performBatchSearch(
-            inputText: searchText,
-            searchType: searchType,
-            curtainData: curtainData
-        )
+        // Use SQLite-based search if linkId is available
+        let linkId = curtainData.linkId
+        let searchResults: [SearchResult]
+
+        if !linkId.isEmpty && ProteomicsDataDatabaseManager.shared.checkDataExists(linkId) {
+            print("[ProteinSearchManager] Using SQLite search for linkId: \(linkId)")
+            searchResults = await searchService.performBatchSearch(
+                inputText: searchText,
+                searchType: searchType,
+                linkId: linkId,
+                idColumn: curtainData.differentialForm.primaryIDs,
+                geneColumn: curtainData.differentialForm.geneNames,
+                useRegex: useRegex
+            )
+        } else {
+            // Fallback to in-memory search
+            searchResults = await searchService.performBatchSearch(
+                inputText: searchText,
+                searchType: searchType,
+                curtainData: curtainData,
+                useRegex: useRegex
+            )
+        }
 
         // Collect all matched protein IDs with progress updates
         var allMatchedProteins: Set<String> = []
@@ -411,9 +430,23 @@ class ProteinSearchManager: ObservableObject {
         searchType: SearchType,
         curtainData: CurtainData
     ) async -> [TypeaheadSuggestion] {
-        
+
         guard query.count >= 2 else { return [] }
-        
+
+        // Use SQLite-based search if linkId is available
+        let linkId = curtainData.linkId
+        if !linkId.isEmpty && ProteomicsDataDatabaseManager.shared.checkDataExists(linkId) {
+            return await searchService.performTypeaheadSearch(
+                query: query,
+                searchType: searchType,
+                linkId: linkId,
+                idColumn: curtainData.differentialForm.primaryIDs,
+                geneColumn: curtainData.differentialForm.geneNames,
+                limit: 10
+            )
+        }
+
+        // Fallback to in-memory search
         return await searchService.performTypeaheadSearch(
             query: query,
             searchType: searchType,

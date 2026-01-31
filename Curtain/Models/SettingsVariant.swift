@@ -56,9 +56,9 @@ struct SettingsVariant: Codable, Identifiable {
         // Complete reconstruction of CurtainSettings with all properties including textAnnotation
         return CurtainSettings(
             fetchUniprot: map["fetchUniprot"] as? Bool ?? true,
-            inputDataCols: map["inputDataCols"] as? [String: Any] ?? [:],
-            probabilityFilterMap: map["probabilityFilterMap"] as? [String: Any] ?? [:],
-            barchartColorMap: map["barchartColorMap"] as? [String: Any] ?? [:],
+            inputDataCols: CurtainSettings.toAnyCodableMap(map["inputDataCols"] as? [String: Any]),
+            probabilityFilterMap: CurtainSettings.toAnyCodableMap(map["probabilityFilterMap"] as? [String: Any]),
+            barchartColorMap: CurtainSettings.toAnyCodableMap(map["barchartColorMap"] as? [String: Any]),
             pCutoff: map["pCutoff"] as? Double ?? 0.05,
             log2FCCutoff: map["log2FCCutoff"] as? Double ?? 0.6,
             description: map["description"] as? String ?? "",
@@ -78,12 +78,12 @@ struct SettingsVariant: Codable, Identifiable {
             conditionOrder: map["conditionOrder"] as? [String] ?? [],
             sampleMap: map["sampleMap"] as? [String: [String: String]] ?? [:],
             volcanoAxis: parseVolcanoAxis(map["volcanoAxis"]),
-            textAnnotation: map["textAnnotation"] as? [String: Any] ?? [:], 
+            textAnnotation: CurtainSettings.toAnyCodableMap(map["textAnnotation"] as? [String: Any]), 
             volcanoPlotTitle: map["volcanoPlotTitle"] as? String ?? "",
-            visible: map["visible"] as? [String: Any] ?? [:],
+            visible: CurtainSettings.toAnyCodableMap(map["visible"] as? [String: Any]),
             volcanoPlotGrid: parseVolcanoPlotGrid(map["volcanoPlotGrid"]),
             volcanoPlotDimension: parseVolcanoPlotDimension(map["volcanoPlotDimension"]),
-            volcanoAdditionalShapes: map["volcanoAdditionalShapes"] as? [Any] ?? [],
+            volcanoAdditionalShapes: CurtainSettings.toAnyCodableList(map["volcanoAdditionalShapes"] as? [Any]),
             volcanoPlotLegendX: map["volcanoPlotLegendX"] as? Double,
             volcanoPlotLegendY: map["volcanoPlotLegendY"] as? Double,
             defaultColorList: map["defaultColorList"] as? [String] ?? CurtainSettings.defaultColors(),
@@ -93,14 +93,32 @@ struct SettingsVariant: Codable, Identifiable {
             interactomeAtlasColorMap: map["interactomeAtlasColorMap"] as? [String: String] ?? CurtainSettings.defaultInteractomeColors(),
             proteomicsDBColor: map["proteomicsDBColor"] as? String ?? "#ff7f0e",
             networkInteractionSettings: map["networkInteractionSettings"] as? [String: String] ?? CurtainSettings.defaultNetworkInteractionSettings(),
-            rankPlotColorMap: map["rankPlotColorMap"] as? [String: Any] ?? [:],
-            rankPlotAnnotation: map["rankPlotAnnotation"] as? [String: Any] ?? [:],
-            legendStatus: map["legendStatus"] as? [String: Any] ?? [:],
+            rankPlotColorMap: CurtainSettings.toAnyCodableMap(map["rankPlotColorMap"] as? [String: Any]),
+            rankPlotAnnotation: CurtainSettings.toAnyCodableMap(map["rankPlotAnnotation"] as? [String: Any]),
+            legendStatus: CurtainSettings.toAnyCodableMap(map["legendStatus"] as? [String: Any]),
             selectedComparison: map["selectedComparison"] as? [String],
-            imputationMap: map["imputationMap"] as? [String: Any] ?? [:],
+            imputationMap: CurtainSettings.toAnyCodableMap(map["imputationMap"] as? [String: Any]),
             enableImputation: map["enableImputation"] as? Bool ?? false,
             viewPeptideCount: map["viewPeptideCount"] as? Bool ?? false,
-            peptideCountData: map["peptideCountData"] as? [String: Any] ?? [:]
+            peptideCountData: CurtainSettings.toAnyCodableMap(map["peptideCountData"] as? [String: Any]),
+            volcanoConditionLabels: VolcanoConditionLabels.fromDictionary(map["volcanoConditionLabels"] as? [String: Any]),
+            volcanoTraceOrder: map["volcanoTraceOrder"] as? [String] ?? [],
+            volcanoPlotYaxisPosition: map["volcanoPlotYaxisPosition"] as? [String] ?? ["middle"],
+            customVolcanoTextCol: map["customVolcanoTextCol"] as? String ?? "",
+            barChartConditionBracket: BarChartConditionBracket.fromDictionary(map["barChartConditionBracket"] as? [String: Any]),
+            columnSize: map["columnSize"] as? [String: Int] ?? [:],
+            chartYAxisLimits: ChartYAxisLimits.fromChartDictionary(map["chartYAxisLimits"] as? [String: Any]),
+            individualYAxisLimits: CurtainSettings.toAnyCodableMap(map["individualYAxisLimits"] as? [String: Any]),
+            violinPointPos: map["violinPointPos"] as? Double ?? -2.0,
+            networkInteractionData: CurtainSettings.toAnyCodableList(map["networkInteractionData"] as? [Any]),
+            enrichrGeneRankMap: CurtainSettings.toAnyCodableMap(map["enrichrGeneRankMap"] as? [String: Any]),
+            enrichrRunList: map["enrichrRunList"] as? [String] ?? [],
+            extraData: ExtraDataItem.fromDictionaryArray(map["extraData"] as? [[String: Any]]),
+            enableMetabolomics: map["enableMetabolomics"] as? Bool ?? false,
+            metabolomicsColumnMap: MetabolomicsColumnMap.fromDictionary(map["metabolomicsColumnMap"] as? [String: Any]),
+            encrypted: map["encrypted"] as? Bool ?? false,
+            dataAnalysisContact: map["dataAnalysisContact"] as? String ?? "",
+            markerSizeMap: CurtainSettings.toAnyCodableMap(map["markerSizeMap"] as? [String: Any])
         )
     }
     
@@ -120,7 +138,7 @@ struct SettingsVariant: Codable, Identifiable {
             sampleProcessingProtocol: map["sampleProcessingProtocol"] as? String ?? "",
             dataProcessingProtocol: map["dataProcessingProtocol"] as? String ?? "",
             accession: map["accession"] as? String ?? "",
-            sampleAnnotations: map["sampleAnnotations"] as? [String: Any] ?? [:]
+            sampleAnnotations: CurtainSettings.toAnyCodableMap(map["sampleAnnotations"] as? [String: Any])
         )
     }
     

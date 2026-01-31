@@ -370,6 +370,25 @@ struct PlotGenerationContext {
     let searchFilter: String?
     let editMode: Bool
     let isDarkMode: Bool  // Add dark mode detection
+    let linkId: String?  // Link ID for SQLite database queries
+
+    init(
+        data: CurtainData,
+        settings: CurtainSettings,
+        selections: [SelectionOperation],
+        searchFilter: String?,
+        editMode: Bool,
+        isDarkMode: Bool,
+        linkId: String? = nil
+    ) {
+        self.data = data
+        self.settings = settings
+        self.selections = selections
+        self.searchFilter = searchFilter
+        self.editMode = editMode
+        self.isDarkMode = isDarkMode
+        self.linkId = linkId ?? data.linkId
+    }
 
     var filteredProteins: [ProteinPoint] {
         var proteins = convertToProteinPoints()

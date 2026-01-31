@@ -15,48 +15,60 @@ struct SiteSettingsView: View {
     @State private var showingAddSiteSheet = false
     @State private var showingEditSheet = false
     @State private var selectedSite: CurtainSiteSettings?
-    
+
+    private var isWideLayout: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad || UIDevice.current.userInterfaceIdiom == .mac
+    }
+
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                // Header Info
-                if !siteSettings.isEmpty {
-                    HeaderInfoView(totalSites: siteSettings.count, activeSites: activeSitesCount)
-                        .padding()
-                        .background(Color(.systemGray6))
-                }
-                
-                // Sites List
-                if siteSettings.isEmpty {
-                    SitesEmptyStateView()
-                } else {
-                    SitesList(
-                        sites: siteSettings,
-                        onToggleActive: toggleSiteActive,
-                        onEdit: { site in
-                            selectedSite = site
-                            showingEditSheet = true
-                        },
-                        onDelete: deleteSite
-                    )
+        if isWideLayout {
+            mainBody
+        } else {
+            NavigationStack {
+                mainBody
+            }
+        }
+    }
+
+    private var mainBody: some View {
+        VStack(spacing: 0) {
+            // Header Info
+            if !siteSettings.isEmpty {
+                HeaderInfoView(totalSites: siteSettings.count, activeSites: activeSitesCount)
+                    .padding()
+                    .background(Color(.systemGray6))
+            }
+
+            // Sites List
+            if siteSettings.isEmpty {
+                SitesEmptyStateView()
+            } else {
+                SitesList(
+                    sites: siteSettings,
+                    onToggleActive: toggleSiteActive,
+                    onEdit: { site in
+                        selectedSite = site
+                        showingEditSheet = true
+                    },
+                    onDelete: deleteSite
+                )
+            }
+        }
+        .navigationTitle("API Sites")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button("Add Site") {
+                    showingAddSiteSheet = true
                 }
             }
-            .navigationTitle("API Sites")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add Site") {
-                        showingAddSiteSheet = true
-                    }
-                }
-            }
-            .sheet(isPresented: $showingAddSiteSheet) {
-                AddSiteSheet(modelContext: modelContext)
-            }
-            .sheet(isPresented: $showingEditSheet) {
-                if let site = selectedSite {
-                    EditSiteSheet(site: site, modelContext: modelContext)
-                }
+        }
+        .sheet(isPresented: $showingAddSiteSheet) {
+            AddSiteSheet(modelContext: modelContext)
+        }
+        .sheet(isPresented: $showingEditSheet) {
+            if let site = selectedSite {
+                EditSiteSheet(site: site, modelContext: modelContext)
             }
         }
     }

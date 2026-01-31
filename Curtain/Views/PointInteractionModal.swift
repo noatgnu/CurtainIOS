@@ -857,7 +857,7 @@ struct PointInteractionModal: View {
         
         // Update textAnnotation in CurtainData directly 
         var updatedTextAnnotation = curtainData.settings.textAnnotation
-        updatedTextAnnotation[title] = annotationData
+        updatedTextAnnotation[title] = AnyCodable(annotationData)
         
         // Create updated settings with new textAnnotation
         let updatedSettings = CurtainSettings(
@@ -906,7 +906,25 @@ struct PointInteractionModal: View {
             imputationMap: curtainData.settings.imputationMap,
             enableImputation: curtainData.settings.enableImputation,
             viewPeptideCount: curtainData.settings.viewPeptideCount,
-            peptideCountData: curtainData.settings.peptideCountData
+            peptideCountData: curtainData.settings.peptideCountData,
+            volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
+            volcanoTraceOrder: curtainData.settings.volcanoTraceOrder,
+            volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
+            barChartConditionBracket: curtainData.settings.barChartConditionBracket,
+            columnSize: curtainData.settings.columnSize,
+            chartYAxisLimits: curtainData.settings.chartYAxisLimits,
+            individualYAxisLimits: curtainData.settings.individualYAxisLimits,
+            violinPointPos: curtainData.settings.violinPointPos,
+            networkInteractionData: curtainData.settings.networkInteractionData,
+            enrichrGeneRankMap: curtainData.settings.enrichrGeneRankMap,
+            enrichrRunList: curtainData.settings.enrichrRunList,
+            extraData: curtainData.settings.extraData,
+            enableMetabolomics: curtainData.settings.enableMetabolomics,
+            metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
+            encrypted: curtainData.settings.encrypted,
+            dataAnalysisContact: curtainData.settings.dataAnalysisContact,
+            markerSizeMap: curtainData.settings.markerSizeMap
         )
         
         // Create new CurtainData with updated settings

@@ -15,6 +15,7 @@ import Foundation
 
 struct CurtainDetailsView: View {
     let curtain: CurtainEntity
+    @Environment(\.modelContext) private var modelContext
     @State private var dataService = CurtainDataService()
     @State private var curtainData: CurtainData?
     @State private var isLoading = true
@@ -22,11 +23,15 @@ struct CurtainDetailsView: View {
     @State private var selectedTab = 0
     @State private var annotationEditMode = false // Shared annotation edit mode state
     
+    private var isWideLayout: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad || UIDevice.current.userInterfaceIdiom == .mac
+    }
+
     var body: some View {
         VStack(spacing: 0) {
                 // Header Information
                 CurtainHeaderView(curtain: curtain)
-                
+
                 if isLoading {
                     LoadingDataView()
                 } else if let error = error {
@@ -34,43 +39,77 @@ struct CurtainDetailsView: View {
                         loadCurtainData()
                     }
                 } else if let data = curtainData {
-                    // Main Content with Tabs
-                    TabView(selection: $selectedTab) {
-                        DataOverviewTab(data: data)
-                            .tabItem {
-                                Image(systemName: "info.circle")
-                                Text("Overview")
-                            }
-                            .tag(0)
-                        
-                        VolcanoPlotTab(data: $curtainData, annotationEditMode: $annotationEditMode)
-                            .tabItem {
-                                Image(systemName: "chart.xyaxis.line")
-                                Text("Volcano Plot")
-                            }
-                            .tag(1)
-                        
-                        ProteinDetailsTab(data: $curtainData)
-                            .tabItem {
-                                Image(systemName: "list.bullet.rectangle")
-                                Text("Protein Details")
-                            }
-                            .tag(2)
-                        
-                        SettingsTab(data: Binding(
-                            get: { data },
-                            set: { newValue in
-                                // Use DispatchQueue to break potential SwiftUI update cycles
-                                DispatchQueue.main.async {
-                                    curtainData = newValue
+                    if isWideLayout {
+                        // iPad: use TabView with tab bar
+                        TabView(selection: $selectedTab) {
+                            DataOverviewTab(data: data)
+                                .tabItem {
+                                    Image(systemName: "info.circle")
+                                    Text("Overview")
                                 }
+                                .tag(0)
+
+                            VolcanoPlotTab(data: $curtainData, annotationEditMode: $annotationEditMode)
+                                .tabItem {
+                                    Image(systemName: "chart.xyaxis.line")
+                                    Text("Volcano Plot")
+                                }
+                                .tag(1)
+
+                            ProteinDetailsTab(data: $curtainData)
+                                .tabItem {
+                                    Image(systemName: "list.bullet.rectangle")
+                                    Text("Protein Details")
+                                }
+                                .tag(2)
+
+                            SettingsTab(data: Binding(
+                                get: { data },
+                                set: { newValue in
+                                    DispatchQueue.main.async {
+                                        curtainData = newValue
+                                    }
+                                }
+                            ))
+                                .tabItem {
+                                    Image(systemName: "gearshape")
+                                    Text("Settings")
+                                }
+                                .tag(3)
+                        }
+                    } else {
+                        // iPhone: use segmented picker to avoid double tab bar
+                        Picker("Section", selection: $selectedTab) {
+                            Image(systemName: "info.circle").tag(0)
+                            Image(systemName: "chart.xyaxis.line").tag(1)
+                            Image(systemName: "list.bullet.rectangle").tag(2)
+                            Image(systemName: "gearshape").tag(3)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+
+                        Group {
+                            switch selectedTab {
+                            case 0:
+                                DataOverviewTab(data: data)
+                            case 1:
+                                VolcanoPlotTab(data: $curtainData, annotationEditMode: $annotationEditMode)
+                            case 2:
+                                ProteinDetailsTab(data: $curtainData)
+                            case 3:
+                                SettingsTab(data: Binding(
+                                    get: { data },
+                                    set: { newValue in
+                                        DispatchQueue.main.async {
+                                            curtainData = newValue
+                                        }
+                                    }
+                                ))
+                            default:
+                                EmptyView()
                             }
-                        ))
-                            .tabItem {
-                                Image(systemName: "gearshape")
-                                Text("Settings")
-                            }
-                            .tag(3)
+                        }
                     }
                 } else {
                     NoDataView()
@@ -86,64 +125,119 @@ struct CurtainDetailsView: View {
     }
     
     private func loadCurtainData() {
-        
+
         isLoading = true
         error = nil
-        
+
         Task {
             do {
-                // Always construct the current path based on current Documents directory
-                // Don't rely on curtain.file as it might be stale
+                // Determine file path and type
+                // 1. Check for SQLite file in CurtainData
                 let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 let curtainDataDir = documentsURL.appendingPathComponent("CurtainData", isDirectory: true)
-                let currentFilePath = curtainDataDir.appendingPathComponent("\(curtain.linkId).json").path
-                
-                
-                // Check if file actually exists at current path
-                guard FileManager.default.fileExists(atPath: currentFilePath) else {
+                let dbFilePath = curtainDataDir.appendingPathComponent("proteomics_data_\(curtain.linkId).sqlite").path
+                let jsonFilePath = curtainDataDir.appendingPathComponent("\(curtain.linkId).json").path
+
+                print("[CurtainDetailsView] Loading data for linkId: \(curtain.linkId)")
+                print("[CurtainDetailsView] Checking SQLite path: \(dbFilePath)")
+                print("[CurtainDetailsView] SQLite exists: \(FileManager.default.fileExists(atPath: dbFilePath))")
+                print("[CurtainDetailsView] Checking JSON path: \(jsonFilePath)")
+                print("[CurtainDetailsView] JSON exists: \(FileManager.default.fileExists(atPath: jsonFilePath))")
+                print("[CurtainDetailsView] curtain.file: \(curtain.file ?? "nil")")
+
+                if FileManager.default.fileExists(atPath: dbFilePath) {
+                    // Hybrid Mode: Load from SQLite + SwiftData
+                    print("[CurtainDetailsView] SQLite file found, attempting hybrid load")
+                    let dbURL = URL(fileURLWithPath: dbFilePath)
+                    // Use the main JSON file for metadata (contains UniProt data)
+                    let jsonFileURL = curtainDataDir.appendingPathComponent("\(curtain.linkId).json")
+                    let metadataURL = FileManager.default.fileExists(atPath: jsonFileURL.path) ? jsonFileURL : nil
+                    print("[CurtainDetailsView] Using metadataURL: \(metadataURL?.path ?? "nil")")
+
+                    // Fetch settings from SwiftData
+                    let linkId = curtain.linkId
+
+                    // First, ensure settings entity exists (migrate from SQLite or rebuild from JSON if needed)
+                    // IMPORTANT: Use the SAME modelContext for both ensure and fetch
+                    let repository = CurtainRepository(modelContext: modelContext)
+                    let settingsResult = await repository.ensureSettingsEntityExists(linkId: linkId)
+
+                    // Handle the result
+                    switch settingsResult {
+                    case .exists, .migrated, .rebuilt:
+                        // Data is ready, continue to load
+                        print("[CurtainDetailsView] Settings ready (result: \(settingsResult))")
+                    case .needsRedownload, .noData:
+                        // No data available, user needs to re-download
+                        print("[CurtainDetailsView] No data available, needs re-download")
+                        await MainActor.run {
+                            self.error = "Data not found. Please re-download the dataset."
+                            self.isLoading = false
+                        }
+                        return
+                    }
+
+                    // Fetch settings from SwiftData using the SAME repository instance
+                    // This ensures we see the data that was just saved
+                    await MainActor.run {
+                        if let settingsEntity = repository.getCurtainSettings(linkId: linkId) {
+                            print("[CurtainDetailsView] Found CurtainSettingsEntity for linkId: \(linkId)")
+                            print("[CurtainDetailsView] Passing metadataURL to restoreFromDatabase: \(metadataURL?.path ?? "nil")")
+                            Task {
+                                await dataService.restoreFromDatabase(dbPath: dbURL, settingsEntity: settingsEntity, metadataURL: metadataURL)
+
+                                await MainActor.run {
+                                    self.curtainData = convertToCurtainData(from: dataService, dbPath: dbURL, linkId: curtain.linkId)
+                                    print("[CurtainDetailsView] Data loaded successfully")
+                                    self.isLoading = false
+                                }
+                            }
+                        } else {
+                            print("[CurtainDetailsView] ERROR: No CurtainSettingsEntity found after migration for linkId: \(linkId)")
+                            self.error = "Failed to load metadata after migration. Please re-download."
+                            self.isLoading = false
+                        }
+                    }
+                    
+                } else if FileManager.default.fileExists(atPath: jsonFilePath) {
+                    // Legacy Mode: Load from JSON
+                    let fileURL = URL(fileURLWithPath: jsonFilePath)
+                    let jsonData = try Data(contentsOf: fileURL)
+                    let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: [])
+                    
+                    try await dataService.restoreSettings(from: jsonObject)
+                    
+                    await MainActor.run {
+                        self.curtainData = convertToCurtainData(from: dataService, linkId: curtain.linkId)
+                        self.isLoading = false
+                    }
+                } else {
                     await MainActor.run {
                         self.error = "Data file not found. Please re-download the dataset."
                         self.isLoading = false
                     }
-                    return
-                }
-                
-                let filePath = currentFilePath
-                
-                
-                // Load data from file using CurtainDataService
-                let fileURL = URL(fileURLWithPath: filePath)
-                let jsonData = try Data(contentsOf: fileURL)
-                
-                
-                let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: [])
-                
-                
-                // Parse using CurtainDataService
-                try await dataService.restoreSettings(from: jsonObject)
-                
-                
-                // Convert to CurtainData model
-                await MainActor.run {
-                    self.curtainData = convertToCurtainData(from: dataService)
                 }
             } catch {
                 await MainActor.run {
                     self.error = "Failed to load data: \(error.localizedDescription)"
+                    self.isLoading = false
                 }
-            }
-            
-            await MainActor.run {
-                self.isLoading = false
             }
         }
     }
     
-    private func convertToCurtainData(from service: CurtainDataService) -> CurtainData {
+    private func convertToCurtainData(from service: CurtainDataService, dbPath: URL? = nil, linkId: String? = nil) -> CurtainData {
         
         let transformedSelectedMap = transformSelectionsMapToSelectedMap(service.curtainData.selectedMap.isEmpty ? nil : service.curtainData.selectedMap)
-        
-        return CurtainData(
+
+        print("[convertToCurtainData] service.curtainData.selectedMap count: \(service.curtainData.selectedMap.count)")
+        print("[convertToCurtainData] transformedSelectedMap count: \(transformedSelectedMap?.count ?? 0)")
+        print("[convertToCurtainData] selectOperationNames: \(service.curtainData.selectOperationNames)")
+        if let first = transformedSelectedMap?.first {
+            print("[convertToCurtainData] First entry: \(first.key) -> \(first.value)")
+        }
+
+        var appData = CurtainData(
             raw: service.curtainData.raw?.originalFile,
             rawForm: CurtainRawForm(
                 primaryIDs: service.curtainData.rawForm?.primaryIDs ?? "",
@@ -164,6 +258,7 @@ struct CurtainDetailsView: View {
             processed: service.curtainData.differential?.originalFile,
             selectionsMap: service.curtainData.dataMap,
             selectedMap: transformedSelectedMap,
+            selectionsName: service.curtainData.selectOperationNames.isEmpty ? nil : service.curtainData.selectOperationNames,
             settings: service.curtainSettings,
             fetchUniprot: service.curtainSettings.fetchUniprot,
             extraData: ExtraData(
@@ -173,16 +268,27 @@ struct CurtainDetailsView: View {
                     db: service.uniprotData.db,
                     organism: service.uniprotData.organism,
                     accMap: service.uniprotData.accMap,
-                    geneNameToAcc: service.uniprotData.geneNameToAcc
+                    geneNameToAcc: service.uniprotData.geneNameToAcc as? [String: [String: Any]]
                 ),
                 data: DataMapContainer(
                     dataMap: service.curtainData.dataMap,
-                    genesMap: service.curtainData.genesMap,
-                    primaryIDsMap: service.curtainData.primaryIDsMap,
+                    genesMap: service.curtainData.genesMap as? [String: [String: Any]],
+                    primaryIDsMap: service.curtainData.primaryIDsMap as? [String: [String: Any]],
                     allGenes: service.curtainData.allGenes
                 )
-            )
+            ),
+            permanent: false, // Default to false if not available in service
+            bypassUniProt: service.bypassUniProt,
+            dbPath: dbPath,
+            linkId: linkId
         )
+        
+        // Ensure uniprotDB is populated for correct gene name resolution
+        if let db = service.uniprotData.db {
+            appData.uniprotDB = db
+        }
+        
+        return appData
     }
     
     
@@ -730,22 +836,12 @@ struct ProteinDetailsTab: View {
     }
     
     private func calculateDisplayName(for proteinId: String, curtainData: CurtainData) -> String {
-        // Use UniProt data directly from curtainData (proper approach)
-        if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
-           let uniprotRecord = uniprotDB[proteinId] as? [String: Any],
-           let geneNames = uniprotRecord["Gene Names"] as? String,
-           !geneNames.isEmpty {
-            // Parse the first gene name from Gene Names string (can be space or semicolon separated)
-            let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
-                .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .first
-            
-            if let geneName = firstGeneName, geneName != proteinId {
-                return "\(geneName) (\(proteinId))"
-            }
+        // Use unified gene name resolution (SQLite first, then extraData fallback)
+        if let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId),
+           geneName != proteinId {
+            return "\(geneName) (\(proteinId))"
         }
-        
+
         return proteinId
     }
     
@@ -1792,44 +1888,51 @@ struct ProteinDetailRowView: View {
         guard let curtainData = curtainData else {
             return proteinId
         }
-        
-        // Use UniProt data directly from curtainData (proper approach)
-        if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
-           let uniprotRecord = uniprotDB[proteinId] as? [String: Any],
-           let geneNames = uniprotRecord["Gene Names"] as? String,
-           !geneNames.isEmpty {
-            // Parse the first gene name from Gene Names string (can be space or semicolon separated)
-            let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
-                .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .first
-            
-            if let geneName = firstGeneName, geneName != proteinId {
-                return "\(geneName) (\(proteinId))"
-            }
+
+        // Use unified gene name resolution (SQLite first, then extraData fallback)
+        if let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId),
+           geneName != proteinId {
+            return "\(geneName) (\(proteinId))"
         }
-        
+
         return proteinId
     }
     
     private var selectionGroups: [String] {
-        guard let curtainData = curtainData,
-              let selectedMap = curtainData.selectedMap,
-              let proteinSelections = selectedMap[proteinId] else {
+        guard let curtainData = curtainData else {
+            print("[ProteinDetailRowView] selectionGroups: curtainData is nil for \(proteinId)")
             return []
         }
-        
+        guard let selectedMap = curtainData.selectedMap else {
+            print("[ProteinDetailRowView] selectionGroups: selectedMap is nil for \(proteinId)")
+            return []
+        }
+        guard let proteinSelections = selectedMap[proteinId] else {
+            print("[ProteinDetailRowView] selectionGroups: no entry in selectedMap for '\(proteinId)', selectedMap keys count: \(selectedMap.count)")
+            if selectedMap.count <= 5 {
+                print("[ProteinDetailRowView] selectedMap keys: \(Array(selectedMap.keys))")
+            } else {
+                print("[ProteinDetailRowView] first 3 selectedMap keys: \(Array(selectedMap.keys.prefix(3)))")
+            }
+            return []
+        }
+
         // Get only the selection groups where this protein is selected
-        return proteinSelections.compactMap { (selectionName, isSelected) in
+        let groups = proteinSelections.compactMap { (selectionName, isSelected) in
             return isSelected ? selectionName : nil
         }
+        if !groups.isEmpty {
+            print("[ProteinDetailRowView] selectionGroups for \(proteinId): \(groups)")
+        }
+        return groups
     }
     
     private var selectionColors: [String] {
         guard let curtainData = curtainData else { return [] }
-        
-        return selectionGroups.compactMap { selectionName in
-            return curtainData.settings.colorMap[selectionName]
+
+        let defaultColors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F"]
+        return selectionGroups.enumerated().map { (index, selectionName) in
+            return curtainData.settings.colorMap[selectionName] ?? defaultColors[index % defaultColors.count]
         }
     }
     
@@ -1860,22 +1963,13 @@ struct ProteinDetailRowView: View {
     
     private func generateAnnotationTitle(for proteinId: String) -> String {
         guard let curtainData = curtainData else { return proteinId }
-        
-        // Use UniProt data to get gene names (same logic as displayName)
-        if let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any],
-           let uniprotRecord = uniprotDB[proteinId] as? [String: Any],
-           let geneNames = uniprotRecord["Gene Names"] as? String,
-           !geneNames.isEmpty {
-            let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
-                .map { $0.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .first
-            
-            if let geneName = firstGeneName, geneName != proteinId {
-                return "\(geneName)(\(proteinId))"  
-            }
+
+        // Use unified gene name resolution (SQLite first, then extraData fallback)
+        if let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId),
+           geneName != proteinId {
+            return "\(geneName)(\(proteinId))"
         }
-        
+
         return proteinId
     }
     
@@ -1940,7 +2034,7 @@ struct ProteinDetailRowView: View {
         
         // Update textAnnotation
         var updatedTextAnnotation = curtainData.settings.textAnnotation
-        updatedTextAnnotation[title] = annotationData
+        updatedTextAnnotation[title] = AnyCodable(annotationData)
         
         // Update CurtainData with new annotation
         updateCurtainDataWithNewAnnotations(updatedTextAnnotation)
@@ -1968,7 +2062,7 @@ struct ProteinDetailRowView: View {
     }
     
     /// Update CurtainData with new textAnnotation (reusable helper)
-    private func updateCurtainDataWithNewAnnotations(_ updatedTextAnnotation: [String: Any]) {
+    private func updateCurtainDataWithNewAnnotations(_ updatedTextAnnotation: [String: AnyCodable]) {
         guard let curtainData = curtainData else { return }
         
         let updatedSettings = CurtainSettings(
@@ -2015,10 +2109,31 @@ struct ProteinDetailRowView: View {
             legendStatus: curtainData.settings.legendStatus,
             selectedComparison: curtainData.settings.selectedComparison,
             imputationMap: curtainData.settings.imputationMap,
-            enableImputation: curtainData.settings.enableImputation
+            enableImputation: curtainData.settings.enableImputation,
+            viewPeptideCount: curtainData.settings.viewPeptideCount,
+            peptideCountData: curtainData.settings.peptideCountData,
+            volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
+            volcanoTraceOrder: curtainData.settings.volcanoTraceOrder,
+            volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
+            barChartConditionBracket: curtainData.settings.barChartConditionBracket,
+            columnSize: curtainData.settings.columnSize,
+            chartYAxisLimits: curtainData.settings.chartYAxisLimits,
+            individualYAxisLimits: curtainData.settings.individualYAxisLimits,
+            violinPointPos: curtainData.settings.violinPointPos,
+            networkInteractionData: curtainData.settings.networkInteractionData,
+            enrichrGeneRankMap: curtainData.settings.enrichrGeneRankMap,
+            enrichrRunList: curtainData.settings.enrichrRunList,
+            extraData: curtainData.settings.extraData,
+            enableMetabolomics: curtainData.settings.enableMetabolomics,
+            metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
+            encrypted: curtainData.settings.encrypted,
+            dataAnalysisContact: curtainData.settings.dataAnalysisContact,
+            markerSizeMap: curtainData.settings.markerSizeMap
         )
         
-        let updatedCurtainData = CurtainData(
+        // Update CurtainData
+        var newCurtainData = CurtainData(
             raw: curtainData.raw,
             rawForm: curtainData.rawForm,
             differentialForm: curtainData.differentialForm,
@@ -2032,18 +2147,13 @@ struct ProteinDetailRowView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath
         )
-        
-        // Update the binding
-        self.curtainData = updatedCurtainData
-        
-        // Trigger volcano plot refresh
-        NotificationCenter.default.post(
-            name: NSNotification.Name("VolcanoPlotRefresh"),
-            object: nil,
-            userInfo: ["reason": "annotation_updated"]
-        )
+        // Ensure uniprotDB is preserved
+        newCurtainData.uniprotDB = curtainData.uniprotDB
+        self.curtainData = newCurtainData
     }
     
     var body: some View {
@@ -2073,11 +2183,32 @@ struct ProteinDetailRowView: View {
                     }
                 }
                 
+                // Selection groups (always show if present, independent of proteinData lookup)
+                if !selectionGroups.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(Array(zip(selectionGroups, selectionColors).prefix(3)), id: \.0) { (groupName, color) in
+                            Text(groupName)
+                                .font(.caption2)
+                                .fontWeight(.medium)
+                                .foregroundColor(Color(hex: color) ?? .blue)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background((Color(hex: color) ?? .blue).opacity(0.2))
+                                .cornerRadius(4)
+                        }
+                        if selectionGroups.count > 3 {
+                            Text("+\(selectionGroups.count - 3)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
                 // Protein statistics (like volcano plot)
                 if let proteinData = proteinData, let curtainData = curtainData {
                     let fcColumn = curtainData.differentialForm.foldChange
                     let sigColumn = curtainData.differentialForm.significant
-                    
+
                     HStack {
                         if let foldChange = proteinData[fcColumn] as? Double {
                             Text("FC: \(foldChange, specifier: "%.3f")")
@@ -2085,19 +2216,19 @@ struct ProteinDetailRowView: View {
                                 .fontWeight(.medium)
                                 .foregroundColor(foldChange > 0 ? .red : .blue)
                         }
-                        
+
                         Spacer()
-                        
+
                         if let pValue = proteinData[sigColumn] as? Double {
-                            let displayPValue: Double = curtainData.differentialForm.transformSignificant 
+                            let displayPValue: Double = curtainData.differentialForm.transformSignificant
                                 ? pow(10, -pValue)  // pValue is already -log10 transformed
                                 : pValue            // pValue is raw
-                            
+
                             Text("p: \(displayPValue, specifier: "%.2e")")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        
+
                         // Significance indicator
                         if isSignificantProtein {
                             Image(systemName: "star.fill")
@@ -2105,15 +2236,7 @@ struct ProteinDetailRowView: View {
                                 .foregroundColor(.orange)
                         }
                     }
-                    
-                    // Selection groups
-                    if !selectionGroups.isEmpty {
-                        Text("Groups: \(selectionGroups.joined(separator: ", "))")
-                            .font(.caption2)
-                            .foregroundColor(.blue)
-                            .lineLimit(1)
-                    }
-                } else {
+                } else if selectionGroups.isEmpty {
                     Text("Tap to view charts")
                         .font(.caption2)
                         .foregroundColor(.secondary)

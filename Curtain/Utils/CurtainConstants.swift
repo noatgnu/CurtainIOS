@@ -28,6 +28,12 @@ struct CurtainConstants {
         static let curtainType = "TP"
     }
     
+    struct ExampleCollection {
+        static let collectionId = 2
+        static let apiUrl = "https://celsus.muttsu.xyz"
+        static let frontendUrl = "https://curtain.proteo.info"
+    }
+
     // MARK: - Common Hostnames for Site Settings
     
     static let commonHostnames = [

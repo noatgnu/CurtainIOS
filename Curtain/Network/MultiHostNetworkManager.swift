@@ -73,4 +73,16 @@ class MultiHostNetworkManager {
         let service = getNetworkService(for: hostname)
         return try await service.getDataFilterListsByCategory(hostname: hostname, category: category, limit: limit, offset: offset)
     }
+
+    // MARK: - Collection API Methods
+
+    func getCollections(hostname: String, limit: Int? = nil, offset: Int? = nil, search: String? = nil) async throws -> PaginatedResponse<CurtainCollectionDto> {
+        let service = getNetworkService(for: hostname)
+        return try await service.getCollections(hostname: hostname, limit: limit, offset: offset, search: search)
+    }
+
+    func getCollectionById(hostname: String, collectionId: Int, curtainType: String? = nil) async throws -> CurtainCollectionDto {
+        let service = getNetworkService(for: hostname)
+        return try await service.getCollectionById(hostname: hostname, collectionId: collectionId, curtainType: curtainType)
+    }
 }

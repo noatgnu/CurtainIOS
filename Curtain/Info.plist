@@ -13,8 +13,6 @@
 			</array>
 		</dict>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>Curtain needs camera access to scan QR codes containing dataset information</string>
 	<key>UIBackgroundModes</key>
 	<array/>
 </dict>

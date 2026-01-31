@@ -240,7 +240,7 @@ struct AnnotationEditOverlay: View {
                 ForEach(Array(curtainData.settings.textAnnotation.keys), id: \.self) { key in
                     AnnotationIndicatorView(
                         annotationKey: key,
-                        annotationData: curtainData.settings.textAnnotation[key] as? [String: Any],
+                        annotationData: curtainData.settings.textAnnotation[key]?.value as? [String: Any],
                         geometry: geometry,
                         volcanoAxis: curtainData.settings.volcanoAxis,
                         jsCoordinatesFinder: findJavaScriptCoordinates

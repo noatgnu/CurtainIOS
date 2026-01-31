@@ -248,26 +248,29 @@ struct ConditionColorManagerView: View {
         // For each condition, ensure it has a color assignment
         for (index, conditionName) in curtainData.settings.conditionOrder.enumerated() {
             // Check if condition already has a color assignment
-            let hasAssignment = (curtainData.settings.barchartColorMap[conditionName] as? String)?.isEmpty == false ||
+            let hasAssignment = (curtainData.settings.barchartColorMap[conditionName]?.value as? String)?.isEmpty == false ||
                                curtainData.settings.colorMap[conditionName]?.isEmpty == false
             
             if !hasAssignment {
                 // Assign default color using same logic as chart
                 let colorIndex = index % defaultColors.count
                 let defaultColor = defaultColors[colorIndex]
-                newBarchartColorMap[conditionName] = defaultColor
+                newBarchartColorMap[conditionName] = AnyCodable(defaultColor)
                 hasChanges = true
             }
         }
         
         // Update settings if we made changes
         if hasChanges {
+            // Convert to [String: Any] for helper method compatibility if needed, or update helper
+            // Actually, newBarchartColorMap is already [String: AnyCodable]
+            // We can update updateBarchartColorMap to take AnyCodable map
             updateBarchartColorMap(newBarchartColorMap)
         }
     }
     
     // Helper method to update barchartColorMap without going through full save process
-    private func updateBarchartColorMap(_ newBarchartColorMap: [String: Any]) {
+    private func updateBarchartColorMap(_ newBarchartColorMap: [String: AnyCodable]) {
         let updatedSettings = CurtainSettings(
             fetchUniprot: curtainData.settings.fetchUniprot,
             inputDataCols: curtainData.settings.inputDataCols,
@@ -314,7 +317,25 @@ struct ConditionColorManagerView: View {
             imputationMap: curtainData.settings.imputationMap,
             enableImputation: curtainData.settings.enableImputation,
             viewPeptideCount: curtainData.settings.viewPeptideCount,
-            peptideCountData: curtainData.settings.peptideCountData
+            peptideCountData: curtainData.settings.peptideCountData,
+            volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
+            volcanoTraceOrder: curtainData.settings.volcanoTraceOrder,
+            volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
+            barChartConditionBracket: curtainData.settings.barChartConditionBracket,
+            columnSize: curtainData.settings.columnSize,
+            chartYAxisLimits: curtainData.settings.chartYAxisLimits,
+            individualYAxisLimits: curtainData.settings.individualYAxisLimits,
+            violinPointPos: curtainData.settings.violinPointPos,
+            networkInteractionData: curtainData.settings.networkInteractionData,
+            enrichrGeneRankMap: curtainData.settings.enrichrGeneRankMap,
+            enrichrRunList: curtainData.settings.enrichrRunList,
+            extraData: curtainData.settings.extraData,
+            enableMetabolomics: curtainData.settings.enableMetabolomics,
+            metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
+            encrypted: curtainData.settings.encrypted,
+            dataAnalysisContact: curtainData.settings.dataAnalysisContact,
+            markerSizeMap: curtainData.settings.markerSizeMap
         )
         
         // Update CurtainData
@@ -332,16 +353,20 @@ struct ConditionColorManagerView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath
         )
-        
-        curtainData = updatedCurtainData
+        // Ensure uniprotDB is preserved
+        var finalData = updatedCurtainData
+        finalData.uniprotDB = curtainData.uniprotDB
+        curtainData = finalData
     }
     
     // Get actual color being used by bar chart (same priority as ProteinChartView)
     private func getActualConditionColor(_ conditionName: String) -> String {
         // Priority 1: barchartColorMap (protein-specific overrides) - highest priority
-        if let color = curtainData.settings.barchartColorMap[conditionName] as? String, !color.isEmpty {
+        if let color = curtainData.settings.barchartColorMap[conditionName]?.value as? String, !color.isEmpty {
             return color
         }
         
@@ -392,7 +417,7 @@ struct ConditionColorManagerView: View {
         
         // Update the specific condition color
         let colorWithAlpha = conditionInfo.alpha < 1.0 ? conditionInfo.argbString : conditionInfo.hexColor
-        newBarchartColorMap[conditionInfo.name] = colorWithAlpha
+        newBarchartColorMap[conditionInfo.name] = AnyCodable(colorWithAlpha)
         
         // Create updated settings with the single color change
         let updatedSettings = CurtainSettings(
@@ -441,7 +466,25 @@ struct ConditionColorManagerView: View {
             imputationMap: curtainData.settings.imputationMap,
             enableImputation: curtainData.settings.enableImputation,
             viewPeptideCount: curtainData.settings.viewPeptideCount,
-            peptideCountData: curtainData.settings.peptideCountData
+            peptideCountData: curtainData.settings.peptideCountData,
+            volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
+            volcanoTraceOrder: curtainData.settings.volcanoTraceOrder,
+            volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
+            barChartConditionBracket: curtainData.settings.barChartConditionBracket,
+            columnSize: curtainData.settings.columnSize,
+            chartYAxisLimits: curtainData.settings.chartYAxisLimits,
+            individualYAxisLimits: curtainData.settings.individualYAxisLimits,
+            violinPointPos: curtainData.settings.violinPointPos,
+            networkInteractionData: curtainData.settings.networkInteractionData,
+            enrichrGeneRankMap: curtainData.settings.enrichrGeneRankMap,
+            enrichrRunList: curtainData.settings.enrichrRunList,
+            extraData: curtainData.settings.extraData,
+            enableMetabolomics: curtainData.settings.enableMetabolomics,
+            metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
+            encrypted: curtainData.settings.encrypted,
+            dataAnalysisContact: curtainData.settings.dataAnalysisContact,
+            markerSizeMap: curtainData.settings.markerSizeMap
         )
         
         // Update CurtainData
@@ -459,10 +502,14 @@ struct ConditionColorManagerView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath
         )
         
-        curtainData = updatedCurtainData
+        var finalData = updatedCurtainData
+        finalData.uniprotDB = curtainData.uniprotDB
+        curtainData = finalData
         
         // Immediately trigger chart refresh
         NotificationCenter.default.post(
@@ -479,7 +526,7 @@ struct ConditionColorManagerView: View {
         // Update barchartColorMap with condition color changes (highest priority for bar charts)
         for conditionInfo in conditionColors {
             let colorWithAlpha = conditionInfo.alpha < 1.0 ? conditionInfo.argbString : conditionInfo.hexColor
-            newBarchartColorMap[conditionInfo.name] = colorWithAlpha
+            newBarchartColorMap[conditionInfo.name] = AnyCodable(colorWithAlpha)
         }
         
         // Create updated settings
@@ -529,7 +576,25 @@ struct ConditionColorManagerView: View {
             imputationMap: curtainData.settings.imputationMap,
             enableImputation: curtainData.settings.enableImputation,
             viewPeptideCount: curtainData.settings.viewPeptideCount,
-            peptideCountData: curtainData.settings.peptideCountData
+            peptideCountData: curtainData.settings.peptideCountData,
+            volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
+            volcanoTraceOrder: curtainData.settings.volcanoTraceOrder,
+            volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
+            barChartConditionBracket: curtainData.settings.barChartConditionBracket,
+            columnSize: curtainData.settings.columnSize,
+            chartYAxisLimits: curtainData.settings.chartYAxisLimits,
+            individualYAxisLimits: curtainData.settings.individualYAxisLimits,
+            violinPointPos: curtainData.settings.violinPointPos,
+            networkInteractionData: curtainData.settings.networkInteractionData,
+            enrichrGeneRankMap: curtainData.settings.enrichrGeneRankMap,
+            enrichrRunList: curtainData.settings.enrichrRunList,
+            extraData: curtainData.settings.extraData,
+            enableMetabolomics: curtainData.settings.enableMetabolomics,
+            metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
+            encrypted: curtainData.settings.encrypted,
+            dataAnalysisContact: curtainData.settings.dataAnalysisContact,
+            markerSizeMap: curtainData.settings.markerSizeMap
         )
         
         // Update CurtainData
@@ -547,10 +612,14 @@ struct ConditionColorManagerView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath
         )
         
-        curtainData = updatedCurtainData
+        var finalData = updatedCurtainData
+        finalData.uniprotDB = curtainData.uniprotDB
+        curtainData = finalData
         
         // Trigger chart refresh
         NotificationCenter.default.post(

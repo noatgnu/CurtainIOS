@@ -250,20 +250,15 @@ class DataFilterListRepository {
         return nil
     }
     
-    func mapApiToEntity(_ apiModel: DataFilterList, category: String) -> DataFilterListEntity {
+    func mapApiToEntity(_ apiModel: DataFilterList, category: String? = nil) -> DataFilterListEntity {
         return DataFilterListEntity(
-            apiId: apiModel.id,  // Use apiId instead of id for API integer ID
+            apiId: apiModel.id,
             name: apiModel.name,
-            category: category,
+            category: category ?? apiModel.category,
             data: apiModel.data,
             isDefault: apiModel.isDefault,
-            user: nil
+            user: apiModel.user
         )
-    }
-    
-    // Overload for backward compatibility 
-    private func mapApiToEntity(_ apiModel: DataFilterList) -> DataFilterListEntity {
-        return mapApiToEntity(apiModel, category: "")
     }
 }
 

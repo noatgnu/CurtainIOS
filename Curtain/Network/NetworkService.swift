@@ -126,6 +126,34 @@ class NetworkService: NetworkServiceProtocol {
         return try await performRequest(url: url, responseType: [String].self)
     }
     
+    // MARK: - Collection API Methods
+
+    func getCollections(hostname: String, limit: Int? = nil, offset: Int? = nil, search: String? = nil) async throws -> PaginatedResponse<CurtainCollectionDto> {
+        var queryItems: [URLQueryItem] = []
+        if let limit = limit {
+            queryItems.append(URLQueryItem(name: "limit", value: String(limit)))
+        }
+        if let offset = offset {
+            queryItems.append(URLQueryItem(name: "offset", value: String(offset)))
+        }
+        if let search = search, !search.isEmpty {
+            queryItems.append(URLQueryItem(name: "search", value: search))
+        }
+
+        let url = buildURL(hostname: hostname, path: "curtain-collections/", queryItems: queryItems)
+        return try await performRequest(url: url, responseType: PaginatedResponse<CurtainCollectionDto>.self)
+    }
+
+    func getCollectionById(hostname: String, collectionId: Int, curtainType: String? = nil) async throws -> CurtainCollectionDto {
+        var queryItems: [URLQueryItem] = []
+        if let curtainType = curtainType {
+            queryItems.append(URLQueryItem(name: "curtain_type", value: curtainType))
+        }
+
+        let url = buildURL(hostname: hostname, path: "curtain-collections/\(collectionId)/", queryItems: queryItems)
+        return try await performRequest(url: url, responseType: CurtainCollectionDto.self)
+    }
+
     // MARK: - Helper Methods
     
     func buildURL(hostname: String, path: String, queryItems: [URLQueryItem] = []) -> URL {

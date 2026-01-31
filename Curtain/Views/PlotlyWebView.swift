@@ -276,7 +276,7 @@ struct InteractiveVolcanoPlotView: View {
                     var originalAx: Double = -20.0
                     var originalAy: Double = -20.0
 
-                    if let annotationData = curtainData.settings.textAnnotation[candidate.key] as? [String: Any],
+                    if let annotationData = curtainData.settings.textAnnotation[candidate.key]?.value as? [String: Any],
                        let dataSection = annotationData["data"] as? [String: Any] {
                         originalAx = dataSection["ax"] as? Double ?? -20.0
                         originalAy = dataSection["ay"] as? Double ?? -20.0
@@ -406,7 +406,7 @@ struct InteractiveVolcanoPlotView: View {
             return nil
         }
         
-        guard let annotationData = curtainData.settings.textAnnotation[candidate.key] as? [String: Any],
+        guard let annotationData = curtainData.settings.textAnnotation[candidate.key]?.value as? [String: Any],
               let dataSection = annotationData["data"] as? [String: Any],
               let ax = dataSection["ax"] as? Double,
               let ay = dataSection["ay"] as? Double else {
@@ -567,7 +567,7 @@ struct InteractiveVolcanoPlotView: View {
     private func updateAnnotationPosition(candidate: AnnotationEditCandidate, offsetX: Double, offsetY: Double) {
         var updatedTextAnnotation = curtainData.settings.textAnnotation
         
-        guard var annotationData = updatedTextAnnotation[candidate.key] as? [String: Any],
+        guard var annotationData = updatedTextAnnotation[candidate.key]?.value as? [String: Any],
               var dataSection = annotationData["data"] as? [String: Any] else {
             return
         }
@@ -576,7 +576,7 @@ struct InteractiveVolcanoPlotView: View {
         dataSection["ax"] = offsetX
         dataSection["ay"] = offsetY
         annotationData["data"] = dataSection
-        updatedTextAnnotation[candidate.key] = annotationData
+        updatedTextAnnotation[candidate.key] = AnyCodable(annotationData)
         
         // Update the CurtainData with new textAnnotation
         let updatedSettings = CurtainSettings(
@@ -625,7 +625,25 @@ struct InteractiveVolcanoPlotView: View {
             imputationMap: curtainData.settings.imputationMap,
             enableImputation: curtainData.settings.enableImputation,
             viewPeptideCount: curtainData.settings.viewPeptideCount,
-            peptideCountData: curtainData.settings.peptideCountData
+            peptideCountData: curtainData.settings.peptideCountData,
+            volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
+            volcanoTraceOrder: curtainData.settings.volcanoTraceOrder,
+            volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
+            barChartConditionBracket: curtainData.settings.barChartConditionBracket,
+            columnSize: curtainData.settings.columnSize,
+            chartYAxisLimits: curtainData.settings.chartYAxisLimits,
+            individualYAxisLimits: curtainData.settings.individualYAxisLimits,
+            violinPointPos: curtainData.settings.violinPointPos,
+            networkInteractionData: curtainData.settings.networkInteractionData,
+            enrichrGeneRankMap: curtainData.settings.enrichrGeneRankMap,
+            enrichrRunList: curtainData.settings.enrichrRunList,
+            extraData: curtainData.settings.extraData,
+            enableMetabolomics: curtainData.settings.enableMetabolomics,
+            metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
+            encrypted: curtainData.settings.encrypted,
+            dataAnalysisContact: curtainData.settings.dataAnalysisContact,
+            markerSizeMap: curtainData.settings.markerSizeMap
         )
         
         // Update CurtainData
@@ -643,8 +661,12 @@ struct InteractiveVolcanoPlotView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath
         )
+        // Ensure uniprotDB is preserved
+        curtainData.uniprotDB = curtainData.uniprotDB
         
     }
     
@@ -672,7 +694,7 @@ struct InteractiveVolcanoPlotView: View {
         let yMax = volcanoAxis.maxY ?? 5.0
         
         for (key, value) in textAnnotations {
-            guard let annotationData = value as? [String: Any],
+            guard let annotationData = value.value as? [String: Any],
                   let dataSection = annotationData["data"] as? [String: Any],
                   let title = annotationData["title"] as? String,
                   let arrowX = dataSection["x"] as? Double,
@@ -723,7 +745,7 @@ struct InteractiveVolcanoPlotView: View {
         VStack {
             ProgressView("Loading volcano plot...")
                 .scaleEffect(1.2)
-            Text("Processing \(curtainData.proteomicsData.count) proteins")
+            Text("Processing data...")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .padding(.top, 8)
@@ -911,16 +933,12 @@ struct InteractiveVolcanoPlotView: View {
     
     
     private func loadPlot() {
-
-        if curtainData.proteomicsData.isEmpty {
-            loadingState.setError("No protein data available for volcano plot")
-        } else {
+        // Check both in-memory data and SQLite database
+        if curtainData.hasDataAvailable {
             // Force the plot to show by setting to ready state immediately
             loadingState.setReady()
-
-            // Add a small delay to ensure UI updates
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            }
+        } else {
+            loadingState.setError("No protein data available for volcano plot")
         }
     }
 }

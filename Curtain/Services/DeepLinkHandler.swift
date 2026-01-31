@@ -34,7 +34,12 @@ class DeepLinkHandler {
             return result
         }
 
-        // Check for different URL patterns 
+        // Check for collection URLs
+        if let result = await processCollectionURL(url) {
+            return result
+        }
+
+        // Check for different URL patterns
         if let result = await processCurtainProteoURL(url) {
             return result
         }
@@ -99,6 +104,66 @@ class DeepLinkHandler {
                         sessionId: sessionId
                     )
                 }
+            }
+        }
+
+        return nil
+    }
+
+    /// Process Collection URLs
+    /// Supports formats:
+    /// - curtain://open?collectionId=X&apiURL=Y&frontendURL=Z (deep link)
+    /// - https://.../#/collection/X (web URL with collection path)
+    private func processCollectionURL(_ url: URL) async -> DeepLinkResult? {
+        let urlString = url.absoluteString
+
+        // Check for curtain://open?collectionId=... format
+        if url.scheme == "curtain" && url.host == "open" {
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let queryItems = components?.queryItems
+
+            if let collectionIdStr = queryItems?.first(where: { $0.name == "collectionId" || $0.name == "collection_id" })?.value,
+               let collectionId = Int(collectionIdStr) {
+                let apiUrl = queryItems?.first(where: { $0.name == "apiURL" || $0.name == "api_url" || $0.name == "api" })?.value
+                    ?? CurtainConstants.PredefinedHosts.celsusBackend
+                let frontendUrl = queryItems?.first(where: { $0.name == "frontendURL" || $0.name == "frontend_url" })?.value
+
+                return DeepLinkResult(
+                    type: .collection,
+                    apiUrl: apiUrl,
+                    frontendUrl: frontendUrl,
+                    description: "Collection",
+                    collectionId: collectionId,
+                    collectionApiUrl: apiUrl
+                )
+            }
+        }
+
+        // Check for web URL with collection/ in path: https://.../#/collection/X
+        if urlString.contains("collection/") {
+            let pattern = "collection/(\\d+)"
+            let regex = try? NSRegularExpression(pattern: pattern)
+
+            if let match = regex?.firstMatch(in: urlString, range: NSRange(location: 0, length: urlString.count)),
+               let idRange = Range(match.range(at: 1), in: urlString),
+               let collectionId = Int(urlString[idRange]) {
+
+                // Determine API URL from host
+                let apiUrl: String
+                if let host = url.host, host.contains("curtain.proteo.info") {
+                    apiUrl = CurtainConstants.PredefinedHosts.celsusBackend
+                } else {
+                    apiUrl = url.host.map { "https://\($0)/" } ?? CurtainConstants.PredefinedHosts.celsusBackend
+                }
+
+                return DeepLinkResult(
+                    type: .collection,
+                    apiUrl: apiUrl,
+                    frontendUrl: urlString,
+                    description: "Collection",
+                    collectionId: collectionId,
+                    collectionApiUrl: apiUrl
+                )
             }
         }
 
@@ -290,8 +355,10 @@ struct DeepLinkResult {
     let error: String?
     let doi: String?
     let sessionId: String?
+    let collectionId: Int?
+    let collectionApiUrl: String?
 
-    init(type: DeepLinkType, linkId: String? = nil, apiUrl: String? = nil, frontendUrl: String? = nil, description: String? = nil, error: String? = nil, doi: String? = nil, sessionId: String? = nil) {
+    init(type: DeepLinkType, linkId: String? = nil, apiUrl: String? = nil, frontendUrl: String? = nil, description: String? = nil, error: String? = nil, doi: String? = nil, sessionId: String? = nil, collectionId: Int? = nil, collectionApiUrl: String? = nil) {
         self.type = type
         self.linkId = linkId
         self.apiUrl = apiUrl
@@ -300,6 +367,8 @@ struct DeepLinkResult {
         self.error = error
         self.doi = doi
         self.sessionId = sessionId
+        self.collectionId = collectionId
+        self.collectionApiUrl = collectionApiUrl
     }
 
     var isValid: Bool {
@@ -308,6 +377,8 @@ struct DeepLinkResult {
             return linkId != nil && apiUrl != nil
         case .doiSession:
             return doi != nil
+        case .collection:
+            return collectionId != nil && collectionApiUrl != nil
         case .invalid:
             return false
         }
@@ -317,6 +388,7 @@ struct DeepLinkResult {
 enum DeepLinkType {
     case curtainSession
     case doiSession
+    case collection
     case invalid
 }
 

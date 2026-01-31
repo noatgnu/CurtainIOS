@@ -251,7 +251,7 @@ struct MarkerSizeMapSettingsView: View {
             metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
             encrypted: curtainData.settings.encrypted,
             dataAnalysisContact: curtainData.settings.dataAnalysisContact,
-            markerSizeMap: updatedMarkerSizeMap  // ← Updated marker size map
+            markerSizeMap: CurtainSettings.toAnyCodableMap(updatedMarkerSizeMap)  // ← Updated marker size map
         )
 
         // Update CurtainData

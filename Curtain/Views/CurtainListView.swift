@@ -23,6 +23,7 @@ struct CurtainListView: View {
     @State private var showingToast = false
     @State private var showingDownloadConfirmation = false
     @State private var curtainToDownload: CurtainEntity?
+    @State private var selectedTab = 0
 
     var body: some View {
         if UIDevice.current.userInterfaceIdiom == .pad || UIDevice.current.userInterfaceIdiom == .mac {
@@ -33,32 +34,34 @@ struct CurtainListView: View {
     }
 
     private var splitViewLayout: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             mainContent
-                .navigationTitle("Curtain Datasets")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: refreshCurtains) {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                        }
-                    }
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(action: { showingAddCurtainSheet = true }) {
-                            Label("Add", systemImage: "plus")
-                        }
-                    }
+                .frame(width: 360)
+                .background(Color(.secondarySystemGroupedBackground))
+
+            Divider()
+
+            Group {
+                if let curtain = curtainForDetails {
+                    CurtainDetailsView(curtain: curtain)
+                } else {
+                    emptyDetailView
                 }
-        } detail: {
-            if let curtain = curtainForDetails {
-                CurtainDetailsView(curtain: curtain)
-                    .navigationTitle(curtain.dataDescription)
-                    .navigationBarTitleDisplayMode(.inline)
-            } else {
-                emptyDetailView
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(action: refreshCurtains) {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+            }
+            ToolbarItem(placement: .cancellationAction) {
+                Button(action: { showingAddCurtainSheet = true }) {
+                    Label("Add", systemImage: "plus")
+                }
             }
         }
-        .navigationSplitViewStyle(.balanced)
         .applySharedModifiers(
             viewModel: viewModel,
             deepLinkViewModel: deepLinkViewModel,
@@ -122,6 +125,31 @@ struct CurtainListView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
+            Picker("View", selection: $selectedTab) {
+                Text("Sessions").tag(0)
+                Text("Collections").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 8)
+
+            if selectedTab == 0 {
+                sessionsContent
+            } else {
+                collectionsContent
+            }
+        }
+        .refreshable {
+            if selectedTab == 0 {
+                viewModel.loadCurtains()
+            } else {
+                viewModel.loadCollections()
+            }
+        }
+    }
+
+    private var sessionsContent: some View {
+        VStack(spacing: 0) {
             SearchBar(text: $searchText)
                 .padding()
 
@@ -163,8 +191,50 @@ struct CurtainListView: View {
                 }
             }
         }
-        .refreshable {
-            viewModel.loadCurtains()
+    }
+
+    private var collectionsContent: some View {
+        VStack(spacing: 0) {
+            if viewModel.isDownloading {
+                DownloadProgressView(
+                    progress: viewModel.downloadProgress,
+                    speed: viewModel.downloadSpeed,
+                    onCancel: { viewModel.cancelDownload() }
+                )
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+
+            if let error = viewModel.error {
+                ErrorView(message: error) {
+                    viewModel.clearError()
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+
+            CollectionsTabView(
+                viewModel: viewModel,
+                onSessionTap: { session, collection in
+                    handleCollectionSessionTap(session: session, collection: collection)
+                },
+                onEditSession: { curtain in
+                    selectedCurtain = curtain
+                    showingEditDescriptionSheet = true
+                },
+                onTogglePinSession: { curtain in
+                    viewModel.updatePinStatus(curtain, isPinned: !curtain.isPinned)
+                },
+                onRedownloadSession: { curtain in
+                    Task {
+                        _ = try? await viewModel.redownloadCurtainData(curtain)
+                    }
+                },
+                onDeleteSessionData: { curtain in
+                    curtainToDelete = curtain
+                    showingDeleteConfirmation = true
+                }
+            )
         }
     }
 
@@ -173,6 +243,7 @@ struct CurtainListView: View {
             ForEach(filteredCurtains, id: \.linkId) { curtain in
                 UniversalCurtainRow(
                     curtain: curtain,
+                    isInCollection: viewModel.isInCollection(linkId: curtain.linkId),
                     onTap: { handleCurtainTap(curtain) },
                     onEdit: {
                         selectedCurtain = curtain
@@ -277,6 +348,22 @@ struct CurtainListView: View {
         }
     }
 
+    private func handleCollectionSessionTap(session: CollectionSessionEntity, collection: CurtainCollectionEntity) {
+        // If we already have a local CurtainEntity, use it directly
+        if let curtain = viewModel.getCurtainEntity(linkId: session.linkId) {
+            handleCurtainTap(curtain)
+            return
+        }
+
+        // Otherwise, fetch/create the CurtainEntity first, then open it
+        Task {
+            await viewModel.loadSessionFromCollection(session: session, collection: collection)
+            if let curtain = viewModel.getCurtainEntity(linkId: session.linkId) {
+                handleCurtainTap(curtain)
+            }
+        }
+    }
+
     private func handleDOISessionLoaded(sessionData: [String: Any], doi: String) {
         Task {
             do {
@@ -320,6 +407,7 @@ struct CurtainListView: View {
 
 struct UniversalCurtainRow: View {
     let curtain: CurtainEntity
+    var isInCollection: Bool = false
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -338,6 +426,12 @@ struct UniversalCurtainRow: View {
                         .lineLimit(2)
 
                     Spacer()
+
+                    if isInCollection {
+                        Image(systemName: "folder.fill")
+                            .foregroundColor(.purple)
+                            .font(.caption)
+                    }
 
                     if curtain.isPinned {
                         Image(systemName: "pin.fill")
@@ -366,12 +460,14 @@ struct UniversalCurtainRow: View {
                             }
                         }
 
-                        Divider()
+                        if !isInCollection {
+                            Divider()
 
-                        Button(role: .destructive) {
-                            onDelete()
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                            Button(role: .destructive) {
+                                onDelete()
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -603,12 +699,20 @@ struct AddCurtainSheet: View {
     @Environment(\.dismiss) private var dismiss
     let viewModel: CurtainViewModel
 
+    @State private var addMode: AddMode = .session
     @State private var linkId = ""
     @State private var apiUrl = "https://celsus.muttsu.xyz"
     @State private var frontendUrl = ""
     @State private var description = ""
+    @State private var collectionIdText = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var showingQRScanner = false
+
+    enum AddMode: String, CaseIterable {
+        case session = "Session"
+        case collection = "Collection"
+    }
 
     private let commonApiUrls = [
         "https://celsus.muttsu.xyz",
@@ -619,25 +723,26 @@ struct AddCurtainSheet: View {
         NavigationView {
             Form {
                 Section {
-                    TextField("Unique ID", text: $linkId)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
+                    Button {
+                        showingQRScanner = true
+                    } label: {
+                        Label("Scan QR Code", systemImage: "qrcode.viewfinder")
+                    }
+                }
 
-                    Picker("API URL", selection: $apiUrl) {
-                        ForEach(commonApiUrls, id: \.self) { url in
-                            Text(url).tag(url)
+                Section {
+                    Picker("Type", selection: $addMode) {
+                        ForEach(AddMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
                         }
                     }
+                    .pickerStyle(.segmented)
+                }
 
-                    TextField("Frontend URL (Optional)", text: $frontendUrl)
-                        .autocapitalization(.none)
-                        .autocorrectionDisabled()
-
-                    TextField("Description", text: $description)
-                } header: {
-                    Text("Curtain Details")
-                } footer: {
-                    Text("Enter the unique identifier and API URL of the curtain dataset you want to add")
+                if addMode == .session {
+                    sessionFields
+                } else {
+                    collectionFields
                 }
 
                 if let error = errorMessage {
@@ -648,7 +753,7 @@ struct AddCurtainSheet: View {
                     }
                 }
             }
-            .navigationTitle("Add Curtain")
+            .navigationTitle(addMode == .session ? "Add Session" : "Add Collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -658,7 +763,11 @@ struct AddCurtainSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        addCurtain()
+                        if addMode == .session {
+                            addCurtain()
+                        } else {
+                            addCollection()
+                        }
                     }
                     .disabled(!isValid || isLoading)
                 }
@@ -669,12 +778,67 @@ struct AddCurtainSheet: View {
                     ProgressView()
                 }
             }
+            .sheet(isPresented: $showingQRScanner) {
+                QRCodeScannerView { code in
+                    handleScannedCode(code)
+                }
+            }
+        }
+    }
+
+    private var sessionFields: some View {
+        Section {
+            TextField("Unique ID", text: $linkId)
+                .autocapitalization(.none)
+                .autocorrectionDisabled()
+
+            Picker("API URL", selection: $apiUrl) {
+                ForEach(commonApiUrls, id: \.self) { url in
+                    Text(url).tag(url)
+                }
+            }
+
+            TextField("Frontend URL (Optional)", text: $frontendUrl)
+                .autocapitalization(.none)
+                .autocorrectionDisabled()
+
+            TextField("Description", text: $description)
+        } header: {
+            Text("Session Details")
+        } footer: {
+            Text("Enter the unique identifier and API URL of the curtain dataset")
+        }
+    }
+
+    private var collectionFields: some View {
+        Section {
+            TextField("Collection ID", text: $collectionIdText)
+                .keyboardType(.numberPad)
+
+            Picker("API URL", selection: $apiUrl) {
+                ForEach(commonApiUrls, id: \.self) { url in
+                    Text(url).tag(url)
+                }
+            }
+
+            TextField("Frontend URL (Optional)", text: $frontendUrl)
+                .autocapitalization(.none)
+                .autocorrectionDisabled()
+        } header: {
+            Text("Collection Details")
+        } footer: {
+            Text("Enter the collection ID and API URL to fetch the collection")
         }
     }
 
     private var isValid: Bool {
-        !linkId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !apiUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if addMode == .session {
+            return !linkId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                   !apiUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } else {
+            return Int(collectionIdText) != nil &&
+                   !apiUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     private func addCurtain() {
@@ -695,6 +859,65 @@ struct AddCurtainSheet: View {
                     dismiss()
                 } else {
                     errorMessage = viewModel.error
+                }
+            }
+        }
+    }
+
+    private func addCollection() {
+        guard let collectionId = Int(collectionIdText) else { return }
+        isLoading = true
+        errorMessage = nil
+
+        Task {
+            await viewModel.loadCollection(
+                collectionId: collectionId,
+                apiUrl: apiUrl.trimmingCharacters(in: .whitespacesAndNewlines),
+                frontendUrl: frontendUrl.isEmpty ? nil : frontendUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+
+            await MainActor.run {
+                isLoading = false
+                if viewModel.error == nil {
+                    dismiss()
+                } else {
+                    errorMessage = viewModel.error
+                }
+            }
+        }
+    }
+
+    private func handleScannedCode(_ code: String) {
+        Task {
+            let result = await DeepLinkHandler.shared.processQRCode(code)
+
+            await MainActor.run {
+                switch result.type {
+                case .curtainSession:
+                    addMode = .session
+                    linkId = result.linkId ?? ""
+                    if let url = result.apiUrl {
+                        apiUrl = url
+                    }
+                    frontendUrl = result.frontendUrl ?? ""
+                    description = result.description ?? ""
+
+                case .collection:
+                    addMode = .collection
+                    if let id = result.collectionId {
+                        collectionIdText = String(id)
+                    }
+                    if let url = result.collectionApiUrl {
+                        apiUrl = url
+                    }
+                    frontendUrl = result.frontendUrl ?? ""
+
+                case .doiSession:
+                    // DOI sessions go through DOI loader, not the add form
+                    errorMessage = "DOI QR codes are handled separately"
+
+                case .invalid:
+                    errorMessage = result.error ?? "Could not parse QR code"
                 }
             }
         }
@@ -854,6 +1077,19 @@ extension View {
             }
             .onAppear {
                 viewModel.setupWithModelContext(modelContext)
+            }
+            .onChange(of: deepLinkViewModel.pendingCollectionId) { _, newValue in
+                if let collectionId = newValue,
+                   let apiUrl = deepLinkViewModel.pendingCollectionApiUrl {
+                    Task {
+                        await viewModel.loadCollection(
+                            collectionId: collectionId,
+                            apiUrl: apiUrl,
+                            frontendUrl: deepLinkViewModel.pendingCollectionFrontendUrl
+                        )
+                        deepLinkViewModel.clearCollectionState()
+                    }
+                }
             }
     }
 }

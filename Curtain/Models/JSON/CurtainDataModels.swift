@@ -25,7 +25,17 @@ struct CurtainData {
     let annotatedData: Any?
     let extraData: ExtraData?
     let permanent: Bool
+    // Android field: ensure it's not ignored
     var bypassUniProt: Bool
+    
+    // SQLite database path for data storage
+    let dbPath: URL?
+
+    // Stored link ID for database queries (overrides computed property)
+    private var _storedLinkId: String?
+
+    // Uniprot DB for gene name resolution
+    var uniprotDB: [String: Any]?
     
     // Direct access to settings without automatic processing to avoid loops
     var settings: CurtainSettings {
@@ -129,7 +139,105 @@ struct CurtainData {
     }
     
     var linkId: String {
-        return settings.currentId
+        // Use stored linkId if available, otherwise fall back to settings.currentId
+        return _storedLinkId ?? settings.currentId
+    }
+
+    mutating func setLinkId(_ id: String) {
+        _storedLinkId = id
+    }
+
+    /// Returns true if data is available (either in-memory or in SQLite database)
+    var hasDataAvailable: Bool {
+        // Check in-memory data first
+        if !proteomicsData.isEmpty {
+            return true
+        }
+
+        // Check SQLite database
+        let currentLinkId = linkId
+        if !currentLinkId.isEmpty {
+            return ProteomicsDataDatabaseManager.shared.checkDataExists(currentLinkId)
+        }
+
+        return false
+    }
+
+    // MARK: - Gene Name Resolution (Matching Android Pattern)
+
+    /// Gets gene name for a protein ID
+    /// Priority: 1) Denormalized mapping tables, 2) processed_proteomics_data, 3) extraData.uniprot.db, 4) nil
+    /// This matches Android's approach with ProteinMappingService
+    func getGeneNameForProtein(_ primaryId: String) -> String? {
+        let currentLinkId = linkId
+
+        if !currentLinkId.isEmpty {
+            // Priority 1: Try denormalized mapping tables (fastest - O(1) lookup)
+            if let geneName = ProteinMappingService.shared.getGeneNameFromPrimaryId(linkId: currentLinkId, primaryId: primaryId),
+               !geneName.isEmpty {
+                return geneName
+            }
+
+            // Priority 2: Try processed_proteomics_data geneNames column
+            if let geneName = ProteomicsDataService.shared.getGeneNameForProtein(linkId: currentLinkId, primaryId: primaryId),
+               !geneName.isEmpty {
+                return geneName
+            }
+        }
+
+        // Priority 3: Try extraData.uniprot.db (legacy in-memory data)
+        if let uniprotDB = extraData?.uniprot?.db as? [String: Any] {
+            // Try exact match first
+            if let uniprotRecord = uniprotDB[primaryId] as? [String: Any],
+               let geneNames = uniprotRecord["Gene Names"] as? String,
+               !geneNames.isEmpty {
+                return geneNames
+            }
+
+            // Try split IDs
+            let splitIds = primaryId.split(separator: ";").map { String($0).trimmingCharacters(in: .whitespaces) }
+            for splitId in splitIds {
+                if splitId.isEmpty { continue }
+                if let uniprotRecord = uniprotDB[splitId] as? [String: Any],
+                   let geneNames = uniprotRecord["Gene Names"] as? String,
+                   !geneNames.isEmpty {
+                    return geneNames
+                }
+            }
+        }
+
+        // Priority 4: Try uniprotDB property (if set directly)
+        if let uniprotDB = uniprotDB {
+            if let uniprotRecord = uniprotDB[primaryId] as? [String: Any],
+               let geneNames = uniprotRecord["Gene Names"] as? String,
+               !geneNames.isEmpty {
+                return geneNames
+            }
+        }
+
+        return nil
+    }
+
+    /// Gets the first/primary gene name for display
+    /// Parses the gene names string and returns the first gene name
+    func getPrimaryGeneNameForProtein(_ primaryId: String) -> String? {
+        guard let geneNames = getGeneNameForProtein(primaryId), !geneNames.isEmpty else {
+            return nil
+        }
+
+        // Parse the first gene name (can be space or semicolon separated)
+        let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;"))
+            .first(where: { !$0.isEmpty })
+        return firstGeneName
+    }
+
+    /// Gets display name for a protein (gene name or primary ID)
+    /// Returns gene name if available, otherwise returns primaryId
+    func getDisplayNameForProtein(_ primaryId: String) -> String {
+        if let geneName = getPrimaryGeneNameForProtein(primaryId) {
+            return geneName
+        }
+        return primaryId
     }
     
     var description: String {
@@ -161,7 +269,9 @@ struct CurtainData {
         annotatedData: Any? = nil,
         extraData: ExtraData? = nil,
         permanent: Bool = false,
-        bypassUniProt: Bool = false
+        bypassUniProt: Bool = false,
+        dbPath: URL? = nil,
+        linkId: String? = nil
     ) {
         self.raw = raw
         self.rawForm = rawForm
@@ -178,6 +288,8 @@ struct CurtainData {
         self.extraData = extraData
         self.permanent = permanent
         self.bypassUniProt = bypassUniProt
+        self.dbPath = dbPath
+        self._storedLinkId = linkId
     }
     
     // Helper method to convert JavaScript Map serialization formats
@@ -224,7 +336,7 @@ struct CurtainData {
 
 // MARK: - CurtainRawForm (Raw Data Configuration)
 
-struct CurtainRawForm {
+struct CurtainRawForm: Codable {
     let primaryIDs: String
     let samples: [String]
     let log2: Bool
@@ -242,7 +354,7 @@ struct CurtainRawForm {
 
 // MARK: - CurtainDifferentialForm (Comparative Analysis Configuration)
 
-struct CurtainDifferentialForm {
+struct CurtainDifferentialForm: Codable {
     let primaryIDs: String
     let geneNames: String
     let foldChange: String
@@ -294,15 +406,15 @@ struct ExtraData {
 // MARK: - DataMapContainer (Proteomics Data Container)
 
 struct DataMapContainer {
-    let dataMap: Any? // Can be Map or Array format
-    let genesMap: Any?
-    let primaryIDsMap: Any?
+    let dataMap: [String: Any]? // Converted to dictionary
+    let genesMap: [String: [String: Any]]?
+    let primaryIDsMap: [String: [String: Any]]?
     let allGenes: [String]?
     
     init(
-        dataMap: Any? = nil,
-        genesMap: Any? = nil,
-        primaryIDsMap: Any? = nil,
+        dataMap: [String: Any]? = nil,
+        genesMap: [String: [String: Any]]? = nil,
+        primaryIDsMap: [String: [String: Any]]? = nil,
         allGenes: [String]? = nil
     ) {
         self.dataMap = dataMap
@@ -316,19 +428,19 @@ struct DataMapContainer {
 
 struct UniprotExtraData {
     let results: [String: Any]
-    let dataMap: Any?
-    let db: Any?
+    let dataMap: [String: Any]?
+    let db: [String: Any]?
     let organism: String?
-    let accMap: Any?
-    let geneNameToAcc: Any?
+    let accMap: [String: [String]]?
+    let geneNameToAcc: [String: [String: Any]]?
     
     init(
         results: [String: Any] = [:],
-        dataMap: Any? = nil,
-        db: Any? = nil,
+        dataMap: [String: Any]? = nil,
+        db: [String: Any]? = nil,
         organism: String? = nil,
-        accMap: Any? = nil,
-        geneNameToAcc: Any? = nil
+        accMap: [String: [String]]? = nil,
+        geneNameToAcc: [String: [String: Any]]? = nil
     ) {
         self.results = results
         self.dataMap = dataMap
@@ -382,11 +494,11 @@ extension CurtainData {
             if let uniprotDict = extraDataDict["uniprot"] as? [String: Any] {
                 uniprotData = UniprotExtraData(
                     results: uniprotDict["results"] as? [String: Any] ?? [:],
-                    dataMap: uniprotDict["dataMap"],
-                    db: uniprotDict["db"],
+                    dataMap: uniprotDict["dataMap"] as? [String: Any],
+                    db: uniprotDict["db"] as? [String: Any],
                     organism: uniprotDict["organism"] as? String,
-                    accMap: uniprotDict["accMap"],
-                    geneNameToAcc: uniprotDict["geneNameToAcc"]
+                    accMap: uniprotDict["accMap"] as? [String: [String]],
+                    geneNameToAcc: uniprotDict["geneNameToAcc"] as? [String: [String: Any]]
                 )
             } else {
                 uniprotData = nil
@@ -396,9 +508,9 @@ extension CurtainData {
             let dataContainer: DataMapContainer?
             if let dataDict = extraDataDict["data"] as? [String: Any] {
                 dataContainer = DataMapContainer(
-                    dataMap: dataDict["dataMap"],
-                    genesMap: dataDict["genesMap"],
-                    primaryIDsMap: dataDict["primaryIDsMap"],
+                    dataMap: dataDict["dataMap"] as? [String: Any],
+                    genesMap: dataDict["genesMap"] as? [String: [String: Any]],
+                    primaryIDsMap: dataDict["primaryIDsMap"] as? [String: [String: Any]],
                     allGenes: dataDict["allGenes"] as? [String]
                 )
             } else {

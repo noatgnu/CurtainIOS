@@ -4,6 +4,7 @@ import UIKit
 class PlotlyChartGenerator {
     private let curtainDataService: CurtainDataService?
     private let volcanoPlotDataService: VolcanoPlotDataService
+    private let proteomicsDataDatabaseManager = ProteomicsDataDatabaseManager.shared
 
     private(set) var lastGeneratedTraceNames: [String] = []
     private(set) var lastGeneratedTraces: [PlotTrace] = []
@@ -12,12 +13,35 @@ class PlotlyChartGenerator {
         self.curtainDataService = curtainDataService
         self.volcanoPlotDataService = VolcanoPlotDataService()
     }
-    
+
     func createVolcanoPlotHtml(context: PlotGenerationContext) async -> String {
-        let volcanoResult = await volcanoPlotDataService.processVolcanoData(
-            curtainData: convertToAppData(context.data),
-            settings: context.settings
-        )
+        let volcanoResult: VolcanoProcessResult
+
+        // Try SQLite first if linkId is available and data exists
+        if let linkId = context.linkId,
+           !linkId.isEmpty,
+           proteomicsDataDatabaseManager.checkDataExists(linkId) {
+            do {
+                volcanoResult = try volcanoPlotDataService.processVolcanoData(
+                    linkId: linkId,
+                    settings: context.settings,
+                    differentialForm: context.data.differentialForm
+                )
+                print("[PlotlyChartGenerator] Using SQLite data for linkId: \(linkId)")
+            } catch {
+                print("[PlotlyChartGenerator] SQLite query failed, falling back to in-memory: \(error)")
+                volcanoResult = await volcanoPlotDataService.processVolcanoData(
+                    curtainData: convertToAppData(context.data),
+                    settings: context.settings
+                )
+            }
+        } else {
+            // Fallback to in-memory processing
+            volcanoResult = await volcanoPlotDataService.processVolcanoData(
+                curtainData: convertToAppData(context.data),
+                settings: context.settings
+            )
+        }
         
         let plotData = createCompatiblePlotData(volcanoResult, context: context)
         
@@ -92,41 +116,25 @@ class PlotlyChartGenerator {
         var traces: [PlotTrace] = []
         let allGroupNames = Array(selectionGroups.keys)
 
-        // 1. Add Background trace first (drawn at the bottom)
-        if let groupData = selectionGroups["Background"] {
-            let trace = createCompatibleTrace(
-                dataPoints: groupData.points,
-                name: "Background",
-                color: groupData.color,
-                markerSize: getMarkerSize(for: "Background", settings: settings)
-            )
-            traces.append(trace)
-        }
+        // Match Android exactly: user selections FIRST, then background/significance SECOND
 
-        // 2. Add Significant/Other traces (drawn above Background)
-        let significantNames = allGroupNames.filter {
-            return ($0 == "Other" || $0.contains("P-value") || $0.contains("FC")) && $0 != "Background"
+        // 1. Add User Selections first (Android lines 118-127)
+        let backgroundAndSignificanceNames = allGroupNames.filter { name in
+            return name == "Background" ||
+                   name == "Other" ||
+                   name.contains("P-value") ||
+                   name.contains("FC")
         }.sorted()
 
-        for selectionName in significantNames {
-            guard let groupData = selectionGroups[selectionName] else { continue }
-            let trace = createCompatibleTrace(
-                dataPoints: groupData.points,
-                name: selectionName,
-                color: groupData.color,
-                markerSize: getMarkerSize(for: selectionName, settings: settings)
-            )
-            traces.append(trace)
-        }
-
-        // 3. Add User Selections (drawn on top of everything)
         let userSelectionNames: [String]
         if !selectionsName.isEmpty {
             userSelectionNames = selectionsName.filter { selectionGroups[$0] != nil }
         } else {
-            userSelectionNames = allGroupNames.filter {
-                return $0 != "Background" &&
-                       !significantNames.contains($0)
+            userSelectionNames = allGroupNames.filter { name in
+                return name != "Background" &&
+                       name != "Other" &&
+                       !name.contains("P-value") &&
+                       !name.contains("FC")
             }.sorted()
         }
 
@@ -141,9 +149,30 @@ class PlotlyChartGenerator {
             traces.append(trace)
         }
 
-        // Apply custom trace order if specified
-        let sortedTraces = reorderTraces(traces, accordingTo: settings.volcanoTraceOrder)
-        
+        // 2. Add Background and significance groups second (Android lines 137-146)
+        for selectionName in backgroundAndSignificanceNames {
+            guard let groupData = selectionGroups[selectionName] else { continue }
+            let trace = createCompatibleTrace(
+                dataPoints: groupData.points,
+                name: selectionName,
+                color: groupData.color,
+                markerSize: getMarkerSize(for: selectionName, settings: settings)
+            )
+            traces.append(trace)
+        }
+
+        // 3. Apply custom trace order or reverse (Android lines 148-153)
+        // Android reverses when no custom order:
+        //   Before reverse: [UserSelections..., Background/Significance...]
+        //   After reverse:  [Background/Significance..., UserSelections...]
+        // In Plotly, last trace renders on top → user selections on top
+        let sortedTraces: [PlotTrace]
+        if !settings.volcanoTraceOrder.isEmpty {
+            sortedTraces = reorderTraces(traces, accordingTo: settings.volcanoTraceOrder)
+        } else {
+            sortedTraces = traces.reversed()
+        }
+
         lastGeneratedTraceNames = sortedTraces.map { $0.name }
         lastGeneratedTraces = sortedTraces
         return sortedTraces
@@ -419,8 +448,8 @@ class PlotlyChartGenerator {
     }
     
     private func getMarkerSize(for groupName: String, settings: CurtainSettings) -> Double {
-        if let customSize = settings.markerSizeMap[groupName] as? Int { return Double(customSize) }
-        else if let customSize = settings.markerSizeMap[groupName] as? Double { return customSize }
+        if let customSize = settings.markerSizeMap[groupName]?.value as? Int { return Double(customSize) }
+        else if let customSize = settings.markerSizeMap[groupName]?.value as? Double { return customSize }
         return settings.scatterPlotMarkerSize
     }
 

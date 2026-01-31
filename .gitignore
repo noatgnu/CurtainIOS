@@ -43,3 +43,7 @@ Carthage/Build
 
 # SPM
 .swiftpm/
+*.md
+*.json
+*.log
+*.py

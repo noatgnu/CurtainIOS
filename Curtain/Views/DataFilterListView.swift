@@ -18,9 +18,22 @@ struct DataFilterListView: View {
     @State private var searchText = ""
     @State private var selectedHostname = CurtainConstants.PredefinedHosts.celsusBackend
     
+    private var isWideLayout: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad || UIDevice.current.userInterfaceIdiom == .mac
+    }
+
     var body: some View {
-        NavigationView {
-            Group {
+        if isWideLayout {
+            mainBody
+        } else {
+            NavigationStack {
+                mainBody
+            }
+        }
+    }
+
+    private var mainBody: some View {
+        Group {
                 if let viewModel = viewModel {
                     VStack(spacing: 0) {
                         // Host Selection
@@ -98,8 +111,7 @@ struct DataFilterListView: View {
                 }
             }
         }
-    }
-    
+
     // MARK: - Computed Properties
     
     private var filteredLists: [DataFilterListEntity] {
@@ -129,28 +141,33 @@ struct DataFilterListView: View {
 
 struct HostSelectionView: View {
     @Binding var selectedHostname: String
-    
-    // This would ideally come from site settings
-    private let hosts = ["localhost", "curtain-demo.org", "custom-host.com"]
-    
+    @Query private var siteSettings: [CurtainSiteSettings]
+
+    private var hosts: [String] {
+        let configured = siteSettings.filter { $0.isActive }.map { $0.hostname }
+        if configured.isEmpty {
+            return [CurtainConstants.PredefinedHosts.celsusBackend]
+        }
+        return configured
+    }
+
     var body: some View {
         HStack {
             Text("Host:")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            
+
             Picker("Host", selection: $selectedHostname) {
                 ForEach(hosts, id: \.self) { host in
                     Text(host).tag(host)
                 }
             }
             .pickerStyle(MenuPickerStyle())
-            
+
             Spacer()
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Color(.systemGray6))
     }
 }
 
@@ -184,13 +201,13 @@ struct CategoryChip: View {
     let title: String
     let isSelected: Bool
     let onTap: () -> Void
-    
+
     var body: some View {
         Text(title)
             .font(.caption)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(isSelected ? Color.blue : Color(.systemGray5))
+            .background(isSelected ? Color.accentColor : Color(.secondarySystemFill))
             .foregroundColor(isSelected ? .white : .primary)
             .cornerRadius(16)
             .onTapGesture(perform: onTap)
@@ -299,6 +316,7 @@ struct FilterListContent: View {
                 .padding()
             }
         }
+        .scrollContentBackground(.hidden)
         .refreshable {
             // Only refresh local data, don't auto-sync with server
             viewModel.loadDataFilterLists()

@@ -1,6 +1,13 @@
 import Foundation
+import GRDB
 
 class VolcanoPlotDataService {
+    private let proteomicsDataService = ProteomicsDataService.shared
+    private let proteomicsDataDatabaseManager = ProteomicsDataDatabaseManager.shared
+    private let proteinMappingService = ProteinMappingService.shared
+    
+    // MARK: - Legacy In-Memory Processing
+    
     func processVolcanoData(curtainData: AppData, settings: CurtainSettings) async -> VolcanoProcessResult {
         let diffForm = curtainData.differentialForm!
         let fcColumn = diffForm.foldChange
@@ -135,6 +142,189 @@ class VolcanoPlotDataService {
         )
         
         return VolcanoProcessResult(jsonData: jsonData, colorMap: colorMap, updatedVolcanoAxis: updatedVolcanoAxis)
+    }
+
+    // MARK: - New SQLite Processing
+
+    func processVolcanoData(linkId: String, settingsEntity: CurtainSettingsEntity) throws -> VolcanoProcessResult {
+        guard let settings = settingsEntity.getSettings(),
+              let diffForm = settingsEntity.getDifferentialForm() else {
+            return VolcanoProcessResult(jsonData: [], colorMap: [:], updatedVolcanoAxis: VolcanoAxis())
+        }
+        return try processVolcanoData(linkId: linkId, settings: settings, differentialForm: diffForm)
+    }
+
+    /// SQLite-based volcano data processing using settings directly
+    func processVolcanoData(linkId: String, settings: CurtainSettings, differentialForm: CurtainDifferentialForm) throws -> VolcanoProcessResult {
+
+        // Fetch processed data from SQLite
+        let processedData = try proteomicsDataService.getAllProcessedData(linkId: linkId)
+
+        // Debug: Log gene name resolution
+        let withGeneNames = processedData.filter { $0.geneNames != nil && !($0.geneNames?.isEmpty ?? true) }.count
+        print("[VolcanoPlotDataService] Total proteins: \(processedData.count), with geneNames: \(withGeneNames)")
+        if let first = processedData.first {
+            print("[VolcanoPlotDataService] First protein: id=\(first.primaryId), geneNames=\(first.geneNames ?? "nil")")
+        }
+
+        // Fetch metadata for selections
+        let metadata = try proteomicsDataService.getCurtainMetadata(linkId: linkId)
+
+        var selectedMap: [String: [String: Bool]] = [:]
+        if let json = metadata?.selectedMapJson,
+           let data = json.data(using: .utf8) {
+            selectedMap = (try? JSONDecoder().decode([String: [String: Bool]].self, from: data)) ?? [:]
+        }
+
+        // Process data
+        var jsonData: [[String: Any]] = []
+        var colorMap = settings.colorMap
+        var minFC = Double.greatestFiniteMagnitude
+        var maxFC = -Double.greatestFiniteMagnitude
+        var maxLogP = 0.0
+        var firstValidPoint = true
+
+        let selectOperationNames = extractSelectionNames(from: selectedMap)
+        var colorIndex = assignColorsToSelections(selectOperationNames, &colorMap, settings)
+
+        for entity in processedData {
+            let id = entity.primaryId
+            if id.isEmpty { continue }
+
+            let fcValue = entity.foldChange ?? 0.0
+            let sigValue = entity.significant ?? 0.0
+            let comparisonValue = entity.comparison
+
+            // Resolve gene name using priority: 1) entity.geneNames, 2) mapping service, 3) primaryId
+            var geneName = id
+            var geneSource = "primaryId"
+            if let gn = entity.geneNames, !gn.isEmpty {
+                // Get first gene name from the column value
+                let firstGene = gn.components(separatedBy: CharacterSet(charactersIn: " ;\\"))
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .first
+                geneName = firstGene ?? gn
+                geneSource = "entity.geneNames"
+            } else if let gn = proteinMappingService.getGeneNameFromPrimaryId(linkId: linkId, primaryId: id), !gn.isEmpty {
+                geneName = gn
+                geneSource = "mappingService"
+            }
+
+            // Debug: log first few gene name resolutions
+            if jsonData.count < 5 {
+                print("[VolcanoPlotDataService] Gene resolution for \(id): '\(geneName)' from \(geneSource)")
+            }
+
+            guard !fcValue.isNaN && !sigValue.isNaN && !fcValue.isInfinite && !sigValue.isInfinite else { continue }
+
+            if firstValidPoint {
+                minFC = fcValue
+                maxFC = fcValue
+                maxLogP = sigValue
+                firstValidPoint = false
+            } else {
+                minFC = min(minFC, fcValue)
+                maxFC = max(maxFC, fcValue)
+                maxLogP = max(maxLogP, sigValue)
+            }
+
+            // Selection and color assignment
+            var selections: [String] = []
+            var colors: [String] = []
+            var hasUserSelection = false
+
+            if let selectionForId = selectedMap[id] {
+                for (name, isSelected) in selectionForId {
+                    if isSelected, let color = colorMap[name] {
+                        // Check if the selection is comparison-specific
+                        if let match = name.range(of: #"\(([^)]*)\)[^(]*$"#, options: .regularExpression),
+                           let captureRange = name.range(of: #"\([^)]*\)"#, options: .regularExpression, range: match) {
+                            let extractedComparison = String(name[captureRange].dropFirst().dropLast())
+                            if extractedComparison == comparisonValue {
+                                selections.append(name)
+                                colors.append(color)
+                                hasUserSelection = true
+                            }
+                        } else {
+                            selections.append(name)
+                            colors.append(color)
+                            hasUserSelection = true
+                        }
+                    }
+                }
+            }
+
+            if !hasUserSelection {
+                if settings.backGroundColorGrey {
+                    selections.append("Background")
+                    colors.append("#a4a2a2")
+                } else {
+                    let (group, _) = getSignificantGroup(fcValue: fcValue, sigValue: sigValue, settings: settings, comparison: comparisonValue)
+                    selections.append(group)
+
+                    if colorMap[group] == nil {
+                        let defaultColors = settings.defaultColorList
+                        if !defaultColors.isEmpty {
+                            colorMap[group] = defaultColors[colorIndex % defaultColors.count]
+                            colorIndex += 1
+                        } else {
+                            colorMap[group] = "#cccccc"
+                        }
+                    }
+                    colors.append(colorMap[group] ?? "#cccccc")
+                }
+            }
+
+            var dataPoint: [String: Any] = [
+                "x": fcValue,
+                "y": sigValue,
+                "id": id,
+                "gene": geneName.replacingOccurrences(of: "\"", with: "\\\"").replacingOccurrences(of: "'", with: "\'\'"),
+                "comparison": comparisonValue,
+                "selections": selections,
+                "colors": colors,
+                "color": colors.first ?? "#808080"
+            ]
+
+            if !settings.customVolcanoTextCol.isEmpty {
+                // Custom text column would need to be stored separately if needed
+                dataPoint["customText"] = ""
+            }
+
+            jsonData.append(dataPoint)
+        }
+
+        let updatedVolcanoAxis = VolcanoAxis(
+            minX: settings.volcanoAxis.minX ?? (minFC - 1.0),
+            maxX: settings.volcanoAxis.maxX ?? (maxFC + 1.0),
+            minY: settings.volcanoAxis.minY ?? 0.0,
+            maxY: settings.volcanoAxis.maxY ?? (maxLogP + 1.0),
+            x: settings.volcanoAxis.x.isEmpty ? "Fold Change" : settings.volcanoAxis.x,
+            y: settings.volcanoAxis.y.isEmpty ? "-log10(p-value)" : settings.volcanoAxis.y,
+            dtickX: settings.volcanoAxis.dtickX,
+            dtickY: settings.volcanoAxis.dtickY,
+            ticklenX: settings.volcanoAxis.ticklenX,
+            ticklenY: settings.volcanoAxis.ticklenY
+        )
+
+        return VolcanoProcessResult(jsonData: jsonData, colorMap: colorMap, updatedVolcanoAxis: updatedVolcanoAxis)
+    }
+
+    private func extractSelectionNames(from selectedMap: [String: [String: Bool]]) -> Set<String> {
+        var names = Set<String>()
+        for (_, selections) in selectedMap {
+            for (name, isSelected) in selections where isSelected {
+                names.insert(name)
+            }
+        }
+        return names
+    }
+
+    private func getDatabaseURL(for linkId: String) -> URL {
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let curtainDataDir = documentsPath.appendingPathComponent("CurtainData", isDirectory: true)
+        return curtainDataDir.appendingPathComponent("proteomics_data_\(linkId).sqlite")
     }
     
     private func parseRawProcessedString(rawContent: String, diffForm: RawForm? = nil) -> [[String: Any]] {

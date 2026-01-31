@@ -21,25 +21,34 @@ class CurtainViewModel {
     var curtains: [CurtainEntity] = []
     private var allCurtains: [CurtainEntity] = []
     private var loadedCurtains: [CurtainEntity] = []
-    
+
     private var currentPage = 0
     private var hasMoreData = true
     private static let pageSize = 10
     private static let initialPageSize = 5
-    
+
     // Loading States
     var isLoading = false
     var isLoadingMore = false
     var isDownloading = false
-    
+
     var downloadProgress = 0
     var downloadSpeed = 0.0
-    
+
     // Error Handling
     var error: String?
-    
+
     // Counts
     var totalCurtains = 0
+
+    // MARK: - Collection State
+    private var collectionRepository: CurtainCollectionRepository?
+    var collections: [CurtainCollectionEntity] = []
+    var expandedCollectionIds: Set<Int> = []
+    var collectionSessions: [Int: [CollectionSessionEntity]] = [:]
+    var isLoadingCollections = false
+    var selectionModeCollectionId: Int?
+    var selectedSessionIds: [Int: Set<String>] = [:]
     
     private var hasBeenSetup = false
     
@@ -54,11 +63,16 @@ class CurtainViewModel {
             loadCurtains()
         } else {
             // Create a temporary repository - will be replaced in setupWithModelContext
+            // IMPORTANT: Schema must match CurtainApp.swift to avoid conflicts
             do {
                 let schema = Schema([
                     CurtainEntity.self,
                     CurtainSiteSettings.self,
-                    DataFilterListEntity.self
+                    DataFilterListEntity.self,
+                    CurtainSettingsEntity.self,
+                    CurtainCollectionEntity.self,
+                    CollectionSessionEntity.self,
+                    SavedCrossDatasetSearchEntity.self,
                 ])
                 let modelContainer = try ModelContainer(for: schema)
                 let tempModelContext = ModelContext(modelContainer)
@@ -72,13 +86,15 @@ class CurtainViewModel {
     
     /// Setup the ViewModel with the proper ModelContext from environment
     func setupWithModelContext(_ modelContext: ModelContext) {
-        guard !hasBeenSetup else { 
-            return 
+        guard !hasBeenSetup else {
+            return
         }
-        
+
         self.curtainRepository = CurtainRepository(modelContext: modelContext)
+        self.collectionRepository = CurtainCollectionRepository(modelContext: modelContext)
         hasBeenSetup = true
         loadCurtains()
+        loadCollections()
     }
     
     
@@ -452,7 +468,182 @@ class CurtainViewModel {
     func getActiveSiteSettings() -> [CurtainSiteSettings] {
         return curtainRepository.getActiveSiteSettings()
     }
-    
+
+    // MARK: - CurtainEntity Lookup (for cross-referencing collection sessions)
+
+    func getCurtainEntity(linkId: String) -> CurtainEntity? {
+        return curtainRepository.getCurtainById(linkId)
+    }
+
+    /// Check if a curtain belongs to any collection
+    func isInCollection(linkId: String) -> Bool {
+        guard let repo = collectionRepository else { return false }
+        let session = repo.getSessionByLinkId(linkId)
+        return session != nil && !(session!.collections.isEmpty)
+    }
+
+    // MARK: - Collection Methods
+
+    func loadCollections() {
+        guard let repo = collectionRepository else { return }
+        collections = repo.getAllCollections()
+    }
+
+    func loadExampleCollection() async {
+        isLoadingCollections = true
+        error = nil
+
+        do {
+            let collection = try await collectionRepository?.fetchCollectionFromApi(
+                collectionId: CurtainConstants.ExampleCollection.collectionId,
+                hostname: CurtainConstants.ExampleCollection.apiUrl,
+                frontendURL: CurtainConstants.ExampleCollection.frontendUrl
+            )
+            await MainActor.run {
+                loadCollections()
+                if let collection = collection {
+                    expandedCollectionIds.insert(collection.collectionId)
+                    collectionSessions[collection.collectionId] = collection.sessions
+                }
+                isLoadingCollections = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Failed to load example collection: \(error.localizedDescription)"
+                isLoadingCollections = false
+            }
+        }
+    }
+
+    func loadCollection(collectionId: Int, apiUrl: String, frontendUrl: String? = nil) async {
+        isLoadingCollections = true
+        error = nil
+
+        do {
+            let collection = try await collectionRepository?.fetchCollectionFromApi(
+                collectionId: collectionId,
+                hostname: apiUrl,
+                frontendURL: frontendUrl
+            )
+            await MainActor.run {
+                loadCollections()
+                if let collection = collection {
+                    expandedCollectionIds.insert(collection.collectionId)
+                    collectionSessions[collection.collectionId] = collection.sessions
+                }
+                isLoadingCollections = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Failed to load collection: \(error.localizedDescription)"
+                isLoadingCollections = false
+            }
+        }
+    }
+
+    func toggleCollectionExpanded(id: Int) {
+        if expandedCollectionIds.contains(id) {
+            expandedCollectionIds.remove(id)
+        } else {
+            expandedCollectionIds.insert(id)
+            if collectionSessions[id] == nil {
+                if let sessions = collectionRepository?.getCollectionSessions(collectionId: id) {
+                    collectionSessions[id] = sessions
+                }
+            }
+        }
+    }
+
+    func refreshCollection(id: Int) async {
+        guard let repo = collectionRepository,
+              let collection = repo.getCollectionById(id) else { return }
+        isLoadingCollections = true
+
+        do {
+            let updated = try await repo.refreshCollection(collection: collection)
+            await MainActor.run {
+                loadCollections()
+                collectionSessions[id] = updated.sessions
+                isLoadingCollections = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Failed to refresh collection: \(error.localizedDescription)"
+                isLoadingCollections = false
+            }
+        }
+    }
+
+    func deleteCollection(id: Int) {
+        guard let repo = collectionRepository,
+              let collection = repo.getCollectionById(id) else { return }
+        repo.deleteCollection(collection: collection)
+        expandedCollectionIds.remove(id)
+        collectionSessions.removeValue(forKey: id)
+        selectedSessionIds.removeValue(forKey: id)
+        if selectionModeCollectionId == id {
+            selectionModeCollectionId = nil
+        }
+        loadCollections()
+    }
+
+    func loadSessionFromCollection(session: CollectionSessionEntity, collection: CurtainCollectionEntity) async {
+        await loadCurtain(
+            linkId: session.linkId,
+            apiUrl: collection.sourceHostname,
+            frontendUrl: collection.frontendURL
+        )
+    }
+
+    // MARK: - Selection Mode
+
+    func enterSelectionMode(collectionId: Int) {
+        selectionModeCollectionId = collectionId
+        selectedSessionIds[collectionId] = []
+    }
+
+    func exitSelectionMode() {
+        if let id = selectionModeCollectionId {
+            selectedSessionIds.removeValue(forKey: id)
+        }
+        selectionModeCollectionId = nil
+    }
+
+    func toggleSessionSelection(collectionId: Int, sessionLinkId: String) {
+        if selectedSessionIds[collectionId] == nil {
+            selectedSessionIds[collectionId] = []
+        }
+        if selectedSessionIds[collectionId]!.contains(sessionLinkId) {
+            selectedSessionIds[collectionId]!.remove(sessionLinkId)
+        } else {
+            selectedSessionIds[collectionId]!.insert(sessionLinkId)
+        }
+    }
+
+    func selectAllSessions(collectionId: Int) {
+        guard let sessions = collectionSessions[collectionId] else { return }
+        selectedSessionIds[collectionId] = Set(sessions.map(\.linkId))
+    }
+
+    func deselectAllSessions(collectionId: Int) {
+        selectedSessionIds[collectionId] = []
+    }
+
+    func downloadSelectedSessions(collectionId: Int) async {
+        guard let collection = collectionRepository?.getCollectionById(collectionId),
+              let selected = selectedSessionIds[collectionId],
+              let sessions = collectionSessions[collectionId] else { return }
+
+        let sessionsToDownload = sessions.filter { selected.contains($0.linkId) }
+        for session in sessionsToDownload {
+            await loadCurtain(
+                linkId: session.linkId,
+                apiUrl: collection.sourceHostname,
+                frontendUrl: collection.frontendURL
+            )
+        }
+        exitSelectionMode()
+    }
 }
 
 // MARK: - ViewModel Errors
