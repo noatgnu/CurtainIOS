@@ -29,15 +29,41 @@ struct CrossDatasetSearchView: View {
         HStack(spacing: 0) {
             datasetSelectionContent
                 .frame(width: 320)
-                .background(Color(.secondarySystemGroupedBackground))
 
-            Divider()
+            VStack(spacing: 0) {
+                // Inline toolbar for wide layout (no NavigationStack)
+                HStack {
+                    Spacer()
 
-            searchDetailContent
-                .frame(maxWidth: .infinity)
-        }
-        .toolbar {
-            searchToolbarItems
+                    Button {
+                        showFilterListPicker = true
+                    } label: {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        withAnimation { showSavedSearches.toggle() }
+                    } label: {
+                        Image(systemName: showSavedSearches ? "bookmark.fill" : "clock.arrow.circlepath")
+                    }
+                    .buttonStyle(.plain)
+
+                    if viewModel.searchResult != nil {
+                        Button {
+                            showSaveDialog = true
+                        } label: {
+                            Image(systemName: viewModel.currentSavedSearchId != nil ? "bookmark.fill" : "bookmark")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+
+                searchDetailContent
+            }
+            .frame(maxWidth: .infinity)
         }
         .onAppear {
             viewModel.setupWithModelContext(modelContext)
@@ -401,7 +427,6 @@ struct CrossDatasetSearchView: View {
                 .padding(12)
             }
         }
-        .background(Color(.systemGroupedBackground))
     }
 }
 
@@ -450,7 +475,8 @@ struct SavedSearchesPanel: View {
             }
         }
         .padding(12)
-        .background(Color(.secondarySystemGroupedBackground).opacity(0.5))
+        .background(Color(.secondarySystemGroupedBackground))
+        .cornerRadius(10)
     }
 }
 
@@ -552,18 +578,12 @@ struct SelectableDatasetRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemBackground))
+        .background(Color(.secondarySystemGroupedBackground))
+        .cornerRadius(8)
         .contentShape(Rectangle())
         .onTapGesture {
             onToggle()
         }
-        .overlay(
-            Rectangle()
-                .fill(Color(.separator))
-                .frame(height: 0.5)
-                .opacity(0.3),
-            alignment: .bottom
-        )
     }
 }
 
@@ -591,9 +611,8 @@ struct SelectableCollectionCard: View {
                 sessionsContent
             }
         }
-        .background(Color(.systemBackground))
+        .background(Color(.secondarySystemGroupedBackground))
         .cornerRadius(12)
-        .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
     }
 
     private var cardHeader: some View {
@@ -909,10 +928,14 @@ struct FilterListPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { isPresented = false }
+                    .fixedSize()
                 }
             }
         }
         .presentationDetents([.medium, .large])
+        .onAppear {
+            viewModel.refreshFilterLists()
+        }
     }
 }
 

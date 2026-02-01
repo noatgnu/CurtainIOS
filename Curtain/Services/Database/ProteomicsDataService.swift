@@ -346,7 +346,8 @@ class ProteomicsDataService {
             extraData: curtainData.extraData,
             permanent: curtainData.permanent,
             bypassUniProt: curtainData.bypassUniProt,
-            dbPath: curtainData.dbPath
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
     }
 

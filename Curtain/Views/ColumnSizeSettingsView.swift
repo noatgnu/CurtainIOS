@@ -19,7 +19,7 @@ struct ColumnSizeSettingsView: View {
     @State private var violinPlotColumnSize: String = "0"
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Info Section
                 Section {
@@ -178,13 +178,14 @@ struct ColumnSizeSettingsView: View {
             .navigationTitle("Column Size")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveChanges()
                         dismiss()
@@ -192,6 +193,7 @@ struct ColumnSizeSettingsView: View {
                         // Trigger plot refresh using correct notification name
                         NotificationCenter.default.post(name: NSNotification.Name("ProteinChartRefresh"), object: nil)
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -329,7 +331,10 @@ struct ColumnSizeSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData

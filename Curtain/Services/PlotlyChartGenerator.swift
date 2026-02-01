@@ -8,6 +8,10 @@ class PlotlyChartGenerator {
 
     private(set) var lastGeneratedTraceNames: [String] = []
     private(set) var lastGeneratedTraces: [PlotTrace] = []
+    /// Accumulated colorMap across renders. Significance group colors assigned on
+    /// the first render are preserved here so they don't shift when new user
+    /// selections are added. Static so it survives PlotlyWebView .id() recreation.
+    private static var persistedColorMap: [String: String] = [:]
 
     init(curtainDataService: CurtainDataService? = nil) {
         self.curtainDataService = curtainDataService
@@ -17,6 +21,15 @@ class PlotlyChartGenerator {
     func createVolcanoPlotHtml(context: PlotGenerationContext) async -> String {
         let volcanoResult: VolcanoProcessResult
 
+        // Merge persisted colorMap into settings so significance group colors from
+        // previous renders are preserved and don't shift when new selections appear.
+        var settingsWithPersistedColors = context.settings
+        for (key, value) in Self.persistedColorMap {
+            if settingsWithPersistedColors.colorMap[key] == nil {
+                settingsWithPersistedColors.colorMap[key] = value
+            }
+        }
+
         // Try SQLite first if linkId is available and data exists
         if let linkId = context.linkId,
            !linkId.isEmpty,
@@ -24,27 +37,34 @@ class PlotlyChartGenerator {
             do {
                 volcanoResult = try volcanoPlotDataService.processVolcanoData(
                     linkId: linkId,
-                    settings: context.settings,
-                    differentialForm: context.data.differentialForm
+                    settings: settingsWithPersistedColors,
+                    differentialForm: context.data.differentialForm,
+                    overrideSelectedMap: context.data.selectedMap
                 )
                 print("[PlotlyChartGenerator] Using SQLite data for linkId: \(linkId)")
             } catch {
                 print("[PlotlyChartGenerator] SQLite query failed, falling back to in-memory: \(error)")
                 volcanoResult = await volcanoPlotDataService.processVolcanoData(
                     curtainData: convertToAppData(context.data),
-                    settings: context.settings
+                    settings: settingsWithPersistedColors
                 )
             }
         } else {
             // Fallback to in-memory processing
             volcanoResult = await volcanoPlotDataService.processVolcanoData(
                 curtainData: convertToAppData(context.data),
-                settings: context.settings
+                settings: settingsWithPersistedColors
             )
         }
-        
+
+        // Accumulate the full colorMap (including significance group colors) so they
+        // remain stable across re-renders.
+        for (key, value) in volcanoResult.colorMap {
+            Self.persistedColorMap[key] = value
+        }
+
         let plotData = createCompatiblePlotData(volcanoResult, context: context)
-        
+
         do {
             let plotJSON = try plotData.toJSON()
             return generateVolcanoHtmlTemplate(plotJSON: plotJSON, editMode: context.editMode, isDarkMode: context.isDarkMode)

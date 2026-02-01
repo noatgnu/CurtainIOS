@@ -25,7 +25,7 @@ struct AnnotationEditModal: View {
     @State private var textOffsetY: Double = -20
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 20) {
                 if let selectedCandidate = selectedCandidate {
                     // Show edit interface for selected annotation
@@ -46,29 +46,36 @@ struct AnnotationEditModal: View {
             .padding()
             .navigationTitle("Edit Annotation")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: selectedCandidate != nil && candidates.count > 1 ?
-                    AnyView(Button("Back") {
-                        selectedCandidate = nil
-                    }) :
-                    AnyView(Button("Cancel") {
-                        isPresented = false
-                    }),
-                trailing: Button(editAction == .moveTextInteractive ? "Start Interactive Mode" : "Done") {
-                    if let candidate = selectedCandidate {
-                        if editAction == .moveTextInteractive {
-                            // Start interactive positioning mode
-                            onInteractivePositioning(candidate)
-                            isPresented = false
-                        } else {
-                            // Save regular changes
-                            saveAnnotationChanges(candidate)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if selectedCandidate != nil && candidates.count > 1 {
+                        Button("Back") {
+                            selectedCandidate = nil
+                        }
+                        .fixedSize()
+                    } else {
+                        Button("Cancel") {
                             isPresented = false
                         }
+                        .fixedSize()
                     }
                 }
-                .disabled(selectedCandidate == nil && candidates.count > 1)
-            )
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(editAction == .moveTextInteractive ? "Start Interactive Mode" : "Done") {
+                        if let candidate = selectedCandidate {
+                            if editAction == .moveTextInteractive {
+                                onInteractivePositioning(candidate)
+                                isPresented = false
+                            } else {
+                                saveAnnotationChanges(candidate)
+                                isPresented = false
+                            }
+                        }
+                    }
+                    .fixedSize()
+                    .disabled(selectedCandidate == nil && candidates.count > 1)
+                }
+            }
         }
                 .onAppear {
                     if candidates.count == 1 {
@@ -427,7 +434,10 @@ struct AnnotationEditModal: View {
                                 fetchUniprot: curtainData.fetchUniprot,
                                 annotatedData: curtainData.annotatedData,
                                 extraData: curtainData.extraData,
-                                permanent: curtainData.permanent
+                                permanent: curtainData.permanent,
+                                bypassUniProt: curtainData.bypassUniProt,
+                                dbPath: curtainData.dbPath,
+                                linkId: curtainData.linkId
                             )
                     
                     

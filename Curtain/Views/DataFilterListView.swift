@@ -24,31 +24,88 @@ struct DataFilterListView: View {
 
     var body: some View {
         if isWideLayout {
-            mainBody
+            filterContent
+                .sheet(isPresented: $showingAddFilterSheet) {
+                    if let viewModel = viewModel {
+                        AddFilterListSheet(viewModel: viewModel, hostname: selectedHostname)
+                    }
+                }
         } else {
             NavigationStack {
-                mainBody
+                filterContent
+                    .navigationTitle("Filter Lists")
+                    .navigationBarTitleDisplayMode(.large)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                Task {
+                                    await viewModel?.syncDataFilterLists(hostname: selectedHostname)
+                                }
+                            } label: {
+                                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .disabled(viewModel?.isSyncing ?? true)
+                        }
+
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                showingAddFilterSheet = true
+                            } label: {
+                                Label("Add", systemImage: "plus")
+                            }
+                            .disabled(viewModel == nil)
+                        }
+                    }
+                    .sheet(isPresented: $showingAddFilterSheet) {
+                        if let viewModel = viewModel {
+                            AddFilterListSheet(viewModel: viewModel, hostname: selectedHostname)
+                        }
+                    }
             }
         }
     }
 
-    private var mainBody: some View {
+    private var filterContent: some View {
         Group {
                 if let viewModel = viewModel {
                     VStack(spacing: 0) {
-                        // Host Selection
-                        HostSelectionView(selectedHostname: $selectedHostname)
-                        
+                        // Action buttons for wide layout (no NavigationStack toolbar)
+                        if isWideLayout {
+                            HStack {
+                                HostSelectionView(selectedHostname: $selectedHostname)
+                                Spacer()
+                                Button {
+                                    Task {
+                                        await viewModel.syncDataFilterLists(hostname: selectedHostname)
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(viewModel.isSyncing)
+
+                                Button {
+                                    showingAddFilterSheet = true
+                                } label: {
+                                    Image(systemName: "plus")
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.trailing)
+                        } else {
+                            HostSelectionView(selectedHostname: $selectedHostname)
+                        }
+
                         // Category Filter
                         CategoryFilterView(
                             categories: viewModel.categories,
                             selectedCategory: $selectedCategory
                         )
-                        
+
                         // Search Bar
                         SearchBar(text: $searchText)
                             .padding(.horizontal)
-                        
+
                         if viewModel.isSyncing {
                             SyncProgressView(
                                 progress: viewModel.getSyncProgressPercentage(),
@@ -57,7 +114,7 @@ struct DataFilterListView: View {
                             )
                             .padding()
                         }
-                        
+
                         // Error Message
                         if let error = viewModel.error {
                             ErrorView(message: error) {
@@ -65,7 +122,7 @@ struct DataFilterListView: View {
                             }
                             .padding()
                         }
-                        
+
                         // Main Content
                         if viewModel.isLoading && viewModel.filterLists.isEmpty {
                             ProgressView("Loading filter lists...")
@@ -84,30 +141,6 @@ struct DataFilterListView: View {
                         .onAppear {
                             setupViewModel()
                         }
-                }
-            }
-            .navigationTitle("Filter Lists")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Sync") {
-                        Task {
-                            await viewModel?.syncDataFilterLists(hostname: selectedHostname)
-                        }
-                    }
-                    .disabled(viewModel?.isSyncing ?? true)
-                }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
-                        showingAddFilterSheet = true
-                    }
-                    .disabled(viewModel == nil)
-                }
-            }
-            .sheet(isPresented: $showingAddFilterSheet) {
-                if let viewModel = viewModel {
-                    AddFilterListSheet(viewModel: viewModel, hostname: selectedHostname)
                 }
             }
         }
@@ -425,7 +458,7 @@ struct AddFilterListSheet: View {
     @State private var isDefault = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Filter List Information") {
                     TextField("Name", text: $name)
@@ -441,10 +474,11 @@ struct AddFilterListSheet: View {
             .navigationTitle("Add Filter List")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
                         Task {
                             await viewModel.createDataFilterList(
@@ -457,6 +491,7 @@ struct AddFilterListSheet: View {
                             dismiss()
                         }
                     }
+                    .fixedSize()
                     .disabled(name.isEmpty || category.isEmpty || data.isEmpty)
                 }
             }
@@ -487,7 +522,7 @@ struct EditFilterListSheet: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Filter List Information") {
                     TextField("Name", text: $name)
@@ -503,10 +538,11 @@ struct EditFilterListSheet: View {
             .navigationTitle("Edit Filter List")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
                             await viewModel.updateDataFilterList(
@@ -520,6 +556,7 @@ struct EditFilterListSheet: View {
                             dismiss()
                         }
                     }
+                    .fixedSize()
                 }
             }
         }
@@ -534,7 +571,7 @@ struct ExportFilterListSheet: View {
     @State private var exportData = ""
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 Text("Export Filter List")
                     .font(.headline)
@@ -558,8 +595,9 @@ struct ExportFilterListSheet: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                    .fixedSize()
                 }
             }
         }

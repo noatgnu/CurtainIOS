@@ -31,6 +31,8 @@ struct PlotExportButton: View {
                 } primaryAction: {
                     quickExport()
                 }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
             } else {
                 // iPhone: Button that shows action sheet
                 Button(action: {
@@ -190,7 +192,7 @@ struct ExportOptionsSheet: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Export Format") {
                     Picker("Format", selection: $selectedFormat) {
@@ -252,20 +254,26 @@ struct ExportOptionsSheet: View {
             }
             .navigationTitle("Export Options")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    dismiss()
-                },
-                trailing: Button("Export") {
-                    let dimensions = selectedQuality == .custom ?
-                        (customWidth, customHeight) :
-                        selectedQuality.dimensions
-
-                    onExport(selectedFormat, selectedQuality, dimensions.0, dimensions.1)
-                    dismiss()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .fixedSize()
                 }
-                .disabled(exportService.isExporting)
-            )
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Export") {
+                        let dimensions = selectedQuality == .custom ?
+                            (customWidth, customHeight) :
+                            selectedQuality.dimensions
+
+                        onExport(selectedFormat, selectedQuality, dimensions.0, dimensions.1)
+                        dismiss()
+                    }
+                    .fixedSize()
+                    .disabled(exportService.isExporting)
+                }
+            }
         }
     }
 }
@@ -273,7 +281,7 @@ struct ExportOptionsSheet: View {
 // MARK: - Preview
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         VStack {
             Text("Plot Export Preview")
             PlotExportButton(plotlyWebView: nil)

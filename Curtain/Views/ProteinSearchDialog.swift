@@ -19,6 +19,7 @@ struct ProteinSearchDialog: View {
     @State private var searchText = ""
     @State private var selectedSearchType: SearchType = .primaryID
     @State private var isTypeaheadMode = true
+    @State private var isSearching = false
     @State private var typeaheadQuery = ""
     @State private var typeaheadSuggestions: [TypeaheadSuggestion] = []
     @State private var isLoadingSuggestions = false
@@ -33,48 +34,80 @@ struct ProteinSearchDialog: View {
     @State private var searchTask: Task<Void, Never>?
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
-                // Header with mode toggle
-                headerView
-                
-                // Search type picker
-                searchTypePicker
-                
-                // Main content area
-                if isTypeaheadMode {
-                    typeaheadSearchView
-                } else {
-                    bulkInputView
-                }
-                
-                // Search progress (when loading)
-                if searchManager.isLoading {
+                // Status bar: always visible progress/error at top
+                if isSearching || searchManager.isLoading {
                     searchProgressView
+                        .padding(.horizontal)
+                        .padding(.vertical, 8)
+                } else if let errorMsg = searchManager.errorMessage {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text(errorMsg)
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Button {
+                            searchManager.errorMessage = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding()
+                    .background(Color.orange.opacity(0.1))
+                    .padding(.horizontal, 8)
                 }
-                
-                Spacer()
-                
-                // Action buttons
-                actionButtonsView
+
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Header with mode toggle
+                        headerView
+
+                        // Search type picker
+                        searchTypePicker
+
+                        // Main content area
+                        if isTypeaheadMode {
+                            typeaheadSearchView
+                        } else {
+                            bulkInputView
+                        }
+
+                        // Action buttons
+                        actionButtonsView
+                    }
+                }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Protein Search")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    isPresented = false
-                },
-                trailing: Button("Done") {
-                    performSearch()
-                    isPresented = false
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                    .fixedSize()
                 }
-                .disabled(!canPerformSearch)
-            )
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        performSearch()
+                    }
+                    .fixedSize()
+                    .disabled(!canPerformSearch || isSearching)
+                }
+            }
         }
         .onChange(of: typeaheadQuery) { oldValue, newValue in
             performTypeaheadSearch(query: newValue)
         }
         .onAppear {
+            // Reset stale state from any previously interrupted search
+            isSearching = false
+            searchManager.isLoading = false
+            searchManager.errorMessage = nil
             loadDataFilterLists()
         }
         .sheet(isPresented: $showingFilterListPicker) {
@@ -86,6 +119,11 @@ struct ProteinSearchDialog: View {
                     showingFilterListPicker = false
                 }
             )
+        }
+        .onChange(of: showingFilterListPicker) { _, isShowing in
+            if isShowing {
+                loadDataFilterLists()
+            }
         }
     }
     
@@ -290,14 +328,14 @@ struct ProteinSearchDialog: View {
         VStack(spacing: 12) {
             ProgressView()
                 .scaleEffect(1.2)
-            
+
             if !searchManager.searchProgress.isEmpty {
                 Text(searchManager.searchProgress)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
-            
+
             if searchManager.proteinsFound > 0 {
                 HStack {
                     Image(systemName: "magnifyingglass")
@@ -312,10 +350,10 @@ struct ProteinSearchDialog: View {
                 .cornerRadius(8)
             }
         }
+        .frame(maxWidth: .infinity)
         .padding()
-        .background(Color(.systemGray6))
+        .background(.regularMaterial)
         .cornerRadius(12)
-        .padding(.horizontal)
     }
     
     // MARK: - Action Buttons
@@ -333,7 +371,7 @@ struct ProteinSearchDialog: View {
                 performSearch()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!canPerformSearch || searchManager.isLoading)
+            .disabled(!canPerformSearch || isSearching)
         }
         .padding()
     }
@@ -401,8 +439,11 @@ struct ProteinSearchDialog: View {
     }
     
     private func performSearch() {
-        guard canPerformSearch else { return }
-        
+        guard canPerformSearch, !isSearching else { return }
+
+        isSearching = true
+        searchManager.errorMessage = nil
+
         Task {
             var localCurtainData = curtainData
             let searchList = await searchManager.createSearchList(
@@ -412,18 +453,23 @@ struct ProteinSearchDialog: View {
                 curtainData: &localCurtainData,
                 description: nil
             )
-            
-            // Update the binding with the modified data and close dialog if successful
+
             await MainActor.run {
+                isSearching = false
+
+                // Update the binding so the volcano plot sees the new selectedMap
                 curtainData = localCurtainData
-                
-                // Only close if search was successful
+
                 if searchList != nil {
-                    // Add a small delay to show the "Search completed!" message
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        isPresented = false
-                    }
+                    // Re-post the refresh notification now that the binding is updated
+                    NotificationCenter.default.post(
+                        name: NSNotification.Name("VolcanoPlotRefresh"),
+                        object: nil,
+                        userInfo: ["reason": "searchUpdate"]
+                    )
+                    isPresented = false
                 }
+                // If searchList is nil, errorMessage is already set by searchManager
             }
         }
     }
@@ -464,7 +510,7 @@ struct DataFilterListPickerView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Search bar
                 FilterListSearchBar(text: $searchQuery)
@@ -507,11 +553,14 @@ struct DataFilterListPickerView: View {
             }
             .navigationTitle("Select Filter List")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                trailing: Button("Cancel") {
-                    dismiss()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .fixedSize()
                 }
-            )
+            }
         }
     }
 }

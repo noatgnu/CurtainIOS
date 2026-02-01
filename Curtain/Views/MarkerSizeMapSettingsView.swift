@@ -18,7 +18,7 @@ struct MarkerSizeMapSettingsView: View {
     @State private var availableGroups: [String] = []
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Info Section
                 Section {
@@ -128,13 +128,14 @@ struct MarkerSizeMapSettingsView: View {
             .navigationTitle("Marker Sizes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveChanges()
                         dismiss()
@@ -142,6 +143,7 @@ struct MarkerSizeMapSettingsView: View {
                         // Trigger plot refresh
                         NotificationCenter.default.post(name: NSNotification.Name("VolcanoPlotRefresh"), object: nil)
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -269,7 +271,10 @@ struct MarkerSizeMapSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData

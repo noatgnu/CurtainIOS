@@ -13,7 +13,7 @@ struct DebugCurtainListView: View {
     @State private var tapCount = 0
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 VStack {
                     Text("Tap Count: \(tapCount)")
@@ -50,7 +50,7 @@ struct DebugCurtainListView: View {
             }
             .navigationTitle("Debug View")
             .sheet(isPresented: $showingAddSheet) {
-                NavigationView {
+                NavigationStack {
                     VStack {
                         Text("Add Sheet Content")
                             .font(.title2)
@@ -64,15 +64,17 @@ struct DebugCurtainListView: View {
                     }
                     .navigationTitle("Add Debug Item")
                     .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
+                        ToolbarItem(placement: .cancellationAction) {
                             Button("Cancel") {
                                 showingAddSheet = false
                             }
+                            .fixedSize()
                         }
-                        ToolbarItem(placement: .navigationBarTrailing) {
+                        ToolbarItem(placement: .confirmationAction) {
                             Button("Add") {
                                 showingAddSheet = false
                             }
+                            .fixedSize()
                         }
                     }
                 }

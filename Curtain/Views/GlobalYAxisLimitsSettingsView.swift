@@ -32,7 +32,7 @@ struct GlobalYAxisLimitsSettingsView: View {
     @State private var violinPlotMax: String = ""
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Info Section
                 Section {
@@ -95,16 +95,18 @@ struct GlobalYAxisLimitsSettingsView: View {
             .navigationTitle("Y-Axis Limits")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         saveChanges()
                         dismiss()
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -279,7 +281,10 @@ struct GlobalYAxisLimitsSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData

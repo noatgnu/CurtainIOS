@@ -155,7 +155,9 @@ class VolcanoPlotDataService {
     }
 
     /// SQLite-based volcano data processing using settings directly
-    func processVolcanoData(linkId: String, settings: CurtainSettings, differentialForm: CurtainDifferentialForm) throws -> VolcanoProcessResult {
+    /// - Parameter overrideSelectedMap: If provided, uses this selectedMap instead of reading from SQLite metadata.
+    ///   This is needed because search results update CurtainData.selectedMap in memory but don't write back to SQLite.
+    func processVolcanoData(linkId: String, settings: CurtainSettings, differentialForm: CurtainDifferentialForm, overrideSelectedMap: [String: [String: Bool]]? = nil) throws -> VolcanoProcessResult {
 
         // Fetch processed data from SQLite
         let processedData = try proteomicsDataService.getAllProcessedData(linkId: linkId)
@@ -167,13 +169,16 @@ class VolcanoPlotDataService {
             print("[VolcanoPlotDataService] First protein: id=\(first.primaryId), geneNames=\(first.geneNames ?? "nil")")
         }
 
-        // Fetch metadata for selections
-        let metadata = try proteomicsDataService.getCurtainMetadata(linkId: linkId)
-
+        // Use override selectedMap if provided, otherwise fetch from SQLite metadata
         var selectedMap: [String: [String: Bool]] = [:]
-        if let json = metadata?.selectedMapJson,
-           let data = json.data(using: .utf8) {
-            selectedMap = (try? JSONDecoder().decode([String: [String: Bool]].self, from: data)) ?? [:]
+        if let override = overrideSelectedMap {
+            selectedMap = override
+        } else {
+            let metadata = try proteomicsDataService.getCurtainMetadata(linkId: linkId)
+            if let json = metadata?.selectedMapJson,
+               let data = json.data(using: .utf8) {
+                selectedMap = (try? JSONDecoder().decode([String: [String: Bool]].self, from: data)) ?? [:]
+            }
         }
 
         // Process data

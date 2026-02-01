@@ -18,7 +18,7 @@ struct QRCodeScannerView: View {
     @State private var showingPermissionAlert = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 // Camera preview
                 QRScannerRepresentable(

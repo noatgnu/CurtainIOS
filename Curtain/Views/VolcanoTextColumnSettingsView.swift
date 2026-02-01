@@ -20,7 +20,7 @@ struct VolcanoTextColumnSettingsView: View {
     @State private var availableColumns: [String] = []
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Info Section
                 Section {
@@ -92,16 +92,18 @@ struct VolcanoTextColumnSettingsView: View {
             .navigationTitle("Hover Text Column")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         saveChanges()
                         dismiss()
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -217,7 +219,10 @@ struct VolcanoTextColumnSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData

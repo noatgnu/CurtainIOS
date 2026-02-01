@@ -24,7 +24,7 @@ struct BarChartConditionBracketSettingsView: View {
     @State private var showingColorPicker = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Enable/Disable Section
                 Section {
@@ -215,13 +215,14 @@ struct BarChartConditionBracketSettingsView: View {
             .navigationTitle("Condition Bracket")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveSettings()
                         dismiss()
@@ -229,6 +230,7 @@ struct BarChartConditionBracketSettingsView: View {
                         // Trigger plot refresh using correct notification name
                         NotificationCenter.default.post(name: NSNotification.Name("ProteinChartRefresh"), object: nil)
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -341,7 +343,10 @@ struct BarChartConditionBracketSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData

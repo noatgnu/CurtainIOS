@@ -62,11 +62,13 @@ class CrossDatasetSearchViewModel {
     private var savedSearchRepository: SavedSearchRepository?
     private var curtainRepository: CurtainRepository?
     private var collectionRepository: CurtainCollectionRepository?
+    private var modelContext: ModelContext?
     private var hasBeenSetup = false
 
     // MARK: - Setup
 
     func setupWithModelContext(_ modelContext: ModelContext) {
+        self.modelContext = modelContext
         guard !hasBeenSetup else { return }
         hasBeenSetup = true
 
@@ -77,7 +79,7 @@ class CrossDatasetSearchViewModel {
 
         loadAvailableDatasets()
         loadCollections()
-        loadFilterLists(modelContext: modelContext)
+        refreshFilterLists()
         loadSavedSearches()
     }
 
@@ -97,7 +99,8 @@ class CrossDatasetSearchViewModel {
         collections = repo.getAllCollections()
     }
 
-    private func loadFilterLists(modelContext: ModelContext) {
+    func refreshFilterLists() {
+        guard let modelContext = modelContext else { return }
         let descriptor = FetchDescriptor<DataFilterListEntity>(
             sortBy: [SortDescriptor(\.name)]
         )

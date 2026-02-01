@@ -133,7 +133,7 @@ struct ConditionColorManagerView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Info Header
                 VStack(alignment: .leading, spacing: 8) {
@@ -195,14 +195,16 @@ struct ConditionColorManagerView: View {
             .navigationTitle("Condition Colors")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         saveChanges()
                         dismiss()
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -355,7 +357,8 @@ struct ConditionColorManagerView: View {
             extraData: curtainData.extraData,
             permanent: curtainData.permanent,
             bypassUniProt: curtainData.bypassUniProt,
-            dbPath: curtainData.dbPath
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
         // Ensure uniprotDB is preserved
         var finalData = updatedCurtainData
@@ -504,7 +507,8 @@ struct ConditionColorManagerView: View {
             extraData: curtainData.extraData,
             permanent: curtainData.permanent,
             bypassUniProt: curtainData.bypassUniProt,
-            dbPath: curtainData.dbPath
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
         
         var finalData = updatedCurtainData
@@ -614,7 +618,8 @@ struct ConditionColorManagerView: View {
             extraData: curtainData.extraData,
             permanent: curtainData.permanent,
             bypassUniProt: curtainData.bypassUniProt,
-            dbPath: curtainData.dbPath
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
         
         var finalData = updatedCurtainData
@@ -718,7 +723,7 @@ struct ConditionDetailedColorPickerView: View {
     @State private var showingInvalidARGB = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Condition Information") {
                     HStack {
@@ -857,11 +862,13 @@ struct ConditionDetailedColorPickerView: View {
             .navigationTitle("Edit Condition Color")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                    .fixedSize()
                 }
             }
             .onAppear {

@@ -18,7 +18,7 @@ struct CurtainSettings: Codable {
     let log2FCCutoff: Double
     let description: String
     let uniprot: Bool
-    let colorMap: [String: String]
+    var colorMap: [String: String]
     let academic: Bool
     let backGroundColorGrey: Bool
     let currentComparison: String

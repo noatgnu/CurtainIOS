@@ -57,14 +57,9 @@ struct CrossDatasetResultsView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 10)
 
-                Divider()
-
                 SavedSearchesList(viewModel: viewModel, onSave: { showSaveSheet = true })
             }
             .frame(width: 200)
-            .background(Color(.secondarySystemGroupedBackground))
-
-            Divider()
 
             // Middle: Protein summaries
             VStack(spacing: 0) {
@@ -77,8 +72,6 @@ struct CrossDatasetResultsView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 10)
 
-                Divider()
-
                 if viewModel.searchResult != nil {
                     ProteinSummaryList(viewModel: viewModel, searchText: $searchText)
                 } else {
@@ -89,8 +82,6 @@ struct CrossDatasetResultsView: View {
                 }
             }
             .frame(width: 240)
-
-            Divider()
 
             // Right: Matrix/Detail
             VStack(spacing: 0) {
@@ -109,8 +100,6 @@ struct CrossDatasetResultsView: View {
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 10)
-
-                    Divider()
                 }
 
                 detailPanel
@@ -275,6 +264,8 @@ struct CrossDatasetResultsView: View {
         } label: {
             Image(systemName: "arrow.up.arrow.down")
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
     }
 }
 
@@ -386,8 +377,6 @@ struct ProteinSummaryList: View {
                 .textFieldStyle(.roundedBorder)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
-
-            Divider()
 
             if filteredSummaries.isEmpty {
                 Spacer()

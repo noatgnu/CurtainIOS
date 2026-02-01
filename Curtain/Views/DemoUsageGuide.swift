@@ -10,7 +10,7 @@ import SwiftUI
 /// Quick guide showing how to use the main view features
 struct DemoUsageGuide: View {
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 Section("Loading Example Data") {
                     GuideItem(

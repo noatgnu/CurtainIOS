@@ -17,7 +17,7 @@ struct DOICollectionView: View {
     @State private var selectedSession: DOISessionLink?
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     doiHeader
@@ -41,6 +41,7 @@ struct DOICollectionView: View {
                     Button("Cancel") {
                         onDismiss()
                     }
+                    .fixedSize()
                 }
             }
         }

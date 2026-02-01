@@ -563,140 +563,230 @@ struct VolcanoPlotTab: View {
     @State private var showingTextColumnSettings = false
     @State private var showingTraceOrderSettings = false
     @State private var showingYAxisPositionSettings = false
+    @State private var showFABs = true
+
+    private var isMac: Bool {
+        UIDevice.current.userInterfaceIdiom == .mac
+    }
 
     var body: some View {
         if data != nil {
-            ZStack {
-                InteractiveVolcanoPlotView(
-                    curtainData: Binding(
-                        get: { data! },
-                        set: { newValue in data = newValue }
-                    ),
-                    annotationEditMode: $annotationEditMode
-                )
-                .id("\(data!.selectionsName?.count ?? 0)-\(data!.selectionsMap?.keys.count ?? 0)") // Force refresh when selections change
-                
-                // Floating Action Buttons
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 12) {
-                            // Condition Labels Settings Button
-                            Button(action: {
-                                showingConditionLabelsSettings = true
-                            }) {
-                                Image(systemName: "text.below.photo")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.purple)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 4)
-                            }
-                            .disabled(annotationEditMode)
-                            .opacity(annotationEditMode ? 0.5 : 1.0)
+            Group {
+            if isMac {
+                VStack(spacing: 0) {
+                    InteractiveVolcanoPlotView(
+                        curtainData: Binding(
+                            get: { data! },
+                            set: { newValue in data = newValue }
+                        ),
+                        annotationEditMode: $annotationEditMode
+                    )
+                    .id("\(data!.selectionsName?.count ?? 0)-\(data!.selectionsMap?.keys.count ?? 0)")
 
-                            // Custom Text Column Button
-                            Button(action: {
-                                showingTextColumnSettings = true
-                            }) {
-                                Image(systemName: "text.bubble")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.indigo)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 4)
-                            }
-                            .disabled(annotationEditMode)
-                            .opacity(annotationEditMode ? 0.5 : 1.0)
+                    Divider()
 
-                            // Trace Order Button
-                            Button(action: {
-                                showingTraceOrderSettings = true
-                            }) {
-                                Image(systemName: "line.3.horizontal.decrease.circle")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.teal)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 4)
-                            }
-                            .disabled(annotationEditMode)
-                            .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                            // Y-Axis Position Button
-                            Button(action: {
-                                showingYAxisPositionSettings = true
-                            }) {
-                                Image(systemName: "arrow.left.and.right.square")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.mint)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 4)
-                            }
-                            .disabled(annotationEditMode)
-                            .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                            // Color Manager Button
-                            Button(action: {
-                                showingVolcanoColorManager = true
-                            }) {
-                                Image(systemName: "paintpalette.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.blue)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 4)
-                            }
-                            .disabled(annotationEditMode)
-                            .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                            // Search Button
-                            Button(action: {
-                                showingProteinSearch = true
-                            }) {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.green)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 4)
-                            }
-                            .disabled(annotationEditMode)
-                            .opacity(annotationEditMode ? 0.5 : 1.0)
-                            
-                            // Export Button
-                            ExportPlotButton()
-                                .disabled(annotationEditMode)
-                                .opacity(annotationEditMode ? 0.5 : 1.0)
-                            
-                            // Annotation Edit Button
-                            Button(action: {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    annotationEditMode.toggle()
-                                }
-                            }) {
-                                Image(systemName: annotationEditMode ? "pencil.circle.fill" : "pencil.circle")
-                                    .font(.title2)
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(annotationEditMode ? Color.orange : Color.gray)
-                                    .clipShape(Circle())
-                                    .shadow(radius: 4)
-                            }
+                    HStack(spacing: 16) {
+                        Button(action: { showingConditionLabelsSettings = true }) {
+                            Image(systemName: "text.below.photo")
                         }
-                        .padding(.trailing, 16)
-                        .padding(.bottom, 16)
+                        .help("Condition Labels")
+                        .disabled(annotationEditMode)
+                        .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                        Button(action: { showingTextColumnSettings = true }) {
+                            Image(systemName: "text.bubble")
+                        }
+                        .help("Text Column")
+                        .disabled(annotationEditMode)
+                        .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                        Button(action: { showingTraceOrderSettings = true }) {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                        }
+                        .help("Trace Order")
+                        .disabled(annotationEditMode)
+                        .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                        Button(action: { showingYAxisPositionSettings = true }) {
+                            Image(systemName: "arrow.left.and.right.square")
+                        }
+                        .help("Y-Axis Position")
+                        .disabled(annotationEditMode)
+                        .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                        Button(action: { showingVolcanoColorManager = true }) {
+                            Image(systemName: "paintpalette.fill")
+                        }
+                        .help("Color Manager")
+                        .disabled(annotationEditMode)
+                        .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                        Button(action: { showingProteinSearch = true }) {
+                            Image(systemName: "magnifyingglass")
+                        }
+                        .help("Search")
+                        .disabled(annotationEditMode)
+                        .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                        ExportPlotButton(useToolbarStyle: true)
+                            .help("Export")
+                            .disabled(annotationEditMode)
+                            .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                annotationEditMode.toggle()
+                            }
+                        }) {
+                            Image(systemName: annotationEditMode ? "pencil.circle.fill" : "pencil.circle")
+                        }
+                        .help("Annotation Edit")
+                    }
+                    .font(.body)
+                    .buttonStyle(.plain)
+                    .foregroundColor(.accentColor)
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                }
+            } else {
+                ZStack {
+                    InteractiveVolcanoPlotView(
+                        curtainData: Binding(
+                            get: { data! },
+                            set: { newValue in data = newValue }
+                        ),
+                        annotationEditMode: $annotationEditMode
+                    )
+                    .id("\(data!.selectionsName?.count ?? 0)-\(data!.selectionsMap?.keys.count ?? 0)")
+
+                    // Floating Action Buttons
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 12) {
+                                if showFABs {
+                                    Button(action: { showingConditionLabelsSettings = true }) {
+                                        Image(systemName: "text.below.photo")
+                                            .font(.title2)
+                                            .foregroundColor(.white)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.purple)
+                                            .clipShape(Circle())
+                                            .shadow(radius: 4)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(annotationEditMode)
+                                    .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                                    Button(action: { showingTextColumnSettings = true }) {
+                                        Image(systemName: "text.bubble")
+                                            .font(.title2)
+                                            .foregroundColor(.white)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.indigo)
+                                            .clipShape(Circle())
+                                            .shadow(radius: 4)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(annotationEditMode)
+                                    .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                                    Button(action: { showingTraceOrderSettings = true }) {
+                                        Image(systemName: "line.3.horizontal.decrease.circle")
+                                            .font(.title2)
+                                            .foregroundColor(.white)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.teal)
+                                            .clipShape(Circle())
+                                            .shadow(radius: 4)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(annotationEditMode)
+                                    .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                                    Button(action: { showingYAxisPositionSettings = true }) {
+                                        Image(systemName: "arrow.left.and.right.square")
+                                            .font(.title2)
+                                            .foregroundColor(.white)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.mint)
+                                            .clipShape(Circle())
+                                            .shadow(radius: 4)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(annotationEditMode)
+                                    .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                                    Button(action: { showingVolcanoColorManager = true }) {
+                                        Image(systemName: "paintpalette.fill")
+                                            .font(.title2)
+                                            .foregroundColor(.white)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.blue)
+                                            .clipShape(Circle())
+                                            .shadow(radius: 4)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(annotationEditMode)
+                                    .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                                    Button(action: { showingProteinSearch = true }) {
+                                        Image(systemName: "magnifyingglass")
+                                            .font(.title2)
+                                            .foregroundColor(.white)
+                                            .frame(width: 44, height: 44)
+                                            .background(Color.green)
+                                            .clipShape(Circle())
+                                            .shadow(radius: 4)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(annotationEditMode)
+                                    .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                                    ExportPlotButton()
+                                        .disabled(annotationEditMode)
+                                        .opacity(annotationEditMode ? 0.5 : 1.0)
+
+                                    Button(action: {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            annotationEditMode.toggle()
+                                        }
+                                    }) {
+                                        Image(systemName: annotationEditMode ? "pencil.circle.fill" : "pencil.circle")
+                                            .font(.title2)
+                                            .foregroundColor(.white)
+                                            .frame(width: 44, height: 44)
+                                            .background(annotationEditMode ? Color.orange : Color.gray)
+                                            .clipShape(Circle())
+                                            .shadow(radius: 4)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
+                                // Toggle button to show/hide FABs
+                                Button(action: {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        showFABs.toggle()
+                                    }
+                                }) {
+                                    Image(systemName: showFABs ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
+                                        .font(.title2)
+                                        .foregroundColor(.white)
+                                        .frame(width: 44, height: 44)
+                                        .background(Color(.systemGray))
+                                        .clipShape(Circle())
+                                        .shadow(radius: 4)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.trailing, 16)
+                            .padding(.bottom, 16)
+                        }
                     }
                 }
             }
+            } // Group
             .sheet(isPresented: $showingProteinSearch) {
                 ProteinSearchView(curtainData: Binding(
                     get: { data! },
@@ -848,66 +938,48 @@ struct ProteinDetailsTab: View {
     
     var body: some View {
         VStack(spacing: 0) {
-                // Filter controls 
-                VStack(spacing: 12) {
-                    // Selection group filter
-                    HStack {
-                        Text("Filter by selection:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        
-                        Spacer()
-                        
-                        Picker("Selection Group", selection: $selectedSelectionGroup) {
-                            ForEach(availableSelectionGroups, id: \.self) { group in
-                                Text(group).tag(group)
-                            }
+                // Filter controls
+                HStack(spacing: 12) {
+                    Picker("Selection Group", selection: $selectedSelectionGroup) {
+                        ForEach(availableSelectionGroups, id: \.self) { group in
+                            Text(group).tag(group)
                         }
-                        .pickerStyle(MenuPickerStyle())
-                        .frame(maxWidth: 150)
                     }
-                    
-                    // Search bar
+                    .labelsHidden()
+                    .pickerStyle(MenuPickerStyle())
+                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 200)
+
                     HStack {
                         Image(systemName: "magnifyingglass")
                             .foregroundColor(.secondary)
-                        
-                        TextField("Search by gene name or protein ID...", text: $searchText)
+                            .font(.caption)
+
+                        TextField("Search proteins...", text: $searchText)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
-                        
+
                         if !searchText.isEmpty {
-                            Button(action: {
+                            Button {
                                 searchText = ""
-                            }) {
+                            } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.secondary)
+                                    .font(.caption)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
-                    
-                    // Results count
-                    HStack {
-                        Text("\(filteredProteins.count) proteins")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        if selectedSelectionGroup == "All" {
-                            Text("with selections")
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                        } else {
-                            Text("in \(selectedSelectionGroup)")
-                                .font(.caption)
-                                .foregroundColor(.blue)
-                        }
-                        
-                        Spacer()
-                    }
+
+                    Text("\(filteredProteins.count) proteins")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .layoutPriority(1)
                 }
-                .padding()
-                .background(Color(.systemGray6))
+                .padding(.horizontal)
+                .padding(.vertical, 8)
                 
                 // Protein list
                 List {
@@ -1426,7 +1498,10 @@ struct SettingsTab: View {
                 fetchUniprot: self.data.fetchUniprot,
                 annotatedData: self.data.annotatedData,
                 extraData: self.data.extraData,
-                permanent: self.data.permanent
+                permanent: self.data.permanent,
+                bypassUniProt: self.data.bypassUniProt,
+                dbPath: self.data.dbPath,
+                linkId: self.data.linkId
             )
             
             // Apply the changes with a single update after a short delay
@@ -1575,7 +1650,7 @@ struct SaveVariantSheet: View {
     @State private var alertMessage = ""
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Variant Information") {
                     TextField("Name", text: $name)
@@ -1634,14 +1709,16 @@ struct SaveVariantSheet: View {
             .navigationTitle("Save Settings Variant")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveVariant()
                     }
+                    .fixedSize()
                     .disabled(name.isEmpty)
                 }
             }
@@ -1680,7 +1757,7 @@ struct LoadVariantSheet: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
                 if variants.isEmpty {
                     ContentUnavailableView(
@@ -1705,17 +1782,19 @@ struct LoadVariantSheet: View {
             .navigationTitle("Load Settings Variant")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Load") {
                         if let variant = selectedVariant {
                             onLoad(variant)
                             dismiss()
                         }
                     }
+                    .fixedSize()
                     .disabled(selectedVariant == nil)
                 }
             }
@@ -2149,7 +2228,8 @@ struct ProteinDetailRowView: View {
             extraData: curtainData.extraData,
             permanent: curtainData.permanent,
             bypassUniProt: curtainData.bypassUniProt,
-            dbPath: curtainData.dbPath
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
         // Ensure uniprotDB is preserved
         newCurtainData.uniprotDB = curtainData.uniprotDB

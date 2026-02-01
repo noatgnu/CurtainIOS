@@ -69,12 +69,9 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
     }
 
     private func setupNotificationObservers() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleVolcanoPlotRefresh),
-            name: NSNotification.Name("VolcanoPlotRefresh"),
-            object: nil
-        )
+        // VolcanoPlotRefresh is handled by the parent SwiftUI view's .onReceive,
+        // which recreates PlotlyWebView via .id(). The coordinator does NOT observe
+        // it to avoid double-generation with stale data.
 
         NotificationCenter.default.addObserver(
             self,
@@ -82,9 +79,6 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
             name: NSNotification.Name("UpdateAnnotationJS"),
             object: nil
         )
-    }
-
-    @objc private func handleVolcanoPlotRefresh(_ notification: Notification) {
     }
 
     @objc private func handleAnnotationJSUpdate(_ notification: Notification) {
@@ -284,7 +278,8 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
                 volcanoResult = try volcanoDataService.processVolcanoData(
                     linkId: linkId,
                     settings: parent.curtainData.settings,
-                    differentialForm: parent.curtainData.differentialForm
+                    differentialForm: parent.curtainData.differentialForm,
+                    overrideSelectedMap: parent.curtainData.selectedMap
                 )
             } catch {
                 print("[PlotlyCoordinator] SQLite query failed, falling back to in-memory: \(error)")

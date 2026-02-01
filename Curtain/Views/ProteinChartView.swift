@@ -26,7 +26,12 @@ struct ProteinChartView: View {
     @State private var showingConditionColorManager = false
     @State private var showingIndividualYAxisLimits = false
     @State private var showingBracketSettings = false
+    @State private var showFABs = true
     @Environment(\.colorScheme) var colorScheme
+
+    private var isMac: Bool {
+        UIDevice.current.userInterfaceIdiom == .mac
+    }
     
     // Initialize with protein list for swipe navigation
     init(proteinId: String, curtainData: Binding<CurtainData>, chartType: Binding<ProteinChartType>, isPresented: Binding<Bool>, proteinList: [String] = [], initialIndex: Int = 0) {
@@ -67,206 +72,229 @@ struct ProteinChartView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
-                // Chart type selector
-                VStack(spacing: 12) {
-                    HStack {
-                        Text("Chart Type:")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                        
-                        Spacer()
-                        
-                        Picker("Chart Type", selection: $chartType) {
-                            ForEach(ProteinChartType.allCases, id: \.self) { type in
-                                Text(type.displayName).tag(type)
-                            }
-                        }
-                        .pickerStyle(SegmentedPickerStyle())
-                        .frame(maxWidth: 250)
-                    }
-                    
-                    // Navigation controls (only show if we have a protein list)
+                // Chart type selector + navigation
+                HStack(spacing: 12) {
+                    // Navigation (previous)
                     if proteinList.count > 1 {
-                        HStack {
-                            // Previous button
-                            Button(action: {
-                                navigateToPrevious()
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.caption)
-                                    Text("Previous")
-                                        .font(.caption)
-                                }
-                                .foregroundColor(hasPreviousProtein ? .blue : .gray)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color(.systemGray6))
-                                .clipShape(Capsule())
-                            }
-                            .disabled(!hasPreviousProtein)
-                            
-                            Spacer()
-                            
-                            // Position indicator
-                            Text("\(currentIndex + 1) of \(proteinList.count)")
+                        Button(action: { navigateToPrevious() }) {
+                            Image(systemName: "chevron.left")
                                 .font(.caption)
-                                .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            // Next button
-                            Button(action: {
-                                navigateToNext()
-                            }) {
-                                HStack(spacing: 4) {
-                                    Text("Next")
-                                        .font(.caption)
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
-                                }
-                                .foregroundColor(hasNextProtein ? .blue : .gray)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color(.systemGray6))
-                                .clipShape(Capsule())
-                            }
-                            .disabled(!hasNextProtein)
                         }
+                        .disabled(!hasPreviousProtein)
+                        .buttonStyle(.plain)
                     }
-                    
+
                     Text(displayName)
-                        .font(.headline)
+                        .font(.subheadline)
                         .fontWeight(.semibold)
-                }
-                .padding()
-                .background(Color(.systemGray6))
-                
-                // Chart content with floating action button
-                ZStack {
-                    if isLoading {
-                        VStack {
-                            Spacer()
-                            VStack(spacing: 16) {
-                                ProgressView()
-                                    .scaleEffect(1.2)
-                                Text("Loading \(chartType.displayName.lowercased())...")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                            }
-                            .onAppear {
-                            }
-                            Spacer()
+                        .lineLimit(1)
+
+                    if proteinList.count > 1 {
+                        Text("\(currentIndex + 1)/\(proteinList.count)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+
+                        Button(action: { navigateToNext() }) {
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
                         }
-                    } else if let error = error {
-                        VStack {
-                            Spacer()
-                            VStack(spacing: 16) {
-                                Image(systemName: "exclamationmark.triangle")
-                                    .font(.system(size: 50))
-                                    .foregroundColor(.orange)
-                                
-                                Text("Chart Error")
-                                    .font(.title2)
-                                    .fontWeight(.medium)
-                                
-                                Text(error)
-                                    .font(.body)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal)
-                            }
-                            .onAppear {
-                            }
-                            Spacer()
-                        }
-                    } else {
-                        ProteinChartWebView(htmlContent: chartHtml)
-                            .onAppear {
-                            }
-                            .gesture(
-                                // Add swipe gesture for navigation
-                                DragGesture(minimumDistance: 50)
-                                    .onEnded { value in
-                                        handleSwipeGesture(value)
-                                    }
-                            )
+                        .disabled(!hasNextProtein)
+                        .buttonStyle(.plain)
                     }
-                    
-                    // Floating Action Buttons
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            VStack(spacing: 12) {
-                                // Y-Axis Limits Button
-                                Button(action: {
-                                    showingIndividualYAxisLimits = true
-                                }) {
-                                    Image(systemName: "chart.bar.xaxis")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.orange)
-                                        .clipShape(Circle())
-                                        .shadow(radius: 4)
-                                }
-                                .disabled(isLoading)
-                                .opacity(isLoading ? 0.5 : 1.0)
 
-                                // Condition Colors Button
-                                Button(action: {
-                                    showingConditionColorManager = true
-                                }) {
-                                    Image(systemName: "chart.bar.fill")
-                                        .font(.title2)
-                                        .foregroundColor(.white)
-                                        .frame(width: 44, height: 44)
-                                        .background(Color.blue)
-                                        .clipShape(Circle())
-                                        .shadow(radius: 4)
-                                }
-                                .disabled(isLoading)
-                                .opacity(isLoading ? 0.5 : 1.0)
+                    Spacer()
 
-                                // Condition Bracket Button (only for bar charts)
-                                if chartType == .barChart || chartType == .averageBarChart {
-                                    Button(action: {
-                                        showingBracketSettings = true
-                                    }) {
-                                        Image(systemName: "curlybraces")
-                                            .font(.title2)
-                                            .foregroundColor(.white)
-                                            .frame(width: 44, height: 44)
-                                            .background(Color.purple)
-                                            .clipShape(Circle())
-                                            .shadow(radius: 4)
+                    Picker("Chart Type", selection: $chartType) {
+                        ForEach(ProteinChartType.allCases, id: \.self) { type in
+                            Text(type.displayName).tag(type)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .frame(maxWidth: 250)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                
+                // Chart content with action buttons
+                VStack(spacing: 0) {
+                    ZStack {
+                        if isLoading {
+                            VStack {
+                                Spacer()
+                                VStack(spacing: 16) {
+                                    ProgressView()
+                                        .scaleEffect(1.2)
+                                    Text("Loading \(chartType.displayName.lowercased())...")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                .onAppear {
+                                }
+                                Spacer()
+                            }
+                        } else if let error = error {
+                            VStack {
+                                Spacer()
+                                VStack(spacing: 16) {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .font(.system(size: 50))
+                                        .foregroundColor(.orange)
+
+                                    Text("Chart Error")
+                                        .font(.title2)
+                                        .fontWeight(.medium)
+
+                                    Text(error)
+                                        .font(.body)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal)
+                                }
+                                .onAppear {
+                                }
+                                Spacer()
+                            }
+                        } else {
+                            ProteinChartWebView(htmlContent: chartHtml)
+                                .onAppear {
+                                }
+                                .gesture(
+                                    // Add swipe gesture for navigation
+                                    DragGesture(minimumDistance: 50)
+                                        .onEnded { value in
+                                            handleSwipeGesture(value)
+                                        }
+                                )
+                        }
+
+                        if !isMac {
+                            // Floating Action Buttons (phone only)
+                            VStack {
+                                Spacer()
+                                HStack {
+                                    Spacer()
+                                    VStack(spacing: 12) {
+                                        if showFABs {
+                                            Button(action: { showingIndividualYAxisLimits = true }) {
+                                                Image(systemName: "chart.bar.xaxis")
+                                                    .font(.title2)
+                                                    .foregroundColor(.white)
+                                                    .frame(width: 44, height: 44)
+                                                    .background(Color.orange)
+                                                    .clipShape(Circle())
+                                                    .shadow(radius: 4)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .disabled(isLoading)
+                                            .opacity(isLoading ? 0.5 : 1.0)
+
+                                            Button(action: { showingConditionColorManager = true }) {
+                                                Image(systemName: "chart.bar.fill")
+                                                    .font(.title2)
+                                                    .foregroundColor(.white)
+                                                    .frame(width: 44, height: 44)
+                                                    .background(Color.blue)
+                                                    .clipShape(Circle())
+                                                    .shadow(radius: 4)
+                                            }
+                                            .buttonStyle(.plain)
+                                            .disabled(isLoading)
+                                            .opacity(isLoading ? 0.5 : 1.0)
+
+                                            if chartType == .barChart || chartType == .averageBarChart {
+                                                Button(action: { showingBracketSettings = true }) {
+                                                    Image(systemName: "curlybraces")
+                                                        .font(.title2)
+                                                        .foregroundColor(.white)
+                                                        .frame(width: 44, height: 44)
+                                                        .background(Color.purple)
+                                                        .clipShape(Circle())
+                                                        .shadow(radius: 4)
+                                                }
+                                                .buttonStyle(.plain)
+                                                .disabled(isLoading)
+                                                .opacity(isLoading ? 0.5 : 1.0)
+                                            }
+                                        }
+
+                                        // Toggle button to show/hide FABs
+                                        Button(action: {
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                showFABs.toggle()
+                                            }
+                                        }) {
+                                            Image(systemName: showFABs ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
+                                                .font(.title2)
+                                                .foregroundColor(.white)
+                                                .frame(width: 44, height: 44)
+                                                .background(Color(.systemGray))
+                                                .clipShape(Circle())
+                                                .shadow(radius: 4)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .disabled(isLoading)
-                                    .opacity(isLoading ? 0.5 : 1.0)
+                                    .padding(.trailing, 16)
+                                    .padding(.bottom, 16)
                                 }
                             }
-                            .padding(.trailing, 16)
-                            .padding(.bottom, 16)
                         }
+                    }
+
+                    if isMac {
+                        // Bottom toolbar (pad/mac only)
+                        Divider()
+
+                        HStack(spacing: 16) {
+                            Button(action: { showingIndividualYAxisLimits = true }) {
+                                Image(systemName: "chart.bar.xaxis")
+                            }
+                            .help("Y-Axis Limits")
+                            .disabled(isLoading)
+                            .opacity(isLoading ? 0.5 : 1.0)
+
+                            Button(action: { showingConditionColorManager = true }) {
+                                Image(systemName: "chart.bar.fill")
+                            }
+                            .help("Condition Colors")
+                            .disabled(isLoading)
+                            .opacity(isLoading ? 0.5 : 1.0)
+
+                            if chartType == .barChart || chartType == .averageBarChart {
+                                Button(action: { showingBracketSettings = true }) {
+                                    Image(systemName: "curlybraces")
+                                }
+                                .help("Bracket Settings")
+                                .disabled(isLoading)
+                                .opacity(isLoading ? 0.5 : 1.0)
+                            }
+                        }
+                        .font(.body)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal)
+                        .padding(.vertical, 6)
                     }
                 }
             }
             .navigationTitle("Protein Chart")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Close") {
-                    isPresented = false
-                },
-                trailing: HStack {
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        isPresented = false
+                    }
+                    .fixedSize()
+                }
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Export") {
                         // TODO: Export functionality
                     }
+                    .fixedSize()
                     .disabled(isLoading || error != nil)
                 }
-            )
+            }
         }
         .sheet(isPresented: $showingConditionColorManager) {
             ConditionColorManagerView(curtainData: $curtainData)

@@ -21,9 +21,30 @@ class ProteinSearchManager: ObservableObject {
     @Published var errorMessage: String?
     @Published var searchProgress: String = ""
     @Published var proteinsFound: Int = 0
-    
+
     private let searchService = ProteinSearchService()
     private let defaultColors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F", "#AED6F1", "#F8C471"]
+
+    // MARK: - Comparison Label Helper
+
+    /// Determines the current comparison value from CurtainData, matching Android's behavior.
+    /// Selection group names must include the comparison label (e.g., "MySearch (comparison1)")
+    /// so VolcanoPlotDataService can match selections to the correct comparison row.
+    private func resolveComparison(from curtainData: CurtainData) -> String {
+        if !curtainData.settings.currentComparison.isEmpty {
+            return curtainData.settings.currentComparison
+        }
+        if let first = curtainData.differentialForm.comparisonSelect.first, !first.isEmpty {
+            return first
+        }
+        return "1"
+    }
+
+    /// Appends the comparison label to a selection name, matching Android's format.
+    private func selectionNameWithComparison(_ baseName: String, curtainData: CurtainData) -> String {
+        let comparison = resolveComparison(from: curtainData)
+        return "\(baseName) (\(comparison))"
+    }
     
     // MARK: - Core Search List Management
 
@@ -55,6 +76,8 @@ class ProteinSearchManager: ObservableObject {
 
         if !linkId.isEmpty && ProteomicsDataDatabaseManager.shared.checkDataExists(linkId) {
             print("[ProteinSearchManager] Using SQLite search for linkId: \(linkId)")
+            // Ensure protein mappings exist before searching (matches Android flow)
+            ProteinMappingService.shared.ensureMappingsExist(linkId: linkId, curtainData: curtainData)
             searchResults = await searchService.performBatchSearch(
                 inputText: searchText,
                 searchType: searchType,
@@ -108,9 +131,12 @@ class ProteinSearchManager: ObservableObject {
 
         let assignedColor = color ?? getNextAvailableColor()
 
-        // Create search list 
+        // Append comparison label to selection name (matches Android's createSelectionFromProteinIds)
+        let selectionName = selectionNameWithComparison(name, curtainData: curtainData)
+
+        // Create search list
         let searchList = SearchList(
-            name: name,
+            name: selectionName,
             proteinIds: allMatchedProteins,
             searchTerms: allSearchTerms,
             searchType: searchType,
@@ -118,14 +144,17 @@ class ProteinSearchManager: ObservableObject {
             description: description
         )
 
-        // Save search list to curtain data before updating UI
-        saveSearchListsToCurtainData(curtainData: &curtainData)
-
-        // Add to session and update UI on main actor
+        // Add to session first so saveSearchListsToCurtainData includes the new list
         await MainActor.run {
             searchProgress = "Saving search list..."
             searchSession.searchLists.append(searchList)
             searchSession.activeFilters.insert(searchList.id)
+        }
+
+        // Now save to curtain data (includes the new list in selectedMap)
+        saveSearchListsToCurtainData(curtainData: &curtainData)
+
+        await MainActor.run {
             searchProgress = "Search completed!"
             isLoading = false
         }
@@ -150,10 +179,13 @@ class ProteinSearchManager: ObservableObject {
         
         // Assign color
         let assignedColor = color ?? getNextAvailableColor()
-        
+
+        // Append comparison label to selection name (matches Android's createSelectionFromProteinIds)
+        let selectionName = selectionNameWithComparison(name, curtainData: curtainData)
+
         // Create search list directly from protein IDs (for point click modal selections)
         let searchList = SearchList(
-            name: name,
+            name: selectionName,
             proteinIds: proteinIds,
             searchTerms: Array(proteinIds), // Use protein IDs as search terms
             searchType: .primaryID,
@@ -209,15 +241,23 @@ class ProteinSearchManager: ObservableObject {
                 saveSearchListsToCurtainData(curtainData: &curtainData)
             }
         }
+        NotificationCenter.default.post(
+            name: NSNotification.Name("VolcanoPlotRefresh"),
+            object: nil,
+            userInfo: ["reason": "toggleFilter"]
+        )
     }
-    
+
     func renameSearchList(id: String, newName: String, curtainData: inout CurtainData) {
+        // Append comparison label to new name (matches Android format)
+        let renamedSelectionName = selectionNameWithComparison(newName, curtainData: curtainData)
+
         if Thread.isMainThread {
             if let index = searchSession.searchLists.firstIndex(where: { $0.id == id }) {
                 let currentList = searchSession.searchLists[index]
                 searchSession.searchLists[index] = SearchList(
                     id: currentList.id,
-                    name: newName,
+                    name: renamedSelectionName,
                     proteinIds: currentList.proteinIds,
                     searchTerms: currentList.searchTerms,
                     searchType: currentList.searchType,
@@ -233,7 +273,7 @@ class ProteinSearchManager: ObservableObject {
                     let currentList = searchSession.searchLists[index]
                     searchSession.searchLists[index] = SearchList(
                         id: currentList.id,
-                        name: newName,
+                        name: renamedSelectionName,
                         proteinIds: currentList.proteinIds,
                         searchTerms: currentList.searchTerms,
                         searchType: currentList.searchType,
@@ -245,6 +285,11 @@ class ProteinSearchManager: ObservableObject {
                 }
             }
         }
+        NotificationCenter.default.post(
+            name: NSNotification.Name("VolcanoPlotRefresh"),
+            object: nil,
+            userInfo: ["reason": "renameSearchList"]
+        )
     }
     
     
@@ -329,25 +374,25 @@ class ProteinSearchManager: ObservableObject {
     }
     
     func saveSearchListsToCurtainData(curtainData: inout CurtainData) {
-        
-        
-        // Build new selectOperationNames 
-        var newSelectOperationNames: [String] = []
+
+        // Build new selectOperationNames preserving the EXISTING order from
+        // curtainData.selectionsName. Dictionary iteration is non-deterministic,
+        // so we must NOT derive the order from selectionsMap keys.
+        var newSelectOperationNames: [String] = curtainData.selectionsName ?? []
         var newSelectionsMap: [String: [String: Bool]] = [:]
-        
+
         // Preserve existing selections (including significance groups from volcano plot)
         if let existingSelectionsMap = curtainData.selectionsMap {
             for (proteinId, selections) in existingSelectionsMap {
                 if let selectionMap = selections as? [String: Bool] {
                     for (selectionName, isSelected) in selectionMap {
                         if isSelected {
-                            // Preserve all TRUE selections (including significance groups)
                             if newSelectionsMap[proteinId] == nil {
                                 newSelectionsMap[proteinId] = [:]
                             }
                             newSelectionsMap[proteinId]![selectionName] = true
-                            
-                            // Add to operation names if not already present
+
+                            // Add to operation names only if not already present
                             if !newSelectOperationNames.contains(selectionName) {
                                 newSelectOperationNames.append(selectionName)
                             }
@@ -356,7 +401,7 @@ class ProteinSearchManager: ObservableObject {
                 }
             }
         }
-        
+
         // Add current SearchList selections (only active ones)
         for searchList in searchSession.searchLists {
             if searchSession.activeFilters.contains(searchList.id) {
@@ -406,22 +451,20 @@ class ProteinSearchManager: ObservableObject {
         selectionsMap: [String: Any],
         selectOperationNames: [String]
     ) {
-        // Update the actual CurtainData object properties 
-        // This needs to be done through direct property mutation
-        
         curtainData.selectionsMap = selectionsMap
-        
-        // Update selectedMap  
         curtainData.selectedMap = convertToSelectedMap(selectionsMap)
-        
         curtainData.selectionsName = selectOperationNames
-        
-        
-        NotificationCenter.default.post(
-            name: NSNotification.Name("VolcanoPlotRefresh"),
-            object: nil,
-            userInfo: ["reason": "searchUpdate"]
-        )
+
+        // Update colorMap in settings for any new selection names (matches Android)
+        var colorMap = curtainData.settings.colorMap
+        assignColorsToSelections(Set(selectOperationNames), &colorMap, curtainData.settings)
+        curtainData.settings.colorMap = colorMap
+
+        // NOTE: Do NOT post VolcanoPlotRefresh here. This function often runs on a
+        // local copy (e.g. inside createSearchList) before the SwiftUI binding is
+        // updated. Callers that need a refresh post the notification after the
+        // binding is written (e.g. ProteinSearchDialog.performSearch,
+        // toggleSearchFilter via direct inout binding).
     }
     
     
@@ -536,7 +579,7 @@ class ProteinSearchManager: ObservableObject {
         var breakColor = false
         var shouldRepeat = false
         
-        for s in selectOperationNames {
+        for s in selectOperationNames.sorted() {
             if colorMap[s] == nil {
                 while true {
                     if breakColor {

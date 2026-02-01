@@ -37,9 +37,6 @@ struct CurtainListView: View {
         HStack(spacing: 0) {
             mainContent
                 .frame(width: 360)
-                .background(Color(.secondarySystemGroupedBackground))
-
-            Divider()
 
             Group {
                 if let curtain = curtainForDetails {
@@ -49,18 +46,6 @@ struct CurtainListView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button(action: refreshCurtains) {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-            }
-            ToolbarItem(placement: .cancellationAction) {
-                Button(action: { showingAddCurtainSheet = true }) {
-                    Label("Add", systemImage: "plus")
-                }
-            }
         }
         .applySharedModifiers(
             viewModel: viewModel,
@@ -125,11 +110,25 @@ struct CurtainListView: View {
 
     private var mainContent: some View {
         VStack(spacing: 0) {
-            Picker("View", selection: $selectedTab) {
-                Text("Sessions").tag(0)
-                Text("Collections").tag(1)
+            HStack {
+                Picker("View", selection: $selectedTab) {
+                    Text("Sessions").tag(0)
+                    Text("Collections").tag(1)
+                }
+                .pickerStyle(.segmented)
+
+                Spacer()
+
+                Button(action: { showingAddCurtainSheet = true }) {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(.plain)
+
+                Button(action: refreshCurtains) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal)
             .padding(.top, 8)
 
@@ -244,6 +243,7 @@ struct CurtainListView: View {
                 UniversalCurtainRow(
                     curtain: curtain,
                     isInCollection: viewModel.isInCollection(linkId: curtain.linkId),
+                    isSelected: curtainForDetails?.linkId == curtain.linkId,
                     onTap: { handleCurtainTap(curtain) },
                     onEdit: {
                         selectedCurtain = curtain
@@ -266,11 +266,9 @@ struct CurtainListView: View {
                         }
                     }
                 )
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                .listRowBackground(
-                    curtainForDetails?.linkId == curtain.linkId ?
-                    Color.accentColor.opacity(0.1) : Color(.systemBackground)
-                )
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
 
             if viewModel.hasMoreCurtains() || viewModel.isLoadingMore {
@@ -282,9 +280,11 @@ struct CurtainListView: View {
                 )
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     private var emptyDetailView: some View {
@@ -304,7 +304,6 @@ struct CurtainListView: View {
                 .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
     }
 
     private var filteredCurtains: [CurtainEntity] {
@@ -408,6 +407,7 @@ struct CurtainListView: View {
 struct UniversalCurtainRow: View {
     let curtain: CurtainEntity
     var isInCollection: Bool = false
+    var isSelected: Bool = false
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -474,6 +474,8 @@ struct UniversalCurtainRow: View {
                             .foregroundColor(.secondary)
                             .font(.title3)
                     }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -495,18 +497,12 @@ struct UniversalCurtainRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemBackground))
+        .background(isSelected ? Color.accentColor.opacity(0.15) : Color(.secondarySystemGroupedBackground))
+        .cornerRadius(10)
         .contentShape(Rectangle())
         .onTapGesture {
             onTap()
         }
-        .overlay(
-            Rectangle()
-                .fill(Color(.separator))
-                .frame(height: 0.5)
-                .opacity(0.3),
-            alignment: .bottom
-        )
     }
 
     private var statusIcon: some View {
@@ -720,7 +716,7 @@ struct AddCurtainSheet: View {
     ]
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section {
                     Button {
@@ -760,6 +756,7 @@ struct AddCurtainSheet: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
@@ -769,6 +766,7 @@ struct AddCurtainSheet: View {
                             addCollection()
                         }
                     }
+                    .fixedSize()
                     .disabled(!isValid || isLoading)
                 }
             }
@@ -939,7 +937,7 @@ struct EditDescriptionSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section {
                     Text(curtain.linkId)
@@ -964,11 +962,13 @@ struct EditDescriptionSheet: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveDescription()
                     }
+                    .fixedSize()
                     .disabled(!hasChanged)
                 }
             }

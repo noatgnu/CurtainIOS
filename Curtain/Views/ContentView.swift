@@ -60,13 +60,18 @@ struct ContentView: View {
     private var wideLayout: some View {
         HStack(spacing: 0) {
             CompactSideBar(selectedTab: $selectedTab)
-            Divider()
-            NavigationStack {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(selectedTab.title)
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
+
                 tabContent(for: selectedTab)
-                    .navigationTitle(selectedTab.title)
-                    .navigationBarTitleDisplayMode(.inline)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemGroupedBackground))
         }
     }
 
@@ -125,6 +130,7 @@ struct CompactSideBar: View {
             .foregroundColor(selectedTab == tab ? .accentColor : .secondary)
             .cornerRadius(10)
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 4)
         .onHover { hovering in
             if hovering {

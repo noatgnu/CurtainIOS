@@ -22,21 +22,45 @@ struct SiteSettingsView: View {
 
     var body: some View {
         if isWideLayout {
-            mainBody
+            sitesContent
         } else {
             NavigationStack {
-                mainBody
+                sitesContent
+                    .navigationTitle("API Sites")
+                    .navigationBarTitleDisplayMode(.large)
+                    .toolbar {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                showingAddSiteSheet = true
+                            } label: {
+                                Label("Add Site", systemImage: "plus")
+                            }
+                        }
+                    }
             }
         }
     }
 
-    private var mainBody: some View {
+    private var sitesContent: some View {
         VStack(spacing: 0) {
             // Header Info
             if !siteSettings.isEmpty {
-                HeaderInfoView(totalSites: siteSettings.count, activeSites: activeSitesCount)
-                    .padding()
-                    .background(Color(.systemGray6))
+                HStack {
+                    HeaderInfoView(totalSites: siteSettings.count, activeSites: activeSitesCount)
+                    if isWideLayout {
+                        Spacer()
+                        Button {
+                            showingAddSiteSheet = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+                .background(Color(.secondarySystemGroupedBackground))
+                .cornerRadius(10)
+                .padding(.horizontal)
             }
 
             // Sites List
@@ -52,15 +76,6 @@ struct SiteSettingsView: View {
                     },
                     onDelete: deleteSite
                 )
-            }
-        }
-        .navigationTitle("API Sites")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Add Site") {
-                    showingAddSiteSheet = true
-                }
             }
         }
         .sheet(isPresented: $showingAddSiteSheet) {
@@ -252,7 +267,7 @@ struct AddSiteSheet: View {
     @State private var requiresAuth = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Site Information") {
                     HStack {
@@ -288,14 +303,16 @@ struct AddSiteSheet: View {
             .navigationTitle("Add API Site")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
                         addSite()
                         dismiss()
                     }
+                    .fixedSize()
                     .disabled(hostname.isEmpty)
                 }
             }
@@ -339,7 +356,7 @@ struct EditSiteSheet: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Site Information") {
                     HStack {
@@ -375,14 +392,16 @@ struct EditSiteSheet: View {
             .navigationTitle("Edit Site")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveSite()
                         dismiss()
                     }
+                    .fixedSize()
                 }
             }
         }

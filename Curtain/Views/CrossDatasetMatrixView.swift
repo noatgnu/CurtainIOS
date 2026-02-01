@@ -105,6 +105,8 @@ struct CrossDatasetMatrixView: View {
                 Image(systemName: "line.3.horizontal.decrease")
                     .foregroundStyle(hasActiveFilters ? Color.accentColor : Color.secondary)
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -356,6 +358,7 @@ struct ComparisonInfoSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
+                    .fixedSize()
                 }
             }
         }

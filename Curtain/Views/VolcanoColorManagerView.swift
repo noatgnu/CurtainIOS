@@ -94,7 +94,7 @@ struct VolcanoColorManagerView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Info Header
                 VStack(alignment: .leading, spacing: 8) {
@@ -156,14 +156,16 @@ struct VolcanoColorManagerView: View {
             .navigationTitle("Volcano Colors")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         saveChanges()
                         dismiss()
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -363,9 +365,12 @@ struct VolcanoColorManagerView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
-        
+
         curtainData = updatedCurtainData
         
         // Trigger volcano plot refresh
@@ -464,7 +469,7 @@ struct VolcanoDetailedColorPickerView: View {
     @State private var showingInvalidARGB = false
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Group Information") {
                     HStack {
@@ -603,11 +608,13 @@ struct VolcanoDetailedColorPickerView: View {
             .navigationTitle("Edit Color")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                    .fixedSize()
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                    .fixedSize()
                 }
             }
             .onAppear {

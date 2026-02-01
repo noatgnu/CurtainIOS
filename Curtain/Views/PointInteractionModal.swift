@@ -22,7 +22,7 @@ struct PointInteractionModal: View {
     @State private var includeClickedProtein = true
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Header with clicked protein info
                 headerView
@@ -53,16 +53,22 @@ struct PointInteractionModal: View {
             }
             .navigationTitle("Protein Interaction")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    isPresented = false
-                },
-                trailing: Button("Done") {
-                    performAction()
-                    isPresented = false
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                    .fixedSize()
                 }
-                .disabled(!canPerformAction)
-            )
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        performAction()
+                        isPresented = false
+                    }
+                    .fixedSize()
+                    .disabled(!canPerformAction)
+                }
+            }
         }
         .onAppear {
             // Pre-select the clicked protein
@@ -942,9 +948,12 @@ struct PointInteractionModal: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
-        
+
         if protein.id == clickData.clickedProtein.id {
         } else {
         }

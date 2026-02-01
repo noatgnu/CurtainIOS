@@ -18,7 +18,7 @@ struct VolcanoYAxisPositionSettingsView: View {
     @State private var showMiddle: Bool = true
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Info Section
                 Section {
@@ -176,13 +176,14 @@ struct VolcanoYAxisPositionSettingsView: View {
             .navigationTitle("Y-Axis Position")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveChanges()
                         dismiss()
@@ -190,6 +191,7 @@ struct VolcanoYAxisPositionSettingsView: View {
                         // Trigger plot refresh
                         NotificationCenter.default.post(name: NSNotification.Name("VolcanoPlotRefresh"), object: nil)
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -325,7 +327,10 @@ struct VolcanoYAxisPositionSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData

@@ -186,6 +186,8 @@ struct CollectionCardView: View {
                     .foregroundColor(.secondary)
                     .font(.title3)
             }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
 
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -412,6 +414,8 @@ struct CollectionSessionRowView: View {
                 .foregroundColor(.secondary)
                 .font(.title3)
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
     }
 
     private var statusIcon: some View {

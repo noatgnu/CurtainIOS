@@ -9,6 +9,7 @@ import SwiftUI
 
 
 struct ProteinSearchView: View {
+    @Environment(\.dismiss) private var dismiss
     @Binding var curtainData: CurtainData
     @StateObject private var searchManager = ProteinSearchManager()
     @State private var showingSearchDialog = false
@@ -18,7 +19,7 @@ struct ProteinSearchView: View {
     @State private var newSearchListName = ""
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(spacing: 0) {
                 // Search controls header
                 headerView
@@ -31,11 +32,20 @@ struct ProteinSearchView: View {
                 }
             }
             .navigationTitle("Protein Search")
-            .navigationBarItems(
-                trailing: Button("New Search") {
-                    showingSearchDialog = true
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                    .fixedSize()
                 }
-            )
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("New Search") {
+                        showingSearchDialog = true
+                    }
+                    .fixedSize()
+                }
+            }
         }
         .sheet(isPresented: $showingSearchDialog) {
             ProteinSearchDialog(

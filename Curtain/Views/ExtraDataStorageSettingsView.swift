@@ -21,7 +21,7 @@ struct ExtraDataStorageSettingsView: View {
     @State private var editingIndex: Int?
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Info Section
                 Section {
@@ -126,17 +126,19 @@ struct ExtraDataStorageSettingsView: View {
             .navigationTitle("Extra Data Storage")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         saveChanges()
                         dismiss()
                     }
+                    .fixedSize()
                 }
             }
             .sheet(isPresented: $showingAddSheet) {
@@ -265,7 +267,10 @@ struct ExtraDataStorageSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData
@@ -293,7 +298,7 @@ struct ExtraDataItemEditView: View {
     @State private var type: String = ""
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Item Details") {
                     TextField("Name", text: $name)
@@ -320,13 +325,14 @@ struct ExtraDataItemEditView: View {
             .navigationTitle(item == nil ? "Add Item" : "Edit Item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         onCancel()
                     }
+                    .fixedSize()
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let newItem = ExtraDataItem(
                             name: name.isEmpty ? "Untitled" : name,
@@ -335,6 +341,7 @@ struct ExtraDataItemEditView: View {
                         )
                         onSave(newItem)
                     }
+                    .fixedSize()
                     .disabled(name.isEmpty && content.isEmpty)
                 }
             }

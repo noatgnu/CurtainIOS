@@ -20,7 +20,7 @@ struct CurtainData {
     var selectionsMap: [String: Any]?
     var selectedMap: [String: [String: Bool]]? 
     var selectionsName: [String]?
-    private let _settings: CurtainSettings
+    private var _settings: CurtainSettings
     let fetchUniprot: Bool
     let annotatedData: Any?
     let extraData: ExtraData?
@@ -39,7 +39,8 @@ struct CurtainData {
     
     // Direct access to settings without automatic processing to avoid loops
     var settings: CurtainSettings {
-        return _settings
+        get { return _settings }
+        set { _settings = newValue }
     }
     
     // Method to get processed settings when needed (e.g., for protein charts)

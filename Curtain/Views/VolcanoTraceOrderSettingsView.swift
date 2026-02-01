@@ -22,7 +22,7 @@ struct VolcanoTraceOrderSettingsView: View {
     @State private var traceItems: [TraceItem] = []
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 // Info Section
                 Section {
@@ -169,13 +169,14 @@ struct VolcanoTraceOrderSettingsView: View {
             .navigationTitle("Trace Order")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     // Save button
                     Button("Save") {
                         saveChanges()
@@ -184,6 +185,7 @@ struct VolcanoTraceOrderSettingsView: View {
                         // Trigger plot refresh
                         NotificationCenter.default.post(name: NSNotification.Name("VolcanoPlotRefresh"), object: nil)
                     }
+                    .fixedSize()
                 }
             }
             .onAppear {
@@ -312,7 +314,10 @@ struct VolcanoTraceOrderSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData
@@ -401,7 +406,10 @@ struct VolcanoTraceOrderSettingsView: View {
             fetchUniprot: curtainData.fetchUniprot,
             annotatedData: curtainData.annotatedData,
             extraData: curtainData.extraData,
-            permanent: curtainData.permanent
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
 
         curtainData = updatedCurtainData

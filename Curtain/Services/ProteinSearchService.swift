@@ -61,6 +61,7 @@ struct SearchList {
 
 class ProteinSearchService {
     private let proteomicsDataDatabaseManager = ProteomicsDataDatabaseManager.shared
+    private let proteinMappingService = ProteinMappingService.shared
 
     // MARK: - Core Search Functionality
 
@@ -228,7 +229,8 @@ class ProteinSearchService {
         return results
     }
 
-    /// GRDB-based batch search
+    /// GRDB-based batch search using ProteinMappingService (matches Android IDMappingService flow)
+    /// All search terms are resolved to dataset primary IDs via the mapping tables.
     func performBatchSearch(
         inputText: String,
         searchType: SearchType,
@@ -258,26 +260,27 @@ class ProteinSearchService {
                     allMatchedProteins.formUnion(proteins)
                 }
             } else {
-                // 1. Try exact match on whole line
-                let exactMatches = await performExactSearch(
-                    searchTerm: originalLine,
-                    searchType: searchType,
-                    linkId: linkId,
-                    idColumn: idColumn,
-                    geneColumn: geneColumn,
-                    useDatasetGeneColumn: true
-                )
-                allMatchedProteins.formUnion(exactMatches)
+                // Use ProteinMappingService to resolve terms to primary IDs
+                // This matches Android's IDMappingService.batchSearchProteins flow
+                let allTerms = [originalLine] + searchTerms.filter { $0 != originalLine.uppercased() }
 
-                // 2. If no exact match on whole line, try parts
-                if exactMatches.isEmpty {
-                    for searchTerm in searchTerms {
-                        let proteins = await performPartialSearch(
-                            searchTerm: searchTerm,
-                            searchType: searchType,
-                            linkId: linkId
-                        )
-                        allMatchedProteins.formUnion(proteins)
+                for term in allTerms {
+                    let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty { continue }
+
+                    let primaryIds: [String]
+                    switch searchType {
+                    case .geneName:
+                        primaryIds = proteinMappingService.getPrimaryIdsFromGeneName(linkId: linkId, geneName: trimmed)
+                    case .primaryID, .accessionID:
+                        primaryIds = proteinMappingService.getPrimaryIdsFromSplitId(linkId: linkId, splitId: trimmed)
+                    }
+
+                    allMatchedProteins.formUnion(primaryIds)
+
+                    // If we found matches on the full line, skip individual parts
+                    if !primaryIds.isEmpty && term == originalLine {
+                        break
                     }
                 }
             }

@@ -663,7 +663,8 @@ struct InteractiveVolcanoPlotView: View {
             extraData: curtainData.extraData,
             permanent: curtainData.permanent,
             bypassUniProt: curtainData.bypassUniProt,
-            dbPath: curtainData.dbPath
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
         )
         // Ensure uniprotDB is preserved
         curtainData.uniprotDB = curtainData.uniprotDB
@@ -1153,7 +1154,7 @@ struct CalculatedAnnotationView: View {
 
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         VStack {
             Text("Volcano Plot Preview")
                 .font(.title)

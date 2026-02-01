@@ -10,9 +10,10 @@ import SwiftUI
 // MARK: - Simple Export Plot Button
 
 struct ExportPlotButton: View {
+    var useToolbarStyle: Bool = false
     @State private var showingExportOptions = false
     @State private var isExporting = false
-    
+
     var body: some View {
         Button(action: {
             if UIDevice.current.userInterfaceIdiom == .pad {
@@ -23,14 +24,21 @@ struct ExportPlotButton: View {
                 quickExport()
             }
         }) {
-            Image(systemName: isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
-                .font(.title2)
-                .foregroundColor(.white)
-                .frame(width: 44, height: 44)
-                .background(isExporting ? Color.gray : Color.purple)
-                .clipShape(Circle())
-                .shadow(radius: 4)
+            if useToolbarStyle {
+                Image(systemName: isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
+                    .font(.body)
+                    .foregroundColor(isExporting ? .gray : .purple)
+            } else {
+                Image(systemName: isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
+                    .font(.title2)
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(isExporting ? Color.gray : Color.purple)
+                    .clipShape(Circle())
+                    .shadow(radius: 4)
+            }
         }
+        .buttonStyle(.plain)
         .disabled(isExporting)
         .sheet(isPresented: $showingExportOptions) {
             ExportOptionsView(onExport: { format, quality in
@@ -83,7 +91,7 @@ struct ExportOptionsView: View {
     @State private var selectedQuality: PlotExportOptions.ExportQuality = .high
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
                 Section("Export Format") {
                     Picker("Format", selection: $selectedFormat) {
@@ -136,10 +144,11 @@ struct ExportOptionsView: View {
             .navigationTitle("Export Plot")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         dismiss()
                     }
+                    .fixedSize()
                 }
             }
         }
