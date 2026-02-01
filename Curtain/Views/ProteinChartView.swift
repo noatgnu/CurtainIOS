@@ -247,31 +247,19 @@ struct ProteinChartView: View {
                         Divider()
 
                         HStack(spacing: 16) {
-                            Button(action: { showingIndividualYAxisLimits = true }) {
-                                Image(systemName: "chart.bar.xaxis")
+                            ToolbarHoverButton(icon: "chart.bar.xaxis", label: "Y-Axis Limits", disabled: isLoading) {
+                                showingIndividualYAxisLimits = true
                             }
-                            .help("Y-Axis Limits")
-                            .disabled(isLoading)
-                            .opacity(isLoading ? 0.5 : 1.0)
-
-                            Button(action: { showingConditionColorManager = true }) {
-                                Image(systemName: "chart.bar.fill")
+                            ToolbarHoverButton(icon: "chart.bar.fill", label: "Condition Colors", disabled: isLoading) {
+                                showingConditionColorManager = true
                             }
-                            .help("Condition Colors")
-                            .disabled(isLoading)
-                            .opacity(isLoading ? 0.5 : 1.0)
-
                             if chartType == .barChart || chartType == .averageBarChart {
-                                Button(action: { showingBracketSettings = true }) {
-                                    Image(systemName: "curlybraces")
+                                ToolbarHoverButton(icon: "curlybraces", label: "Bracket Settings", disabled: isLoading) {
+                                    showingBracketSettings = true
                                 }
-                                .help("Bracket Settings")
-                                .disabled(isLoading)
-                                .opacity(isLoading ? 0.5 : 1.0)
                             }
                         }
                         .font(.body)
-                        .buttonStyle(.plain)
                         .foregroundColor(.accentColor)
                         .padding(.horizontal)
                         .padding(.vertical, 6)

@@ -23,37 +23,42 @@ struct PointInteractionModal: View {
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Header with clicked protein info
-                headerView
-                
+            List {
+                // Header
+                Section {
+                    headerContent
+                }
+
                 // Tab picker
-                Picker("Action", selection: $selectedTab) {
-                    Text("Select").tag(0)
-                    Text("Annotate").tag(1)
-                    Text("Details").tag(2)
-                }
-                .pickerStyle(SegmentedPickerStyle())
-                .padding()
-                
-                // Content based on selected tab
-                Group {
-                    switch selectedTab {
-                    case 0:
-                        selectionView
-                    case 1:
-                        annotationView
-                    case 2:
-                        detailsView
-                    default:
-                        selectionView
+                Section {
+                    Picker("Action", selection: $selectedTab) {
+                        Text("Select").tag(0)
+                        Text("Annotate").tag(1)
+                        Text("Details").tag(2)
                     }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .listRowInsets(EdgeInsets())
+                    .padding(.vertical, 4)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // Content based on selected tab
+                switch selectedTab {
+                case 0:
+                    selectionSections
+                case 1:
+                    annotationSections
+                case 2:
+                    detailsSections
+                default:
+                    selectionSections
+                }
             }
-            .navigationTitle("Protein Interaction")
-            .navigationBarTitleDisplayMode(.inline)
+            .listStyle(.insetGrouped)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("Protein Interaction")
+                        .font(.headline)
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         isPresented = false
@@ -62,8 +67,20 @@ struct PointInteractionModal: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
+                        let pendingAnnotations = buildPendingAnnotations()
                         performAction()
                         isPresented = false
+                        // Post annotations via notification so the parent can apply them
+                        // to its own @State, avoiding sheet binding write-back issues
+                        if !pendingAnnotations.isEmpty {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("VolcanoAnnotationsCreated"),
+                                    object: nil,
+                                    userInfo: ["annotations": pendingAnnotations]
+                                )
+                            }
+                        }
                     }
                     .fixedSize()
                     .disabled(!canPerformAction)
@@ -76,162 +93,97 @@ struct PointInteractionModal: View {
         }
     }
     
-    // MARK: - Header View
-    
-    private var headerView: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    // MARK: - Header Content
+
+    private var headerContent: some View {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(proteinDisplayName(clickData.clickedProtein))
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text("Clicked Protein")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
+                Text(proteinDisplayName(clickData.clickedProtein))
+                    .font(.headline)
+                    .lineLimit(1)
+
                 Spacer()
-                
-                VStack(alignment: .trailing, spacing: 4) {
+
+                HStack(spacing: 12) {
                     Text("FC: \(clickData.clickedProtein.log2FC, specifier: "%.3f")")
                         .font(.callout)
                         .fontWeight(.medium)
-                    
+
                     Text("p: \(clickData.clickedProtein.pValue, specifier: "%.2e")")
                         .font(.callout)
                         .foregroundColor(.secondary)
                 }
             }
-            
+
             if !clickData.nearbyProteins.isEmpty {
                 Text("\(clickData.nearbyProteins.count) nearby proteins found")
                     .font(.caption)
                     .foregroundColor(.blue)
             }
         }
-        .padding()
-        .background(Color(.systemGray6))
     }
     
-    // MARK: - Selection View
-    
-    private var selectionView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Quick actions for auto-creating selections
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Quick Actions")
-                    .font(.headline)
-                    .padding(.horizontal)
-                
-                VStack(spacing: 8) {
-                    // Auto-create from all nearby proteins
-                    Button(action: {
-                        autoCreateSelectionFromNearbyProteins()
-                    }) {
-                        HStack {
-                            Image(systemName: "wand.and.stars")
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Auto-Create from Nearby Proteins")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                Text("Creates selection with \(clickData.nearbyProteins.count + 1) proteins")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
+    // MARK: - Selection Sections
+
+    @ViewBuilder
+    private var selectionSections: some View {
+        // Quick Actions
+        Section("Quick Actions") {
+            Button(action: {
+                autoCreateSelectionFromNearbyProteins()
+            }) {
+                HStack {
+                    Image(systemName: "wand.and.stars")
+                        .foregroundColor(.blue)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Auto-Create from Nearby Proteins")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("Creates selection with \(clickData.nearbyProteins.count + 1) proteins")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .disabled(clickData.nearbyProteins.isEmpty)
+
+            if !selectedProteinIds.isEmpty {
+                Button(action: {
+                    autoCreateSelectionFromSelected()
+                }) {
+                    HStack {
+                        Image(systemName: "checkmark.circle")
+                            .foregroundColor(.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Auto-Create from Selected")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text("Creates selection with \(selectedProteinIds.count) selected proteins")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        .padding()
-                        .background(Color.blue.opacity(0.1))
-                        .cornerRadius(8)
                     }
-                    .buttonStyle(PlainButtonStyle())
-                    .disabled(clickData.nearbyProteins.isEmpty)
-                    
-                    // Auto-create from selected proteins only
-                    if !selectedProteinIds.isEmpty {
-                        Button(action: {
-                            autoCreateSelectionFromSelected()
-                        }) {
-                            HStack {
-                                Image(systemName: "checkmark.circle")
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Auto-Create from Selected")
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-                                    Text("Creates selection with \(selectedProteinIds.count) selected proteins")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding()
-                            .background(Color.green.opacity(0.1))
-                            .cornerRadius(8)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .padding(.horizontal)
-            }
-            
-            // Manual selection section
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Manual Selection")
-                        .font(.headline)
-                    
-                    Spacer()
-                    
-                    // Toggle for including clicked protein
-                    HStack {
-                        Toggle("Include clicked protein", isOn: $includeClickedProtein)
-                            .font(.caption)
-                            .toggleStyle(SwitchToggleStyle(tint: .blue))
-                    }
-                }
-                .padding(.horizontal)
-                
-                // New selection name input
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Selection Name")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                    
-                    TextField("Enter selection name...", text: $newSelectionName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                }
-                .padding(.horizontal)
-            }
-            
-            // Protein selection list
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Select Proteins (\(selectedProteinIds.count) selected)")
-                    .font(.headline)
-                    .padding(.horizontal)
-                
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        // Always show clicked protein first
-                        proteinSelectionRow(clickData.clickedProtein, isClickedProtein: true)
-                        
-                        // Show nearby proteins sorted by distance
-                        ForEach(clickData.nearbyProteins, id: \.protein.id) { nearbyProtein in
-                            proteinSelectionRow(nearbyProtein.protein, nearbyProtein: nearbyProtein)
-                        }
-                    }
-                    .padding(.horizontal)
                 }
             }
-            
-            Spacer()
+        }
+
+        // Manual Selection
+        Section("Manual Selection") {
+            Toggle("Include clicked protein", isOn: $includeClickedProtein)
+
+            TextField("Selection name...", text: $newSelectionName)
+        }
+
+        // Protein list
+        Section("Select Proteins (\(selectedProteinIds.count) selected)") {
+            proteinSelectionRow(clickData.clickedProtein, isClickedProtein: true)
+
+            ForEach(clickData.nearbyProteins, id: \.protein.id) { nearbyProtein in
+                proteinSelectionRow(nearbyProtein.protein, nearbyProtein: nearbyProtein)
+            }
         }
     }
-    
+
     private func proteinSelectionRow(_ protein: ProteinPoint, nearbyProtein: NearbyProtein? = nil, isClickedProtein: Bool = false) -> some View {
         HStack {
             // Selection checkbox
@@ -308,122 +260,62 @@ struct PointInteractionModal: View {
         )
     }
     
-    // MARK: - Annotation View
-    
-    private var annotationView: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Annotation info header
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Bulk Annotation")
-                    .font(.headline)
-                    .padding(.horizontal)
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(.blue)
-                        Text("Annotations will be created for all selected proteins")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Toggle("Include clicked protein", isOn: $includeClickedProtein)
-                            .font(.caption)
-                            .toggleStyle(SwitchToggleStyle(tint: .blue))
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(8)
-                .padding(.horizontal)
+    // MARK: - Annotation Sections
+
+    @ViewBuilder
+    private var annotationSections: some View {
+        Section {
+            HStack {
+                Image(systemName: "info.circle")
+                    .foregroundColor(.blue)
+                Text("Annotations will be created for all selected proteins")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            
-            // Protein selection for annotation
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Select Proteins to Annotate (\(selectedProteinIds.count) selected)")
-                    .font(.headline)
-                    .padding(.horizontal)
-                
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        // Always show clicked protein first
-                        proteinAnnotationRow(clickData.clickedProtein, isClickedProtein: true)
-                        
-                        // Show nearby proteins sorted by distance
-                        ForEach(clickData.nearbyProteins, id: \.protein.id) { nearbyProtein in
-                            proteinAnnotationRow(nearbyProtein.protein, nearbyProtein: nearbyProtein)
-                        }
-                    }
-                    .padding(.horizontal)
-                }
-                .frame(maxHeight: 200)
+            Toggle("Include clicked protein", isOn: $includeClickedProtein)
+        } header: {
+            Text("Bulk Annotation")
+        }
+
+        Section("Select Proteins to Annotate (\(selectedProteinIds.count) selected)") {
+            proteinAnnotationRow(clickData.clickedProtein, isClickedProtein: true)
+
+            ForEach(clickData.nearbyProteins, id: \.protein.id) { nearbyProtein in
+                proteinAnnotationRow(nearbyProtein.protein, nearbyProtein: nearbyProtein)
             }
-            
-            // Annotation preview
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Annotation Preview")
-                    .font(.headline)
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Annotations will be automatically generated using protein data:")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(getAnnotationTargetProteins()), id: \.self) { proteinId in
-                                if let protein = getProteinById(proteinId) {
-                                    Text("• \(generateAnnotationTitle(for: protein))")
-                                        .font(.caption)
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxHeight: 100)
+        }
+
+        Section("Annotation Preview") {
+            ForEach(Array(getAnnotationTargetProteins()), id: \.self) { proteinId in
+                if let protein = getProteinById(proteinId) {
+                    Text(generateAnnotationTitle(for: protein))
+                        .font(.caption)
+                        .foregroundColor(.blue)
                 }
             }
-            .padding(.horizontal)
-            
-            Spacer()
         }
     }
-    
-    // MARK: - Details View
-    
-    private var detailsView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // Clicked protein details
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Clicked Protein")
-                        .font(.headline)
-                    
-                    proteinDetailCard(clickData.clickedProtein)
+
+    // MARK: - Details Sections
+
+    @ViewBuilder
+    private var detailsSections: some View {
+        Section("Clicked Protein") {
+            proteinDetailCard(clickData.clickedProtein)
+        }
+
+        if !clickData.nearbyProteins.isEmpty {
+            Section("Nearby Proteins (\(clickData.nearbyProteins.count))") {
+                ForEach(clickData.nearbyProteins.prefix(10), id: \.protein.id) { nearbyProtein in
+                    nearbyProteinCard(nearbyProtein)
                 }
-                
-                // Nearby proteins details
-                if !clickData.nearbyProteins.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Nearby Proteins (\(clickData.nearbyProteins.count))")
-                            .font(.headline)
-                        
-                        ForEach(clickData.nearbyProteins.prefix(10), id: \.protein.id) { nearbyProtein in
-                            nearbyProteinCard(nearbyProtein)
-                        }
-                        
-                        if clickData.nearbyProteins.count > 10 {
-                            Text("... and \(clickData.nearbyProteins.count - 10) more")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal)
-                        }
-                    }
+
+                if clickData.nearbyProteins.count > 10 {
+                    Text("... and \(clickData.nearbyProteins.count - 10) more")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
-            .padding()
         }
     }
     
@@ -796,8 +688,7 @@ struct PointInteractionModal: View {
                 color: color
             )
             
-        case 1: // Create annotation(s) automatically 
-            // Create annotations for all target proteins
+        case 1: // Create annotation(s) automatically
             let targetProteins = getAnnotationTargetProteins()
             for proteinId in targetProteins {
                 if let protein = getProteinById(proteinId) {
@@ -810,6 +701,61 @@ struct PointInteractionModal: View {
         }
     }
     
+    /// Build annotation data dict for all target proteins (without mutating curtainData)
+    /// Returns [title: annotationData] to be applied by the parent view via notification
+    private func buildPendingAnnotations() -> [String: [String: Any]] {
+        guard selectedTab == 1 else { return [:] }
+        var result: [String: [String: Any]] = [:]
+        let targetProteins = getAnnotationTargetProteins()
+        let existingKeys = Set(curtainData.settings.textAnnotation.keys)
+
+        for proteinId in targetProteins {
+            guard let protein = getProteinById(proteinId) else { continue }
+            let title = generateAnnotationTitle(for: protein)
+            guard !existingKeys.contains(title) else { continue }
+
+            let plotX: Double
+            let plotY: Double
+            if protein.id == clickData.clickedProtein.id {
+                plotX = clickData.plotCoordinates.x
+                plotY = clickData.plotCoordinates.y
+            } else {
+                plotX = protein.log2FC
+                plotY = protein.negLog10PValue
+            }
+
+            let annotationData: [String: Any] = [
+                "primary_id": protein.id,
+                "title": title,
+                "data": [
+                    "xref": "x",
+                    "yref": "y",
+                    "x": plotX,
+                    "y": plotY,
+                    "text": "<b>\(title)</b>",
+                    "showarrow": true,
+                    "arrowhead": 1,
+                    "arrowsize": 1,
+                    "arrowwidth": 1,
+                    "arrowcolor": "#000000",
+                    "ax": -20,
+                    "ay": -20,
+                    "xanchor": "center",
+                    "yanchor": "bottom",
+                    "font": [
+                        "size": 15,
+                        "color": "#000000",
+                        "family": "Arial, sans-serif"
+                    ],
+                    "showannotation": true,
+                    "annotationID": title
+                ]
+            ]
+            result[title] = annotationData
+        }
+        return result
+    }
+
     private func addAnnotationForProtein(_ protein: ProteinPoint) {
         let title = generateAnnotationTitle(for: protein)
         
@@ -954,16 +900,6 @@ struct PointInteractionModal: View {
             linkId: curtainData.linkId
         )
 
-        if protein.id == clickData.clickedProtein.id {
-        } else {
-        }
-        
-        // Trigger volcano plot refresh to show new annotations
-        NotificationCenter.default.post(
-            name: NSNotification.Name("VolcanoPlotRefresh"),
-            object: nil,
-            userInfo: ["reason": "annotation_added", "annotationTitle": title]
-        )
     }
     
     // MARK: - Selection and Color Helper Methods

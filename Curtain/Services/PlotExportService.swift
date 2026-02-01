@@ -80,6 +80,7 @@ class PlotExportService: ObservableObject {
     @Published var exportProgress: Double = 0.0
     @Published var lastExportResult: PlotExportResult?
     @Published var exportError: String?
+    @Published var exportedShareItems: [Any]?
     
     // MARK: - Private Properties
     
@@ -99,55 +100,63 @@ class PlotExportService: ObservableObject {
         return "\(plotType)_\(cleanTitle)_\(timestamp).\(format.fileExtension)"
     }
     
-    /// Process plot export data from JavaScript and save to Files app
+    /// Process plot export data from JavaScript and present share sheet
     func processExportData(_ exportData: [String: Any]) async -> PlotExportResult {
         isExporting = true
         exportProgress = 0.1
         exportError = nil
-        
+
         defer {
             isExporting = false
             exportProgress = 0.0
         }
-        
+
         guard let formatString = exportData["format"] as? String,
               let format = PlotExportOptions.ExportFormat(rawValue: formatString),
               let dataURL = exportData["dataURL"] as? String,
               let filename = exportData["filename"] as? String else {
-            
+
             let error = "Invalid export data format"
             exportError = error
             let result = PlotExportResult(success: false, filename: "", filePath: nil, format: .png, error: error, fileSize: nil)
             lastExportResult = result
             return result
         }
-        
+
         exportProgress = 0.3
-        
+
         do {
-            // Convert data URL to Data
             let imageData = try convertDataURLToData(dataURL)
             exportProgress = 0.6
-            
-            // Save to Files app
-            let filePath = try await saveToFiles(data: imageData, filename: filename, format: format)
+
+            // Save to temp file for sharing
+            let tempDir = FileManager.default.temporaryDirectory
+            let tempURL = tempDir.appendingPathComponent(filename)
+            try imageData.write(to: tempURL)
             exportProgress = 0.9
-            
+
+            // Publish share items for the share sheet
+            if format == .png, let image = UIImage(data: imageData) {
+                exportedShareItems = [image]
+            } else {
+                exportedShareItems = [tempURL]
+            }
+
             let fileSize = Int64(imageData.count)
             exportProgress = 1.0
-            
+
             let result = PlotExportResult(
                 success: true,
                 filename: filename,
-                filePath: filePath,
+                filePath: tempURL.path,
                 format: format,
                 error: nil,
                 fileSize: fileSize
             )
-            
+
             lastExportResult = result
             return result
-            
+
         } catch {
             let errorMessage = "Export failed: \(error.localizedDescription)"
             exportError = errorMessage

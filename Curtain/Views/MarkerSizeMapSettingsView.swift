@@ -164,9 +164,9 @@ struct MarkerSizeMapSettingsView: View {
 
         // Load existing marker sizes for each group
         for groupName in availableGroups {
-            if let size = curtainData.settings.markerSizeMap[groupName] as? Int {
+            if let size = curtainData.settings.markerSizeMap[groupName]?.value as? Int {
                 markerSizes[groupName] = String(size)
-            } else if let size = curtainData.settings.markerSizeMap[groupName] as? Double {
+            } else if let size = curtainData.settings.markerSizeMap[groupName]?.value as? Double {
                 markerSizes[groupName] = String(Int(size))
             } else {
                 markerSizes[groupName] = ""  // Use default

@@ -586,64 +586,38 @@ struct VolcanoPlotTab: View {
                     Divider()
 
                     HStack(spacing: 16) {
-                        Button(action: { showingConditionLabelsSettings = true }) {
-                            Image(systemName: "text.below.photo")
+                        ToolbarHoverButton(icon: "text.below.photo", label: "Condition Labels", disabled: annotationEditMode) {
+                            showingConditionLabelsSettings = true
                         }
-                        .help("Condition Labels")
-                        .disabled(annotationEditMode)
-                        .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                        Button(action: { showingTextColumnSettings = true }) {
-                            Image(systemName: "text.bubble")
+                        ToolbarHoverButton(icon: "text.bubble", label: "Text Column", disabled: annotationEditMode) {
+                            showingTextColumnSettings = true
                         }
-                        .help("Text Column")
-                        .disabled(annotationEditMode)
-                        .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                        Button(action: { showingTraceOrderSettings = true }) {
-                            Image(systemName: "line.3.horizontal.decrease.circle")
+                        ToolbarHoverButton(icon: "line.3.horizontal.decrease.circle", label: "Trace Order", disabled: annotationEditMode) {
+                            showingTraceOrderSettings = true
                         }
-                        .help("Trace Order")
-                        .disabled(annotationEditMode)
-                        .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                        Button(action: { showingYAxisPositionSettings = true }) {
-                            Image(systemName: "arrow.left.and.right.square")
+                        ToolbarHoverButton(icon: "arrow.left.and.right.square", label: "Y-Axis Position", disabled: annotationEditMode) {
+                            showingYAxisPositionSettings = true
                         }
-                        .help("Y-Axis Position")
-                        .disabled(annotationEditMode)
-                        .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                        Button(action: { showingVolcanoColorManager = true }) {
-                            Image(systemName: "paintpalette.fill")
+                        ToolbarHoverButton(icon: "paintpalette.fill", label: "Color Manager", disabled: annotationEditMode) {
+                            showingVolcanoColorManager = true
                         }
-                        .help("Color Manager")
-                        .disabled(annotationEditMode)
-                        .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                        Button(action: { showingProteinSearch = true }) {
-                            Image(systemName: "magnifyingglass")
+                        ToolbarHoverButton(icon: "magnifyingglass", label: "Search", disabled: annotationEditMode) {
+                            showingProteinSearch = true
                         }
-                        .help("Search")
-                        .disabled(annotationEditMode)
-                        .opacity(annotationEditMode ? 0.5 : 1.0)
-
                         ExportPlotButton(useToolbarStyle: true)
-                            .help("Export")
                             .disabled(annotationEditMode)
                             .opacity(annotationEditMode ? 0.5 : 1.0)
-
-                        Button(action: {
+                        ToolbarHoverButton(
+                            icon: annotationEditMode ? "pencil.circle.fill" : "pencil.circle",
+                            label: "Annotation Edit",
+                            disabled: false
+                        ) {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 annotationEditMode.toggle()
                             }
-                        }) {
-                            Image(systemName: annotationEditMode ? "pencil.circle.fill" : "pencil.circle")
                         }
-                        .help("Annotation Edit")
                     }
                     .font(.body)
-                    .buttonStyle(.plain)
                     .foregroundColor(.accentColor)
                     .padding(.horizontal)
                     .padding(.vertical, 6)

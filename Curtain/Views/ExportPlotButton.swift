@@ -6,49 +6,49 @@
 //
 
 import SwiftUI
-import WebKit
 
 // MARK: - Simple Export Plot Button
 
 struct ExportPlotButton: View {
     var useToolbarStyle: Bool = false
-    @State private var isExporting = false
+    @ObservedObject private var exportService = PlotExportService.shared
     @State private var showingShareSheet = false
-    @State private var exportedImage: UIImage?
     @State private var showingError = false
     @State private var errorMessage = ""
 
     var body: some View {
         Button(action: {
-            captureAndShare()
+            exportPlot()
         }) {
             if useToolbarStyle {
-                Image(systemName: isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
+                Image(systemName: exportService.isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
                     .font(.body)
-                    .foregroundColor(isExporting ? .gray : .accentColor)
+                    .foregroundColor(exportService.isExporting ? .gray : .accentColor)
             } else {
-                Image(systemName: isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
+                Image(systemName: exportService.isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
                     .font(.title2)
                     .foregroundColor(.white)
                     .frame(width: 44, height: 44)
-                    .background(isExporting ? Color.gray : Color.purple)
+                    .background(exportService.isExporting ? Color.gray : Color.purple)
                     .clipShape(Circle())
                     .shadow(radius: 4)
             }
         }
         .buttonStyle(.plain)
-        .disabled(isExporting)
+        .disabled(exportService.isExporting)
         .overlay(alignment: .topTrailing) {
-            if isExporting {
+            if exportService.isExporting {
                 ProgressView()
                     .scaleEffect(0.6)
                     .background(Circle().fill(Color.white.opacity(0.8)))
                     .offset(x: 8, y: -8)
             }
         }
-        .sheet(isPresented: $showingShareSheet) {
-            if let image = exportedImage {
-                ShareSheet(activityItems: [image])
+        .sheet(isPresented: $showingShareSheet, onDismiss: {
+            exportService.exportedShareItems = nil
+        }) {
+            if let items = exportService.exportedShareItems {
+                ShareSheet(activityItems: items)
             }
         }
         .alert("Export Failed", isPresented: $showingError) {
@@ -56,30 +56,29 @@ struct ExportPlotButton: View {
         } message: {
             Text(errorMessage)
         }
+        .onReceive(exportService.$exportedShareItems) { items in
+            if items != nil {
+                showingShareSheet = true
+            }
+        }
+        .onReceive(exportService.$exportError) { error in
+            if let error = error {
+                errorMessage = error
+                showingError = true
+            }
+        }
     }
 
-    private func captureAndShare() {
-        guard let webView = PlotlyCoordinator.getCurrentWebView() else {
+    private func exportPlot() {
+        guard PlotlyCoordinator.getCurrentWebView() != nil else {
             errorMessage = "No plot available to export"
             showingError = true
             return
         }
 
-        isExporting = true
-
-        let config = WKSnapshotConfiguration()
-        webView.takeSnapshot(with: config) { image, error in
-            DispatchQueue.main.async {
-                isExporting = false
-                if let image = image {
-                    exportedImage = image
-                    showingShareSheet = true
-                } else {
-                    errorMessage = error?.localizedDescription ?? "Failed to capture plot"
-                    showingError = true
-                }
-            }
-        }
+        // Use Plotly's native PNG export
+        let dimensions = PlotExportOptions.ExportQuality.high.dimensions
+        PlotlyWebView.exportCurrentPlotAsPNG(width: dimensions.width, height: dimensions.height)
     }
 }
 

@@ -384,6 +384,7 @@ class ProteinSearchManager: ObservableObject {
         // Preserve existing selections (including significance groups from volcano plot)
         if let existingSelectionsMap = curtainData.selectionsMap {
             for (proteinId, selections) in existingSelectionsMap {
+                // Handle both [String: Bool] and [String: Any] (from JSON parsing)
                 if let selectionMap = selections as? [String: Bool] {
                     for (selectionName, isSelected) in selectionMap {
                         if isSelected {
@@ -391,8 +392,19 @@ class ProteinSearchManager: ObservableObject {
                                 newSelectionsMap[proteinId] = [:]
                             }
                             newSelectionsMap[proteinId]![selectionName] = true
-
-                            // Add to operation names only if not already present
+                            if !newSelectOperationNames.contains(selectionName) {
+                                newSelectOperationNames.append(selectionName)
+                            }
+                        }
+                    }
+                } else if let selectionMap = selections as? [String: Any] {
+                    for (selectionName, value) in selectionMap {
+                        let isSelected = (value as? Bool) ?? (value as? Int == 1) ?? ((value as? NSNumber)?.boolValue ?? false)
+                        if isSelected {
+                            if newSelectionsMap[proteinId] == nil {
+                                newSelectionsMap[proteinId] = [:]
+                            }
+                            newSelectionsMap[proteinId]![selectionName] = true
                             if !newSelectOperationNames.contains(selectionName) {
                                 newSelectOperationNames.append(selectionName)
                             }

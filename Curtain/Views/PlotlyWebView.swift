@@ -314,9 +314,108 @@ struct InteractiveVolcanoPlotView: View {
             renderState.triggerRefresh()
             renderState.forceUpdate()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("VolcanoAnnotationsCreated"))) { notification in
+            guard let annotations = notification.userInfo?["annotations"] as? [String: [String: Any]] else { return }
+            var updatedTextAnnotation = curtainData.settings.textAnnotation
+            for (title, data) in annotations {
+                updatedTextAnnotation[title] = AnyCodable(data)
+            }
+            // Apply annotation update via helper that reconstructs curtainData
+            applyTextAnnotationUpdate(updatedTextAnnotation)
+            renderState.triggerRefresh()
+            renderState.forceUpdate()
+        }
     }
 
     
+    private func applyTextAnnotationUpdate(_ updatedTextAnnotation: [String: AnyCodable]) {
+        let updatedSettings = CurtainSettings(
+            fetchUniprot: curtainData.settings.fetchUniprot,
+            inputDataCols: curtainData.settings.inputDataCols,
+            probabilityFilterMap: curtainData.settings.probabilityFilterMap,
+            barchartColorMap: curtainData.settings.barchartColorMap,
+            pCutoff: curtainData.settings.pCutoff,
+            log2FCCutoff: curtainData.settings.log2FCCutoff,
+            description: curtainData.settings.description,
+            uniprot: curtainData.settings.uniprot,
+            colorMap: curtainData.settings.colorMap,
+            academic: curtainData.settings.academic,
+            backGroundColorGrey: curtainData.settings.backGroundColorGrey,
+            currentComparison: curtainData.settings.currentComparison,
+            version: curtainData.settings.version,
+            currentId: curtainData.settings.currentId,
+            fdrCurveText: curtainData.settings.fdrCurveText,
+            fdrCurveTextEnable: curtainData.settings.fdrCurveTextEnable,
+            prideAccession: curtainData.settings.prideAccession,
+            project: curtainData.settings.project,
+            sampleOrder: curtainData.settings.sampleOrder,
+            sampleVisible: curtainData.settings.sampleVisible,
+            conditionOrder: curtainData.settings.conditionOrder,
+            sampleMap: curtainData.settings.sampleMap,
+            volcanoAxis: curtainData.settings.volcanoAxis,
+            textAnnotation: updatedTextAnnotation,
+            volcanoPlotTitle: curtainData.settings.volcanoPlotTitle,
+            visible: curtainData.settings.visible,
+            volcanoPlotGrid: curtainData.settings.volcanoPlotGrid,
+            volcanoPlotDimension: curtainData.settings.volcanoPlotDimension,
+            volcanoAdditionalShapes: curtainData.settings.volcanoAdditionalShapes,
+            volcanoPlotLegendX: curtainData.settings.volcanoPlotLegendX,
+            volcanoPlotLegendY: curtainData.settings.volcanoPlotLegendY,
+            defaultColorList: curtainData.settings.defaultColorList,
+            scatterPlotMarkerSize: curtainData.settings.scatterPlotMarkerSize,
+            plotFontFamily: curtainData.settings.plotFontFamily,
+            stringDBColorMap: curtainData.settings.stringDBColorMap,
+            interactomeAtlasColorMap: curtainData.settings.interactomeAtlasColorMap,
+            proteomicsDBColor: curtainData.settings.proteomicsDBColor,
+            networkInteractionSettings: curtainData.settings.networkInteractionSettings,
+            rankPlotColorMap: curtainData.settings.rankPlotColorMap,
+            rankPlotAnnotation: curtainData.settings.rankPlotAnnotation,
+            legendStatus: curtainData.settings.legendStatus,
+            selectedComparison: curtainData.settings.selectedComparison,
+            imputationMap: curtainData.settings.imputationMap,
+            enableImputation: curtainData.settings.enableImputation,
+            viewPeptideCount: curtainData.settings.viewPeptideCount,
+            peptideCountData: curtainData.settings.peptideCountData,
+            volcanoConditionLabels: curtainData.settings.volcanoConditionLabels,
+            volcanoTraceOrder: curtainData.settings.volcanoTraceOrder,
+            volcanoPlotYaxisPosition: curtainData.settings.volcanoPlotYaxisPosition,
+            customVolcanoTextCol: curtainData.settings.customVolcanoTextCol,
+            barChartConditionBracket: curtainData.settings.barChartConditionBracket,
+            columnSize: curtainData.settings.columnSize,
+            chartYAxisLimits: curtainData.settings.chartYAxisLimits,
+            individualYAxisLimits: curtainData.settings.individualYAxisLimits,
+            violinPointPos: curtainData.settings.violinPointPos,
+            networkInteractionData: curtainData.settings.networkInteractionData,
+            enrichrGeneRankMap: curtainData.settings.enrichrGeneRankMap,
+            enrichrRunList: curtainData.settings.enrichrRunList,
+            extraData: curtainData.settings.extraData,
+            enableMetabolomics: curtainData.settings.enableMetabolomics,
+            metabolomicsColumnMap: curtainData.settings.metabolomicsColumnMap,
+            encrypted: curtainData.settings.encrypted,
+            dataAnalysisContact: curtainData.settings.dataAnalysisContact,
+            markerSizeMap: curtainData.settings.markerSizeMap
+        )
+        curtainData = CurtainData(
+            raw: curtainData.raw,
+            rawForm: curtainData.rawForm,
+            differentialForm: curtainData.differentialForm,
+            processed: curtainData.processed,
+            password: curtainData.password,
+            selections: curtainData.selections,
+            selectionsMap: curtainData.selectionsMap,
+            selectedMap: curtainData.selectedMap,
+            selectionsName: curtainData.selectionsName,
+            settings: updatedSettings,
+            fetchUniprot: curtainData.fetchUniprot,
+            annotatedData: curtainData.annotatedData,
+            extraData: curtainData.extraData,
+            permanent: curtainData.permanent,
+            bypassUniProt: curtainData.bypassUniProt,
+            dbPath: curtainData.dbPath,
+            linkId: curtainData.linkId
+        )
+    }
+
     private func handleAnnotationEditTap(at tapPoint: CGPoint, geometry: GeometryProxy) {
 
         let nearbyAnnotations = findAnnotationsNearPoint(tapPoint, maxDistance: 150.0, viewSize: geometry.size)

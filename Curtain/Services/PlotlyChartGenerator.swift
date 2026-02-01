@@ -379,7 +379,9 @@ class PlotlyChartGenerator {
         let defaultArrowColor = isDarkMode ? "#FFFFFF" : "#000000"
 
         for (key, value) in textAnnotations {
-            if let annotationData = value as? [String: Any], let dataSection = annotationData["data"] as? [String: Any] {
+            // Unwrap AnyCodable if needed
+            let unwrapped: Any = (value as? AnyCodable)?.value ?? value
+            if let annotationData = unwrapped as? [String: Any], let dataSection = annotationData["data"] as? [String: Any] {
                 guard let text = dataSection["text"] as? String, let x = dataSection["x"] as? Double, let y = dataSection["y"] as? Double else { continue }
                 let title = annotationData["title"] as? String ?? key
                 let showarrow = dataSection["showarrow"] as? Bool ?? true
