@@ -29,13 +29,9 @@ The app requires internet access for:
 
 **No analytics, tracking, or user data is transmitted.**
 
-## 5. Third-Party Services
+## 5. External Connections
 
-The app connects to these external services:
-
-- **curtain.proteo.info:** Source of proteomics datasets
-
-These services have their own privacy policies governing data handling.
+The app connects to **curtain.proteo.info**, which is maintained by the same developer, solely for downloading proteomics datasets. No user data is sent to any third-party services.
 
 ## 6. Data Security
 
