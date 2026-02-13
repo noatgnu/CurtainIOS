@@ -12,6 +12,11 @@ import SwiftData
 struct CurtainApp: App {
     @State private var deepLinkViewModel = DeepLinkViewModel()
 
+    /// Check if running under UI tests
+    private static var isUITesting: Bool {
+        CommandLine.arguments.contains("--uitesting")
+    }
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             CurtainEntity.self,
@@ -23,8 +28,9 @@ struct CurtainApp: App {
             SavedCrossDatasetSearchEntity.self,
         ])
 
-        // First try normal configuration
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        // Use in-memory storage for UI tests to ensure clean state
+        let isInMemory = CurtainApp.isUITesting
+        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: isInMemory)
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])

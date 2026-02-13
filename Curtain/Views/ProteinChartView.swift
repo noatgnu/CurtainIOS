@@ -51,7 +51,40 @@ struct ProteinChartView: View {
         }
         return proteinList[currentIndex]
     }
-    
+
+    // Check if PTM data
+    private var isPTM: Bool {
+        curtainData.differentialForm.isPTM
+    }
+
+    // Get gene name for current protein/site
+    private var geneName: String? {
+        if isPTM {
+            // For PTM, get accession from site data and resolve gene name
+            if let siteDataArray = try? ProteomicsDataService.shared.getProcessedDataForProtein(
+                linkId: curtainData.linkId,
+                primaryId: currentProteinId
+            ), let siteData = siteDataArray.first, let accession = siteData.accession {
+                return curtainData.getPrimaryGeneNameForProtein(accession)
+            }
+        }
+        return curtainData.getPrimaryGeneNameForProtein(currentProteinId)
+    }
+
+    // Display title for chart
+    private var chartTitle: String {
+        if isPTM {
+            if let gene = geneName {
+                return "Site Chart - \(gene)"
+            }
+            return "Site Chart"
+        }
+        if let gene = geneName {
+            return "Protein Chart - \(gene)"
+        }
+        return "Protein Chart"
+    }
+
     // Navigation state
     private var hasPreviousProtein: Bool {
         return currentIndex > 0
@@ -266,7 +299,7 @@ struct ProteinChartView: View {
                     }
                 }
             }
-            .navigationTitle("Protein Chart")
+            .navigationTitle(chartTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

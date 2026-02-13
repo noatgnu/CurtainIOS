@@ -14,6 +14,8 @@ final class CurtainUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // Use in-memory storage for clean test state
+        app.launchArguments = ["--uitesting"]
         app.launch()
     }
 
@@ -258,8 +260,145 @@ final class CurtainUITests: XCTestCase {
         }
     }
     
+    // MARK: - PTM and TP Data Tests
+
+    @MainActor
+    func testPTMExampleShowsSiteListTabWithGeneNames() throws {
+        // Navigate to Datasets tab
+        let datasetsTab = app.tabBars.buttons["Datasets"]
+        XCTAssertTrue(datasetsTab.waitForExistence(timeout: 10), "Datasets tab should exist")
+        datasetsTab.tap()
+        sleep(1)
+
+        // Find PTM button by label text
+        let ptmButton = app.buttons["PTM Example"]
+
+        if ptmButton.waitForExistence(timeout: 5) {
+            ptmButton.tap()
+        } else {
+            XCTFail("PTM Example button not found")
+            return
+        }
+
+        // Wait for the entry to be added to the list
+        sleep(3)
+
+        // Find and tap on the newly added PTM curtain entry
+        // Look for any cell or button in the list
+        let listItems = app.cells
+        if listItems.count > 0 {
+            // Tap the first cell (the PTM entry we just added)
+            listItems.firstMatch.tap()
+        } else {
+            // Try to find by PTM badge or description
+            let ptmEntry = app.staticTexts["PTM"].firstMatch
+            if ptmEntry.waitForExistence(timeout: 5) {
+                ptmEntry.tap()
+            } else {
+                XCTFail("Could not find PTM entry in list")
+                return
+            }
+        }
+
+        // Handle download confirmation alert
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for download to complete and details view to load
+        // Check for Site List text in tab or navigation
+        let siteListText = app.staticTexts["Site List"]
+        let proteinListText = app.staticTexts["Protein List"]
+
+        // Wait up to 120 seconds for download and load
+        var foundSiteList = false
+        var foundProteinList = false
+
+        for _ in 0..<40 {
+            if siteListText.exists {
+                foundSiteList = true
+                break
+            }
+            if proteinListText.exists {
+                foundProteinList = true
+                break
+            }
+            sleep(3)
+        }
+
+        XCTAssertTrue(foundSiteList, "PTM data should show 'Site List' tab")
+        XCTAssertFalse(foundProteinList, "PTM data should NOT show 'Protein List' tab")
+    }
+
+    @MainActor
+    func testTPExampleShowsProteinListTabWithGeneNames() throws {
+        // Navigate to Datasets tab
+        let datasetsTab = app.tabBars.buttons["Datasets"]
+        XCTAssertTrue(datasetsTab.waitForExistence(timeout: 10), "Datasets tab should exist")
+        datasetsTab.tap()
+        sleep(1)
+
+        // Find TP button by label text
+        let tpButton = app.buttons["TP Example"]
+
+        if tpButton.waitForExistence(timeout: 5) {
+            tpButton.tap()
+        } else {
+            XCTFail("TP Example button not found")
+            return
+        }
+
+        // Wait for the entry to be added to the list
+        sleep(3)
+
+        // Find and tap on the newly added TP curtain entry
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        } else {
+            // Try to find by TP badge or description
+            let tpEntry = app.staticTexts["TP"].firstMatch
+            if tpEntry.waitForExistence(timeout: 5) {
+                tpEntry.tap()
+            } else {
+                XCTFail("Could not find TP entry in list")
+                return
+            }
+        }
+
+        // Handle download confirmation alert
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for download to complete and details view to load
+        let proteinListText = app.staticTexts["Protein List"]
+        let siteListText = app.staticTexts["Site List"]
+
+        // Wait up to 120 seconds for download and load
+        var foundProteinList = false
+        var foundSiteList = false
+
+        for _ in 0..<40 {
+            if proteinListText.exists {
+                foundProteinList = true
+                break
+            }
+            if siteListText.exists {
+                foundSiteList = true
+                break
+            }
+            sleep(3)
+        }
+
+        XCTAssertTrue(foundProteinList, "TP data should show 'Protein List' tab")
+        XCTAssertFalse(foundSiteList, "TP data should NOT show 'Site List' tab")
+    }
+
     // MARK: - Edge Cases and Error Handling
-    
+
     @MainActor
     func testInvalidURLInput() throws {
         // Navigate to Datasets tab and open Add Curtain
@@ -288,6 +427,538 @@ final class CurtainUITests: XCTestCase {
             
             app.buttons["Cancel"].tap()
         }
+    }
+
+    // MARK: - Volcano Plot Interaction Tests
+
+    @MainActor
+    func testVolcanoPlotInteractions() throws {
+        // Load example data first
+        app.tabBars.buttons["Datasets"].tap()
+
+        let tpButton = app.buttons["TP Example"]
+        if tpButton.waitForExistence(timeout: 5) {
+            tpButton.tap()
+        } else {
+            // Skip if no example button
+            return
+        }
+
+        sleep(3)
+
+        // Tap on the curtain entry
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        } else {
+            return
+        }
+
+        // Handle download if needed
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for data to load
+        sleep(10)
+
+        // Look for volcano plot elements
+        let volcanoPlot = app.otherElements["VolcanoPlot"]
+        if volcanoPlot.waitForExistence(timeout: 30) {
+            print("Volcano plot found")
+
+            // Test tap on plot (should select a point)
+            volcanoPlot.tap()
+
+            // Test pinch to zoom (if supported)
+            volcanoPlot.pinch(withScale: 2.0, velocity: 1.0)
+            sleep(1)
+            volcanoPlot.pinch(withScale: 0.5, velocity: 1.0)
+        }
+
+        // Look for plot controls
+        let resetZoomButton = app.buttons["Reset Zoom"]
+        if resetZoomButton.exists {
+            resetZoomButton.tap()
+        }
+    }
+
+    @MainActor
+    func testDataTableInteractions() throws {
+        // Load example data
+        app.tabBars.buttons["Datasets"].tap()
+
+        let tpButton = app.buttons["TP Example"]
+        if tpButton.waitForExistence(timeout: 5) {
+            tpButton.tap()
+        } else {
+            return
+        }
+
+        sleep(3)
+
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        } else {
+            return
+        }
+
+        // Handle download
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for load
+        sleep(15)
+
+        // Look for Protein List or Site List tab
+        let proteinListTab = app.buttons["Protein List"]
+        let siteListTab = app.buttons["Site List"]
+
+        if proteinListTab.waitForExistence(timeout: 30) {
+            proteinListTab.tap()
+            sleep(2)
+
+            // Test scrolling in data table
+            let table = app.tables.firstMatch
+            if table.exists {
+                table.swipeUp()
+                sleep(1)
+                table.swipeDown()
+            }
+
+            // Test tapping on a row
+            let rows = app.cells
+            if rows.count > 0 {
+                rows.firstMatch.tap()
+                sleep(1)
+            }
+        } else if siteListTab.waitForExistence(timeout: 30) {
+            siteListTab.tap()
+            sleep(2)
+        }
+    }
+
+    @MainActor
+    func testBarChartInteractions() throws {
+        // Load example data
+        app.tabBars.buttons["Datasets"].tap()
+
+        let tpButton = app.buttons["TP Example"]
+        if tpButton.waitForExistence(timeout: 5) {
+            tpButton.tap()
+        } else {
+            return
+        }
+
+        sleep(3)
+
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        } else {
+            return
+        }
+
+        // Handle download
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for load
+        sleep(15)
+
+        // Go to protein list and select a protein to see bar chart
+        let proteinListTab = app.buttons["Protein List"]
+        if proteinListTab.waitForExistence(timeout: 30) {
+            proteinListTab.tap()
+            sleep(2)
+
+            // Tap on first protein
+            let rows = app.cells
+            if rows.count > 0 {
+                rows.firstMatch.tap()
+                sleep(2)
+
+                // Look for bar chart
+                let barChart = app.otherElements["BarChart"]
+                if barChart.exists {
+                    print("Bar chart found")
+                    barChart.tap()
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testPTMViewerInteractions() throws {
+        // Load PTM example data
+        app.tabBars.buttons["Datasets"].tap()
+
+        let ptmButton = app.buttons["PTM Example"]
+        if ptmButton.waitForExistence(timeout: 5) {
+            ptmButton.tap()
+        } else {
+            return
+        }
+
+        sleep(3)
+
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        } else {
+            return
+        }
+
+        // Handle download
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for load
+        sleep(20)
+
+        // Go to Site List and tap on a site
+        let siteListTab = app.buttons["Site List"]
+        if siteListTab.waitForExistence(timeout: 60) {
+            siteListTab.tap()
+            sleep(2)
+
+            // Tap on a site to open PTM viewer
+            let rows = app.cells
+            if rows.count > 0 {
+                rows.firstMatch.tap()
+                sleep(3)
+
+                // Look for PTM viewer elements
+                let ptmViewer = app.otherElements["PTMViewer"]
+                let sequenceView = app.scrollViews["SequenceAlignment"]
+
+                if ptmViewer.exists || sequenceView.exists {
+                    print("PTM viewer found")
+
+                    // Test scrolling in sequence view
+                    if sequenceView.exists {
+                        sequenceView.swipeLeft()
+                        sleep(1)
+                        sequenceView.swipeRight()
+                    }
+                }
+
+                // Close PTM viewer if modal
+                let closeButton = app.buttons["Close"]
+                if closeButton.exists {
+                    closeButton.tap()
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func testExportFunctionality() throws {
+        // Load example data
+        app.tabBars.buttons["Datasets"].tap()
+
+        let tpButton = app.buttons["TP Example"]
+        if tpButton.waitForExistence(timeout: 5) {
+            tpButton.tap()
+        } else {
+            return
+        }
+
+        sleep(3)
+
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        } else {
+            return
+        }
+
+        // Handle download
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for load
+        sleep(15)
+
+        // Look for export button
+        let exportButton = app.buttons["Export"]
+        let shareButton = app.buttons["Share"]
+        let moreButton = app.buttons["More"]
+
+        if exportButton.waitForExistence(timeout: 30) {
+            exportButton.tap()
+            sleep(1)
+
+            // Should show export options
+            let exportPlotButton = app.buttons["Export Plot"]
+            let exportDataButton = app.buttons["Export Data"]
+
+            if exportPlotButton.exists {
+                print("Export options available")
+            }
+
+            // Dismiss menu
+            app.tap()
+        } else if shareButton.exists {
+            shareButton.tap()
+            sleep(1)
+            app.tap()
+        } else if moreButton.exists {
+            moreButton.tap()
+            sleep(1)
+            app.tap()
+        }
+    }
+
+    @MainActor
+    func testComparisonSwitching() throws {
+        // Load example data
+        app.tabBars.buttons["Datasets"].tap()
+
+        let tpButton = app.buttons["TP Example"]
+        if tpButton.waitForExistence(timeout: 5) {
+            tpButton.tap()
+        } else {
+            return
+        }
+
+        sleep(3)
+
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        } else {
+            return
+        }
+
+        // Handle download
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for load
+        sleep(15)
+
+        // Look for comparison picker/selector
+        let comparisonPicker = app.buttons["Comparison"]
+        let comparisonSegment = app.segmentedControls.firstMatch
+
+        if comparisonPicker.waitForExistence(timeout: 30) {
+            comparisonPicker.tap()
+            sleep(1)
+
+            // Should show comparison options
+            let comparisonMenu = app.menus.firstMatch
+            if comparisonMenu.exists {
+                // Select first option
+                let options = comparisonMenu.buttons
+                if options.count > 0 {
+                    options.firstMatch.tap()
+                    sleep(2)
+                }
+            } else {
+                app.tap() // Dismiss
+            }
+        } else if comparisonSegment.exists {
+            // Try switching between segments
+            let buttons = comparisonSegment.buttons
+            if buttons.count > 1 {
+                buttons.element(boundBy: 1).tap()
+                sleep(2)
+                buttons.element(boundBy: 0).tap()
+                sleep(2)
+            }
+        }
+    }
+
+    @MainActor
+    func testFilterListManagement() throws {
+        // Navigate to Filters tab
+        app.tabBars.buttons["Filters"].tap()
+        sleep(1)
+
+        // Should show Filter Lists
+        XCTAssertTrue(app.navigationBars["Filter Lists"].exists)
+
+        // Test creating a new filter list
+        let addButton = app.buttons["Add Filter List"]
+        if addButton.exists {
+            addButton.tap()
+            sleep(1)
+
+            // Fill in filter list name
+            let nameField = app.textFields["Name"]
+            if nameField.exists {
+                nameField.tap()
+                nameField.typeText("Test Filter")
+            }
+
+            // Add some proteins
+            let proteinsField = app.textFields["Proteins"]
+            if proteinsField.exists {
+                proteinsField.tap()
+                proteinsField.typeText("PROTEIN1,PROTEIN2,PROTEIN3")
+            }
+
+            // Cancel to not actually create
+            let cancelButton = app.buttons["Cancel"]
+            if cancelButton.exists {
+                cancelButton.tap()
+            }
+        }
+
+        // Test search in filter lists
+        let searchField = app.searchFields.firstMatch
+        if searchField.exists {
+            searchField.tap()
+            searchField.typeText("test")
+            sleep(1)
+            searchField.clearText()
+        }
+    }
+
+    @MainActor
+    func testSettingsAndCutoffAdjustment() throws {
+        // Load example data
+        app.tabBars.buttons["Datasets"].tap()
+
+        let tpButton = app.buttons["TP Example"]
+        if tpButton.waitForExistence(timeout: 5) {
+            tpButton.tap()
+        } else {
+            return
+        }
+
+        sleep(3)
+
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        } else {
+            return
+        }
+
+        // Handle download
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        // Wait for load
+        sleep(15)
+
+        // Look for settings/cutoff controls
+        let settingsButton = app.buttons["Settings"]
+        let cutoffButton = app.buttons["Cutoffs"]
+
+        if settingsButton.waitForExistence(timeout: 30) {
+            settingsButton.tap()
+            sleep(1)
+
+            // Look for p-value and fold change sliders
+            let pValueSlider = app.sliders["P-Value Cutoff"]
+            let fcSlider = app.sliders["Fold Change Cutoff"]
+
+            if pValueSlider.exists {
+                pValueSlider.adjust(toNormalizedSliderPosition: 0.3)
+                sleep(1)
+            }
+
+            if fcSlider.exists {
+                fcSlider.adjust(toNormalizedSliderPosition: 0.7)
+                sleep(1)
+            }
+
+            // Close settings
+            let doneButton = app.buttons["Done"]
+            if doneButton.exists {
+                doneButton.tap()
+            } else {
+                app.tap()
+            }
+        } else if cutoffButton.exists {
+            cutoffButton.tap()
+            sleep(1)
+            app.tap()
+        }
+    }
+
+    @MainActor
+    func testNavigationBackAndForth() throws {
+        // Test navigation flow
+        app.tabBars.buttons["Datasets"].tap()
+        sleep(1)
+
+        // Load example
+        let tpButton = app.buttons["TP Example"]
+        if tpButton.waitForExistence(timeout: 5) {
+            tpButton.tap()
+        }
+
+        sleep(3)
+
+        // Enter details
+        let listItems = app.cells
+        if listItems.count > 0 {
+            listItems.firstMatch.tap()
+        }
+
+        // Handle download
+        let downloadAlert = app.alerts["Download Data"]
+        if downloadAlert.waitForExistence(timeout: 5) {
+            downloadAlert.buttons["Download"].tap()
+        }
+
+        sleep(10)
+
+        // Navigate back
+        let backButton = app.navigationBars.buttons.firstMatch
+        if backButton.exists && backButton.label != "Curtain Datasets" {
+            backButton.tap()
+            sleep(1)
+
+            // Should be back at list
+            XCTAssertTrue(app.navigationBars["Curtain Datasets"].waitForExistence(timeout: 5))
+        }
+
+        // Navigate to other tabs and back
+        app.tabBars.buttons["Filters"].tap()
+        sleep(1)
+        XCTAssertTrue(app.navigationBars["Filter Lists"].exists)
+
+        app.tabBars.buttons["Sites"].tap()
+        sleep(1)
+        XCTAssertTrue(app.navigationBars["API Sites"].exists)
+
+        app.tabBars.buttons["Datasets"].tap()
+        sleep(1)
+        XCTAssertTrue(app.navigationBars["Curtain Datasets"].exists)
+    }
+
+    @MainActor
+    func testAccessibilityIdentifiers() throws {
+        // Verify accessibility identifiers exist for main UI elements
+        app.tabBars.buttons["Datasets"].tap()
+        sleep(1)
+
+        // Check for main navigation elements
+        XCTAssertTrue(app.tabBars.firstMatch.exists, "Tab bar should be accessible")
+        XCTAssertTrue(app.navigationBars.firstMatch.exists, "Navigation bar should be accessible")
+
+        // Check for add button accessibility
+        let addButton = app.buttons.matching(NSPredicate(format: "identifier = 'plus' OR label CONTAINS 'Add'")).firstMatch
+        XCTAssertTrue(addButton.exists, "Add button should be accessible")
     }
 }
 

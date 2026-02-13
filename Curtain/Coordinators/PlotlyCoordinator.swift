@@ -59,7 +59,12 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
             transformSignificant: data.differentialForm.transformSignificant,
             comparison: data.differentialForm.comparison,
             comparisonSelect: data.differentialForm.comparisonSelect,
-            reverseFoldChange: data.differentialForm.reverseFoldChange
+            reverseFoldChange: data.differentialForm.reverseFoldChange,
+            accession: data.differentialForm.accession,
+            position: data.differentialForm.position,
+            positionPeptide: data.differentialForm.positionPeptide,
+            peptideSequence: data.differentialForm.peptideSequence,
+            score: data.differentialForm.score
         )
         appData.selectedMap = data.selectedMap ?? [:]
         if let rawString = data.raw {
@@ -316,9 +321,13 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
             proteinCount += 1
 
+            // Extract accession for PTM data (may be separate from primaryID)
+            let accession = dataPoint["accession"] as? String
+
             return ProteinPoint(
                 id: id,
                 primaryID: id,
+                accession: accession,
                 proteinName: gene,
                 geneNames: gene,
                 log2FC: x,

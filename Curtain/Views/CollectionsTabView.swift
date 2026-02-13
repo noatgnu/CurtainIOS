@@ -326,6 +326,11 @@ struct CollectionSessionRowView: View {
                         .fontWeight(.medium)
                         .lineLimit(2)
 
+                    // Curtain type badge (next to title like Android)
+                    if let curtainType = session.curtainType {
+                        CurtainTypeBadge(curtainType: curtainType)
+                    }
+
                     Spacer()
 
                     if let curtain = localCurtain, curtain.isPinned {
@@ -355,16 +360,6 @@ struct CollectionSessionRowView: View {
                             .font(.caption)
                             .foregroundColor(.blue)
                             .lineLimit(1)
-
-                        if let curtainType = session.curtainType {
-                            Text(curtainType)
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.accentColor.opacity(0.15))
-                                .cornerRadius(4)
-                        }
                     }
                 }
             }

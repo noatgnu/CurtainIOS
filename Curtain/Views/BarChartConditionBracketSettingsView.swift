@@ -29,6 +29,7 @@ struct BarChartConditionBracketSettingsView: View {
                 // Enable/Disable Section
                 Section {
                     Toggle("Show Condition Bracket", isOn: $showBracket)
+                        .accessibilityIdentifier("showBracketToggle")
 
                     if showBracket {
                         Text("Draws a bracket above bar charts connecting the two conditions selected in volcano plot labels")
@@ -231,6 +232,7 @@ struct BarChartConditionBracketSettingsView: View {
                         NotificationCenter.default.post(name: NSNotification.Name("ProteinChartRefresh"), object: nil)
                     }
                     .fixedSize()
+                    .accessibilityIdentifier("bracketSaveButton")
                 }
             }
             .onAppear {

@@ -41,8 +41,15 @@ class CurtainDataService {
         guard let settings = settingsEntity.getSettings(),
               let rawForm = settingsEntity.getRawForm(),
               let diffForm = settingsEntity.getDifferentialForm() else {
+            print("[CurtainDataService] ERROR: Failed to decode settings/forms from entity")
             return
         }
+
+        // Debug PTM fields
+        print("[CurtainDataService] restoreFromDatabase - PTM fields:")
+        print("[CurtainDataService]   accession: '\(diffForm.accession)'")
+        print("[CurtainDataService]   position: '\(diffForm.position)'")
+        print("[CurtainDataService]   isPTM: \(diffForm.isPTM)")
 
         self.curtainSettings = settings
 
@@ -62,7 +69,12 @@ class CurtainDataService {
             transformSignificant: diffForm.transformSignificant,
             comparison: diffForm.comparison,
             comparisonSelect: diffForm.comparisonSelect,
-            reverseFoldChange: diffForm.reverseFoldChange
+            reverseFoldChange: diffForm.reverseFoldChange,
+            accession: diffForm.accession,
+            position: diffForm.position,
+            positionPeptide: diffForm.positionPeptide,
+            peptideSequence: diffForm.peptideSequence,
+            score: diffForm.score
         )
 
         // First, try to load data from SQLite CurtainMetadata
@@ -247,7 +259,12 @@ class CurtainDataService {
                 transformSignificant: diffFormData["_transformSignificant"] as? Bool ?? false,
                 comparison: diffFormData["_comparison"] as? String ?? "",
                 comparisonSelect: comparisonSelectList,
-                reverseFoldChange: diffFormData["_reverseFoldChange"] as? Bool ?? false
+                reverseFoldChange: diffFormData["_reverseFoldChange"] as? Bool ?? false,
+                accession: diffFormData["_accession"] as? String ?? "",
+                position: diffFormData["_position"] as? String ?? "",
+                positionPeptide: diffFormData["_positionPeptide"] as? String ?? "",
+                peptideSequence: diffFormData["_peptideSequence"] as? String ?? "",
+                score: diffFormData["_score"] as? String ?? ""
             )
         }
         
@@ -922,6 +939,39 @@ struct DifferentialForm {
     let comparison: String
     let comparisonSelect: [String]
     let reverseFoldChange: Bool
+
+    // PTM-specific fields
+    let accession: String
+    let position: String
+    let positionPeptide: String
+    let peptideSequence: String
+    let score: String
+
+    // Computed property for PTM type detection
+    var isPTM: Bool {
+        return !accession.isEmpty || !position.isEmpty
+    }
+
+    init(primaryIDs: String = "", geneNames: String = "", foldChange: String = "",
+         transformFC: Bool = false, significant: String = "", transformSignificant: Bool = false,
+         comparison: String = "", comparisonSelect: [String] = [], reverseFoldChange: Bool = false,
+         accession: String = "", position: String = "", positionPeptide: String = "",
+         peptideSequence: String = "", score: String = "") {
+        self.primaryIDs = primaryIDs
+        self.geneNames = geneNames
+        self.foldChange = foldChange
+        self.transformFC = transformFC
+        self.significant = significant
+        self.transformSignificant = transformSignificant
+        self.comparison = comparison
+        self.comparisonSelect = comparisonSelect
+        self.reverseFoldChange = reverseFoldChange
+        self.accession = accession
+        self.position = position
+        self.positionPeptide = positionPeptide
+        self.peptideSequence = peptideSequence
+        self.score = score
+    }
 }
 
 

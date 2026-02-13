@@ -69,7 +69,13 @@ class ProteomicsDataService {
                     transformSignificant: diffFormDict["transformSignificant"] as? Bool ?? diffFormDict["_transformSignificant"] as? Bool ?? false,
                     comparison: diffFormDict["comparison"] as? String ?? diffFormDict["_comparison"] as? String ?? "",
                     comparisonSelect: diffFormDict["comparisonSelect"] as? [String] ?? diffFormDict["_comparisonSelect"] as? [String] ?? [],
-                    reverseFoldChange: diffFormDict["reverseFoldChange"] as? Bool ?? diffFormDict["_reverseFoldChange"] as? Bool ?? false
+                    reverseFoldChange: diffFormDict["reverseFoldChange"] as? Bool ?? diffFormDict["_reverseFoldChange"] as? Bool ?? false,
+                    // PTM-specific fields
+                    accession: diffFormDict["accession"] as? String ?? diffFormDict["_accession"] as? String ?? "",
+                    position: diffFormDict["position"] as? String ?? diffFormDict["_position"] as? String ?? "",
+                    positionPeptide: diffFormDict["positionPeptide"] as? String ?? diffFormDict["_positionPeptide"] as? String ?? "",
+                    peptideSequence: diffFormDict["peptideSequence"] as? String ?? diffFormDict["_peptideSequence"] as? String ?? "",
+                    score: diffFormDict["score"] as? String ?? diffFormDict["_score"] as? String ?? ""
                 )
 
                 // Parse selections
@@ -133,7 +139,13 @@ class ProteomicsDataService {
         databaseManager.clearAllData(linkId)
 
         onProgress("Parsing processed data...")
-        let processedData = parseProcessedData(processedTsv: processedTsv, form: differentialForm)
+        var processedData = parseProcessedData(processedTsv: processedTsv, form: differentialForm)
+
+        // Enrich PTM data with gene names from UniProt DB
+        if differentialForm.isPTM {
+            onProgress("Enriching PTM gene names...")
+            processedData = enrichPTMGeneNames(processedData: processedData, curtainData: curtainData)
+        }
 
         onProgress("Parsing raw data...")
         let rawData = parseRawData(rawTsv: rawTsv, form: rawForm)
@@ -367,10 +379,20 @@ class ProteomicsDataService {
         let significantIndex = headers.firstIndex(of: form.significant)
         let comparisonIndex = form.comparison.isEmpty ? nil : headers.firstIndex(of: form.comparison)
 
-        // Debug: Log gene names column detection
+        // PTM-specific column indices
+        let accessionIndex = form.accession.isEmpty ? nil : headers.firstIndex(of: form.accession)
+        let positionIndex = form.position.isEmpty ? nil : headers.firstIndex(of: form.position)
+        let positionPeptideIndex = form.positionPeptide.isEmpty ? nil : headers.firstIndex(of: form.positionPeptide)
+        let peptideSequenceIndex = form.peptideSequence.isEmpty ? nil : headers.firstIndex(of: form.peptideSequence)
+        let scoreIndex = form.score.isEmpty ? nil : headers.firstIndex(of: form.score)
+
+        // Debug: Log column detection
         print("[ProteomicsDataService] parseProcessedData headers: \(headers)")
         print("[ProteomicsDataService] form.geneNames column name: '\(form.geneNames)'")
         print("[ProteomicsDataService] geneNamesIndex: \(geneNamesIndex?.description ?? "nil")")
+        if form.isPTM {
+            print("[ProteomicsDataService] PTM mode detected - accession: \(accessionIndex?.description ?? "nil"), position: \(positionIndex?.description ?? "nil")")
+        }
 
         guard let primaryIdIdx = primaryIdIndex else {
             print("[ProteomicsDataService] Primary ID column '\(form.primaryIDs)' not found")
@@ -419,12 +441,47 @@ class ProteomicsDataService {
                 comparisonValue = value.isEmpty ? "1" : value
             }
 
+            // Parse PTM-specific fields
+            let accession: String? = accessionIndex.flatMap { idx in
+                guard idx < values.count else { return nil }
+                let value = values[idx]
+                return value.isEmpty ? nil : value
+            }
+
+            let position: String? = positionIndex.flatMap { idx in
+                guard idx < values.count else { return nil }
+                let value = values[idx]
+                return value.isEmpty ? nil : value
+            }
+
+            let positionPeptide: String? = positionPeptideIndex.flatMap { idx in
+                guard idx < values.count else { return nil }
+                let value = values[idx]
+                return value.isEmpty ? nil : value
+            }
+
+            let peptideSequence: String? = peptideSequenceIndex.flatMap { idx in
+                guard idx < values.count else { return nil }
+                let value = values[idx]
+                return value.isEmpty ? nil : value
+            }
+
+            var score: Double? = nil
+            if let scoreIdx = scoreIndex, scoreIdx < values.count {
+                score = Double(values[scoreIdx])
+            }
+
             result.append(ProcessedProteomicsData(
                 primaryId: primaryId,
                 geneNames: geneNames,
                 foldChange: foldChange,
                 significant: significant,
-                comparison: comparisonValue
+                comparison: comparisonValue,
+                accession: accession,
+                position: position,
+                positionPeptide: positionPeptide,
+                peptideSequence: peptideSequence,
+                score: score
             ))
         }
 
@@ -479,6 +536,86 @@ class ProteomicsDataService {
         return result
     }
 
+    // MARK: - PTM Gene Name Enrichment
+
+    /// Enriches PTM data with gene names from UniProt DB
+    /// This matches Android's enrichPTMGeneNames function
+    func enrichPTMGeneNames(processedData: [ProcessedProteomicsData], curtainData: CurtainData) -> [ProcessedProteomicsData] {
+        guard let uniprotDb = curtainData.extraData?.uniprot?.db as? [String: Any] else {
+            print("[ProteomicsDataService] No UniProt DB found for PTM enrichment")
+            return processedData
+        }
+
+        let accMap = curtainData.extraData?.uniprot?.accMap as? [String: Any]
+
+        // Build accession -> geneName lookup
+        var accessionToGeneName: [String: String] = [:]
+        for (accession, record) in uniprotDb {
+            guard let recordMap = record as? [String: Any],
+                  let geneNames = recordMap["Gene Names"] as? String,
+                  !geneNames.isEmpty else { continue }
+
+            // Take first gene name (split by space, semicolon, or backslash)
+            let separators = CharacterSet(charactersIn: " ;\\")
+            let firstGene = geneNames.components(separatedBy: separators)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .first { !$0.isEmpty }
+
+            if let firstGene = firstGene {
+                accessionToGeneName[accession] = firstGene
+            }
+        }
+
+        print("[ProteomicsDataService] Built accession→geneName map with \(accessionToGeneName.count) entries")
+
+        // UniProt accession pattern
+        let uniprotPattern = try? NSRegularExpression(
+            pattern: "[OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2}",
+            options: []
+        )
+
+        // Enrich gene names for entries missing them
+        return processedData.map { entity in
+            // Skip if already has gene name
+            if let geneNames = entity.geneNames, !geneNames.isEmpty {
+                return entity
+            }
+
+            guard let accession = entity.accession, !accession.isEmpty else {
+                return entity
+            }
+
+            // Try direct lookup
+            var geneName = accessionToGeneName[accession]
+
+            // Try accMap lookup if direct lookup failed
+            if geneName == nil, let accMap = accMap {
+                if let canonical = accMap[accession] as? String {
+                    geneName = accessionToGeneName[canonical]
+                }
+            }
+
+            // Try regex extraction if still no match
+            if geneName == nil, let pattern = uniprotPattern {
+                let range = NSRange(accession.startIndex..., in: accession)
+                if let match = pattern.firstMatch(in: accession, options: [], range: range),
+                   let matchRange = Range(match.range, in: accession) {
+                    let extractedAcc = String(accession[matchRange])
+                    geneName = accessionToGeneName[extractedAcc]
+                }
+            }
+
+            // Return enriched entity or original
+            if let geneName = geneName {
+                var enriched = entity
+                enriched.geneNames = geneName
+                return enriched
+            }
+
+            return entity
+        }
+    }
+
     // MARK: - Store Metadata
 
     /// Stores curtain metadata to database
@@ -503,7 +640,13 @@ class ProteomicsDataService {
             "transformSignificant": curtainData.differentialForm.transformSignificant,
             "comparison": curtainData.differentialForm.comparison,
             "comparisonSelect": curtainData.differentialForm.comparisonSelect,
-            "reverseFoldChange": curtainData.differentialForm.reverseFoldChange
+            "reverseFoldChange": curtainData.differentialForm.reverseFoldChange,
+            // PTM-specific fields
+            "accession": curtainData.differentialForm.accession,
+            "position": curtainData.differentialForm.position,
+            "positionPeptide": curtainData.differentialForm.positionPeptide,
+            "peptideSequence": curtainData.differentialForm.peptideSequence,
+            "score": curtainData.differentialForm.score
         ]
         let differentialFormJson = (try? String(data: JSONSerialization.data(withJSONObject: diffFormDict), encoding: .utf8)) ?? "{}"
 
@@ -534,6 +677,58 @@ class ProteomicsDataService {
         }
     }
 
+    /// Safely serializes any value to JSON string
+    /// JSONSerialization requires top-level type to be array or dictionary
+    /// This wraps primitives in an array for serialization, then extracts just the value
+    private func safeJsonSerialize(_ value: Any) -> String {
+        // If it's already a dict or array, serialize directly
+        if value is [String: Any] || value is [Any] {
+            if let data = try? JSONSerialization.data(withJSONObject: value),
+               let jsonString = String(data: data, encoding: .utf8) {
+                return jsonString
+            }
+            return "{}"
+        }
+
+        // For primitives, wrap in array, serialize, then extract
+        if let data = try? JSONSerialization.data(withJSONObject: [value]),
+           let jsonString = String(data: data, encoding: .utf8),
+           jsonString.hasPrefix("["),
+           jsonString.hasSuffix("]") {
+            // Remove the [ and ] wrapper
+            let start = jsonString.index(after: jsonString.startIndex)
+            let end = jsonString.index(before: jsonString.endIndex)
+            return String(jsonString[start..<end])
+        }
+
+        // Fallback: convert to string
+        return "\"\(value)\""
+    }
+
+    /// Unwraps special Map serialization format used by Curtain backend.
+    /// Structure: { "dataType": "Map", "value": [ ["key1", value1], ["key2", value2], ... ] }
+    /// Returns the unwrapped dictionary, or the original data if not in this format.
+    private func unwrapMapData(_ data: Any?) -> [String: Any]? {
+        guard let map = data as? [String: Any] else {
+            return data as? [String: Any]
+        }
+
+        // Check for Map serialization format
+        if let dataType = map["dataType"] as? String, dataType == "Map",
+           let values = map["value"] as? [[Any]] {
+            var result: [String: Any] = [:]
+            for pair in values {
+                if pair.count >= 2, let key = pair[0] as? String {
+                    result[key] = pair[1]
+                }
+            }
+            return result
+        }
+
+        // Return as-is if not Map serialization format
+        return map
+    }
+
     /// Parses and stores extra data maps (genes, primaryIds, etc.)
     func parseAndStoreExtraDataMaps(curtainData: CurtainData, db: DatabaseQueue) throws {
         guard let extraData = curtainData.extraData else { return }
@@ -543,7 +738,7 @@ class ProteomicsDataService {
             // GenesMap
             if let genesMap = data.genesMap {
                 let entries = genesMap.map { key, value -> GenesMapEntry in
-                    let jsonValue = (try? String(data: JSONSerialization.data(withJSONObject: value), encoding: .utf8)) ?? "{}"
+                    let jsonValue = safeJsonSerialize(value)
                     return GenesMapEntry(key: key, value: jsonValue)
                 }
                 if !entries.isEmpty {
@@ -559,7 +754,7 @@ class ProteomicsDataService {
             // PrimaryIDsMap
             if let primaryIDsMap = data.primaryIDsMap {
                 let entries = primaryIDsMap.map { key, value -> PrimaryIdsMapEntry in
-                    let jsonValue = (try? String(data: JSONSerialization.data(withJSONObject: value), encoding: .utf8)) ?? "{}"
+                    let jsonValue = safeJsonSerialize(value)
                     return PrimaryIdsMapEntry(primaryId: key, value: jsonValue)
                 }
                 if !entries.isEmpty {
@@ -586,13 +781,34 @@ class ProteomicsDataService {
 
         // Store UniProt maps
         if let uniprot = extraData.uniprot {
-            if let geneNameToAcc = uniprot.geneNameToAcc {
-                let entries = geneNameToAcc.compactMap { geneName, value -> GeneNameToAccEntry? in
-                    let jsonValue = (try? String(data: JSONSerialization.data(withJSONObject: value), encoding: .utf8)) ?? ""
+            // Handle geneNameToAcc - unwrap Map serialization format if present
+            if let geneNameToAccRaw = uniprot.geneNameToAcc {
+                // geneNameToAcc is already typed as [String: [String: Any]]? in UniprotExtraData
+                // but we need to handle the case where it might be in Map serialization format
+                let entries = geneNameToAccRaw.compactMap { geneName, value -> GeneNameToAccEntry? in
+                    let jsonValue = safeJsonSerialize(value)
                     return GeneNameToAccEntry(geneName: geneName, accession: jsonValue)
                 }
                 if !entries.isEmpty {
                     print("[ProteomicsDataService] Inserting \(entries.count) geneNameToAcc entries")
+                    try db.write { database in
+                        for entry in entries {
+                            try entry.save(database)
+                        }
+                    }
+                }
+            }
+
+            // Store UniProt DB entries (accession -> full protein data)
+            // First unwrap Map serialization format if present
+            let uniprotDbData = unwrapMapData(uniprot.db)
+            if let db_data = uniprotDbData {
+                let entries = db_data.compactMap { accession, value -> UniProtDBEntry? in
+                    let jsonString = safeJsonSerialize(value)
+                    return UniProtDBEntry(accession: accession, dataJson: jsonString)
+                }
+                if !entries.isEmpty {
+                    print("[ProteomicsDataService] Inserting \(entries.count) UniProt DB entries")
                     try db.write { database in
                         for entry in entries {
                             try entry.save(database)
@@ -675,6 +891,22 @@ class ProteomicsDataService {
         }
     }
 
+    /// Gets UniProt entry count from database
+    func getUniProtEntryCount(linkId: String) throws -> Int {
+        let db = try databaseManager.getDatabaseForLinkId(linkId)
+        return try db.read { database in
+            try UniProtDBEntry.fetchCount(database)
+        }
+    }
+
+    /// Gets all genes count from database
+    func getAllGenesCount(linkId: String) throws -> Int {
+        let db = try databaseManager.getDatabaseForLinkId(linkId)
+        return try db.read { database in
+            try AllGenesEntry.fetchCount(database)
+        }
+    }
+
     /// Gets curtain metadata
     func getCurtainMetadata(linkId: String) throws -> CurtainMetadata? {
         let db = try databaseManager.getDatabaseForLinkId(linkId)
@@ -752,5 +984,235 @@ class ProteomicsDataService {
         }
 
         return result
+    }
+
+    // MARK: - PTM Data Methods
+
+    /// Gets experimental PTM sites for a specific accession
+    func getExperimentalPTMSites(
+        linkId: String,
+        accession: String,
+        pCutoff: Double,
+        fcCutoff: Double
+    ) -> [ExperimentalPTMSite] {
+        guard !linkId.isEmpty, !accession.isEmpty else {
+            print("[ProteomicsDataService] getExperimentalPTMSites: Empty linkId or accession")
+            return []
+        }
+        guard databaseManager.checkDataExists(linkId) else {
+            print("[ProteomicsDataService] getExperimentalPTMSites: Database doesn't exist")
+            return []
+        }
+
+        var sites: [ExperimentalPTMSite] = []
+
+        do {
+            let db = try databaseManager.getDatabaseForLinkId(linkId)
+            try db.read { database in
+                // Debug: Check how many rows have this accession
+                let totalRows = try ProcessedProteomicsData.fetchCount(database)
+                let matchingRows = try ProcessedProteomicsData
+                    .filter(Column("accession") == accession)
+                    .fetchCount(database)
+                print("[ProteomicsDataService] getExperimentalPTMSites: Total rows=\(totalRows), matching '\(accession)'=\(matchingRows)")
+
+                // Check sample accessions in DB
+                if matchingRows == 0 {
+                    let sampleAccessions = try ProcessedProteomicsData
+                        .select(Column("accession"))
+                        .distinct()
+                        .limit(5)
+                        .fetchAll(database)
+                        .compactMap { $0.accession }
+                    print("[ProteomicsDataService] Sample accessions in DB: \(sampleAccessions)")
+                }
+
+                let rows = try ProcessedProteomicsData
+                    .filter(Column("accession") == accession)
+                    .fetchAll(database)
+
+                for row in rows {
+                    guard let positionStr = row.position else { continue }
+
+                    // Parse position from string (e.g., "S15" -> position 15)
+                    let (position, positionResidue) = parsePositionString(positionStr)
+                    guard let pos = position else { continue }
+
+                    // Extract residue: prefer getting from peptide sequence using positionPeptide
+                    let residue: Character
+                    if let peptideSeq = row.peptideSequence,
+                       let positionPeptideStr = row.positionPeptide,
+                       let positionPeptide = Int(positionPeptideStr),
+                       positionPeptide > 0 {
+                        // Clean peptide sequence (remove modification annotations)
+                        let cleanPeptide = cleanPeptideSequence(peptideSeq)
+                        // positionPeptide is 1-based index
+                        let idx = positionPeptide - 1
+                        if idx >= 0 && idx < cleanPeptide.count {
+                            let index = cleanPeptide.index(cleanPeptide.startIndex, offsetBy: idx)
+                            residue = cleanPeptide[index]
+                        } else if let r = positionResidue {
+                            residue = r
+                        } else {
+                            residue = Character("?")
+                        }
+                    } else if let r = positionResidue {
+                        // Fall back to residue from position string
+                        residue = r
+                    } else {
+                        residue = Character("?")
+                    }
+
+                    // Calculate significance
+                    let pValue = row.significant
+                    let fc = row.foldChange
+                    let isSignificant = (pValue ?? 1.0) <= pCutoff && abs(fc ?? 0.0) >= fcCutoff
+
+                    sites.append(ExperimentalPTMSite(
+                        primaryId: row.primaryId,
+                        position: pos,
+                        residue: residue,
+                        modification: nil,
+                        peptideSequence: row.peptideSequence,
+                        foldChange: fc,
+                        pValue: pValue,
+                        isSignificant: isSignificant,
+                        comparison: row.comparison,
+                        score: row.score
+                    ))
+                }
+            }
+        } catch {
+            print("[ProteomicsDataService] Error getting PTM sites for \(accession): \(error)")
+        }
+
+        return sites
+    }
+
+    /// Parses position string like "S15" into (position, residue)
+    /// Matches Android's parsing logic using regex
+    private func parsePositionString(_ positionStr: String) -> (Int?, Character?) {
+        let trimmed = positionStr.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return (nil, nil) }
+
+        // Extract position using regex to find digits
+        let positionRegex = try? NSRegularExpression(pattern: "(\\d+)", options: [])
+        let positionRange = NSRange(trimmed.startIndex..., in: trimmed)
+        var position: Int? = nil
+
+        if let match = positionRegex?.firstMatch(in: trimmed, options: [], range: positionRange),
+           let range = Range(match.range(at: 1), in: trimmed) {
+            position = Int(trimmed[range])
+        }
+
+        // Extract residue using regex to find uppercase letter followed by digits
+        let residueRegex = try? NSRegularExpression(pattern: "([A-Z])\\d+", options: [])
+        var residue: Character? = nil
+
+        if let match = residueRegex?.firstMatch(in: trimmed, options: [], range: positionRange),
+           let range = Range(match.range(at: 1), in: trimmed) {
+            residue = trimmed[range].first
+        }
+
+        return (position, residue)
+    }
+
+    /// Cleans peptide sequence by removing modification annotations
+    /// Matches Android's cleanPeptideSequence logic
+    private func cleanPeptideSequence(_ peptide: String) -> String {
+        var result = peptide
+        // Remove bracketed annotations like [Phospho], [Oxidation]
+        result = result.replacingOccurrences(of: "\\[.*?\\]", with: "", options: .regularExpression)
+        // Remove parenthesized annotations like (ox), (ph)
+        result = result.replacingOccurrences(of: "\\(.*?\\)", with: "", options: .regularExpression)
+        // Remove common separators
+        result = result.replacingOccurrences(of: "_", with: "")
+        result = result.replacingOccurrences(of: ".", with: "")
+        result = result.replacingOccurrences(of: "-", with: "")
+        // Keep only letters and uppercase
+        return result.filter { $0.isLetter }.uppercased()
+    }
+
+    /// Gets all PTM data for a specific accession
+    func getPTMDataForAccession(linkId: String, accession: String) throws -> [ProcessedProteomicsData] {
+        let db = try databaseManager.getDatabaseForLinkId(linkId)
+        return try db.read { database in
+            try ProcessedProteomicsData
+                .filter(Column("accession") == accession)
+                .fetchAll(database)
+        }
+    }
+
+    /// Gets distinct accessions from PTM data
+    func getDistinctAccessions(linkId: String) throws -> [String] {
+        let db = try databaseManager.getDatabaseForLinkId(linkId)
+        return try db.read { database in
+            try String.fetchAll(database, sql: """
+                SELECT DISTINCT accession FROM \(ProcessedProteomicsData.databaseTableName)
+                WHERE accession IS NOT NULL AND accession != ''
+                ORDER BY accession
+                """)
+        }
+    }
+
+    /// Gets UniProt data JSON for an accession
+    func getUniProtDataJson(linkId: String, accession: String) -> [String: Any]? {
+        guard !linkId.isEmpty, !accession.isEmpty else {
+            print("[ProteomicsDataService] getUniProtDataJson: Empty linkId or accession")
+            return nil
+        }
+        guard databaseManager.checkDataExists(linkId) else {
+            print("[ProteomicsDataService] getUniProtDataJson: Database doesn't exist for \(linkId)")
+            return nil
+        }
+
+        do {
+            let db = try databaseManager.getDatabaseForLinkId(linkId)
+            return try db.read { database -> [String: Any]? in
+                // First check how many entries exist in uniprot_db
+                let totalCount = try UniProtDBEntry.fetchCount(database)
+                print("[ProteomicsDataService] Total UniProt DB entries: \(totalCount)")
+
+                // Look up UniProt data in uniprot_db table
+                if let entry = try UniProtDBEntry
+                    .filter(Column("accession") == accession)
+                    .fetchOne(database) {
+                    print("[ProteomicsDataService] Found UniProt entry for accession: \(accession)")
+                    if let data = entry.dataJson.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        print("[ProteomicsDataService] Parsed JSON with keys: \(json.keys.sorted())")
+                        return json
+                    } else {
+                        print("[ProteomicsDataService] Failed to parse JSON for accession: \(accession)")
+                    }
+                } else {
+                    print("[ProteomicsDataService] No UniProt entry found for accession: \(accession)")
+                    // Try to list a few accessions that do exist
+                    let sampleAccessions = try UniProtDBEntry.limit(5).fetchAll(database).map { $0.accession }
+                    print("[ProteomicsDataService] Sample accessions in DB: \(sampleAccessions)")
+                }
+                return nil
+            }
+        } catch {
+            print("[ProteomicsDataService] Error getting UniProt data for \(accession): \(error)")
+            return nil
+        }
+    }
+
+    /// Gets UniProt sequence for an accession
+    func getUniProtSequence(linkId: String, accession: String) -> String? {
+        guard let uniprotData = getUniProtDataJson(linkId: linkId, accession: accession) else {
+            return nil
+        }
+        return SequenceAlignmentService.shared.extractSequence(uniprotData: uniprotData)
+    }
+
+    /// Gets gene name from UniProt data for an accession
+    /// Used for PTM data where gene names need to be looked up via accession
+    func getGeneNameFromAccession(linkId: String, accession: String) -> String? {
+        guard let uniprotData = getUniProtDataJson(linkId: linkId, accession: accession) else {
+            return nil
+        }
+        return SequenceAlignmentService.shared.extractGeneName(uniprotData: uniprotData)
     }
 }

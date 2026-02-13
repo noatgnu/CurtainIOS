@@ -474,7 +474,11 @@ class CurtainRepository {
         let differentialForm: CurtainDifferentialForm
         if let diffFormDict = jsonMap["differentialForm"] as? [String: Any] {
             let geneNamesColumn = diffFormDict["_geneNames"] as? String ?? ""
+            let accessionColumn = diffFormDict["_accession"] as? String ?? ""
+            let positionColumn = diffFormDict["_position"] as? String ?? ""
             print("[CurtainRepository] Parsed differentialForm._geneNames: '\(geneNamesColumn)'")
+            print("[CurtainRepository] Parsed differentialForm._accession: '\(accessionColumn)'")
+            print("[CurtainRepository] Parsed differentialForm._position: '\(positionColumn)'")
             print("[CurtainRepository] Full diffFormDict keys: \(diffFormDict.keys)")
             differentialForm = CurtainDifferentialForm(
                 primaryIDs: diffFormDict["_primaryIDs"] as? String ?? "",
@@ -485,8 +489,14 @@ class CurtainRepository {
                 transformSignificant: diffFormDict["_transformSignificant"] as? Bool ?? false,
                 comparison: diffFormDict["_comparison"] as? String ?? "",
                 comparisonSelect: diffFormDict["_comparisonSelect"] as? [String] ?? [],
-                reverseFoldChange: diffFormDict["_reverseFoldChange"] as? Bool ?? false
+                reverseFoldChange: diffFormDict["_reverseFoldChange"] as? Bool ?? false,
+                accession: accessionColumn,
+                position: positionColumn,
+                positionPeptide: diffFormDict["_positionPeptide"] as? String ?? "",
+                peptideSequence: diffFormDict["_peptideSequence"] as? String ?? "",
+                score: diffFormDict["_score"] as? String ?? ""
             )
+            print("[CurtainRepository] differentialForm.isPTM: \(differentialForm.isPTM)")
         } else {
             differentialForm = CurtainDifferentialForm()
         }
@@ -572,7 +582,12 @@ class CurtainRepository {
                 transformSignificant: diffFormDict["_transformSignificant"] as? Bool ?? false,
                 comparison: diffFormDict["_comparison"] as? String ?? "",
                 comparisonSelect: diffFormDict["_comparisonSelect"] as? [String] ?? [],
-                reverseFoldChange: diffFormDict["_reverseFoldChange"] as? Bool ?? false
+                reverseFoldChange: diffFormDict["_reverseFoldChange"] as? Bool ?? false,
+                accession: diffFormDict["_accession"] as? String ?? "",
+                position: diffFormDict["_position"] as? String ?? "",
+                positionPeptide: diffFormDict["_positionPeptide"] as? String ?? "",
+                peptideSequence: diffFormDict["_peptideSequence"] as? String ?? "",
+                score: diffFormDict["_score"] as? String ?? ""
             )
         } else {
             differentialForm = CurtainDifferentialForm()
@@ -808,7 +823,12 @@ class CurtainRepository {
             transformSignificant: diffFormDict["transformSignificant"] as? Bool ?? diffFormDict["_transformSignificant"] as? Bool ?? false,
             comparison: diffFormDict["comparison"] as? String ?? diffFormDict["_comparison"] as? String ?? "",
             comparisonSelect: diffFormDict["comparisonSelect"] as? [String] ?? diffFormDict["_comparisonSelect"] as? [String] ?? [],
-            reverseFoldChange: diffFormDict["reverseFoldChange"] as? Bool ?? diffFormDict["_reverseFoldChange"] as? Bool ?? false
+            reverseFoldChange: diffFormDict["reverseFoldChange"] as? Bool ?? diffFormDict["_reverseFoldChange"] as? Bool ?? false,
+            accession: diffFormDict["accession"] as? String ?? diffFormDict["_accession"] as? String ?? "",
+            position: diffFormDict["position"] as? String ?? diffFormDict["_position"] as? String ?? "",
+            positionPeptide: diffFormDict["positionPeptide"] as? String ?? diffFormDict["_positionPeptide"] as? String ?? "",
+            peptideSequence: diffFormDict["peptideSequence"] as? String ?? diffFormDict["_peptideSequence"] as? String ?? "",
+            score: diffFormDict["score"] as? String ?? diffFormDict["_score"] as? String ?? ""
         )
 
         // Save to SwiftData
@@ -868,6 +888,55 @@ class CurtainRepository {
         return .rebuilt
     }
 
+    /// Rebuilds only SQLite proteomics data from stored JSON, preserving SwiftData user settings
+    /// Use this for force rebuild to keep user's selections, colors, etc.
+    func rebuildSQLiteDataOnly(linkId: String) async throws {
+        let jsonFileURL = getJsonFilePath(linkId: linkId)
+        guard FileManager.default.fileExists(atPath: jsonFileURL.path) else {
+            throw CurtainError.fileNotFound
+        }
+
+        print("[CurtainRepository] Rebuilding SQLite data only (preserving user settings): \(linkId)")
+
+        // Close database connection first
+        proteomicsDataDatabaseManager.closeDatabase(linkId)
+        proteinMappingService.clearMappings(linkId: linkId)
+
+        // Delete old SQLite database
+        try? proteomicsDataDatabaseManager.deleteDatabaseFile(for: linkId)
+
+        // Read JSON file
+        let jsonData = try Data(contentsOf: jsonFileURL)
+        guard let jsonMap = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            throw CurtainError.invalidResponse
+        }
+
+        let rawTsv = jsonMap["raw"] as? String
+        let processedTsv = jsonMap["processed"] as? String
+
+        // Build CurtainData for ingestion
+        let (curtainData, rawForm, differentialForm) = buildCurtainDataForIngestion(jsonMap: jsonMap)
+
+        // Ingest into SQLite
+        try proteomicsDataService.buildProteomicsDataIfNeeded(
+            linkId: linkId,
+            rawTsv: rawTsv,
+            processedTsv: processedTsv,
+            rawForm: rawForm,
+            differentialForm: differentialForm,
+            curtainData: curtainData,
+            onProgress: { status in
+                print("[CurtainRepository] SQLite rebuild: \(status)")
+            }
+        )
+
+        // Build denormalized lookup tables
+        proteinMappingService.ensureMappingsExist(linkId: linkId, curtainData: curtainData)
+
+        print("[CurtainRepository] SQLite data rebuild complete for linkId: \(linkId)")
+        // NOTE: SwiftData settings are NOT touched - user preferences are preserved
+    }
+
     // Keep old catch block for backward compatibility
     private func handleMigrationError(linkId: String, error: Error) -> SettingsEntityResult {
         print("[CurtainRepository] ERROR: Failed to load metadata from SQLite: \(error)")
@@ -901,7 +970,9 @@ class CurtainRepository {
         }
 
         // Create URL for downloading the curtain data
-        let downloadURL = "\(curtain.sourceHostname)/api/curtain/\(curtain.linkId)"
+        // URL format: {hostname}/curtain/{linkId}/download/token=
+        let baseURL = curtain.sourceHostname.hasSuffix("/") ? curtain.sourceHostname : "\(curtain.sourceHostname)/"
+        let downloadURL = "\(baseURL)curtain/\(curtain.linkId)/download/token="
         
         // Create local file path in Documents directory (excludes from iCloud)
         let localFilePath = getSecureLocalFilePath(linkId: curtain.linkId)
@@ -998,7 +1069,8 @@ enum CurtainError: Error, LocalizedError {
     case downloadFailed
     case entityNotFound
     case saveError
-    
+    case fileNotFound
+
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
@@ -1009,6 +1081,8 @@ enum CurtainError: Error, LocalizedError {
             return "Curtain entity not found"
         case .saveError:
             return "Failed to save to database"
+        case .fileNotFound:
+            return "Required file not found"
         }
     }
 }

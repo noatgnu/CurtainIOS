@@ -41,7 +41,12 @@ class ProteinSearchManager: ObservableObject {
     }
 
     /// Appends the comparison label to a selection name, matching Android's format.
+    /// Note: PTM data does not use comparison labels for selection groups.
     private func selectionNameWithComparison(_ baseName: String, curtainData: CurtainData) -> String {
+        // PTM data doesn't use comparison labels
+        if curtainData.differentialForm.isPTM {
+            return baseName
+        }
         let comparison = resolveComparison(from: curtainData)
         return "\(baseName) (\(comparison))"
     }

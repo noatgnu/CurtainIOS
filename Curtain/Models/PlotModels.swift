@@ -271,6 +271,7 @@ struct VolcanoPlotData {
 struct ProteinPoint {
     let id: String
     let primaryID: String
+    let accession: String?  // PTM-specific: protein accession (e.g., P12345)
     let proteinName: String?
     let geneNames: String?
     let log2FC: Double
@@ -409,6 +410,7 @@ struct PlotGenerationContext {
                     proteins[i] = ProteinPoint(
                         id: proteins[i].id,
                         primaryID: proteins[i].primaryID,
+                        accession: proteins[i].accession,
                         proteinName: proteins[i].proteinName,
                         geneNames: proteins[i].geneNames,
                         log2FC: proteins[i].log2FC,
@@ -440,25 +442,26 @@ struct PlotGenerationContext {
         let sigColumn = diffForm.significant
         let idColumn = diffForm.primaryIDs
         let geneColumn = diffForm.geneNames
-        
-        
+        let accessionColumn = diffForm.accession  // PTM-specific accession column
+
+
         var processedCount = 0
         let proteins = differentialData.compactMap { proteinData -> ProteinPoint? in
-            
-            
+
+
             guard !fcColumn.isEmpty && !sigColumn.isEmpty && !idColumn.isEmpty else {
                 if processedCount < 3 {
                 }
                 return nil
             }
-            
+
             let log2FC = proteinData[fcColumn] as? Double ?? 0.0
             let pValue = proteinData[sigColumn] as? Double ?? 1.0
-            
+
             // Debug first few proteins to understand data structure
             if processedCount < 3 {
             }
-            
+
             // Validate significance value - handle both raw p-values and transformed (-log10) values
             let isValidSignificance: Bool
             if data.differentialForm.transformSignificant {
@@ -468,31 +471,34 @@ struct PlotGenerationContext {
                 // For raw p-values, expect 0 < p <= 1
                 isValidSignificance = pValue > 0 && pValue <= 1
             }
-            
-            guard isValidSignificance else { 
+
+            guard isValidSignificance else {
                 if processedCount < 3 {
                 }
-                return nil 
+                return nil
             }
-            
+
             processedCount += 1
-            
+
             let proteinName = proteinData["proteinName"] as? String ??
                              proteinData["protein_names"] as? String
-            
+
             let geneNames = proteinData[geneColumn] as? String
-            
+
+            // Extract accession for PTM data
+            let accession: String? = !accessionColumn.isEmpty ? (proteinData[accessionColumn] as? String) : nil
+
             let thresholds = SignificanceThresholds(
                 pCutoff: settings.pCutoff,
                 log2FCCutoff: settings.log2FCCutoff
             )
-            
-            let isSignificant = abs(log2FC) >= thresholds.log2FCCutoff && 
+
+            let isSignificant = abs(log2FC) >= thresholds.log2FCCutoff &&
                                pValue <= thresholds.pCutoff
-            
+
             // Default color assignment
             let defaultColor = isSignificant ? "#d32f2f" : "#cccccc"
-            
+
             // Extract primary ID using ONLY user-specified column
             let primaryID = proteinData[idColumn] as? String ?? ""
             guard !primaryID.isEmpty else {
@@ -504,7 +510,7 @@ struct PlotGenerationContext {
             // Store the correct values based on transformation status
             let finalPValue: Double
             let plotYCoordinate: Double
-            
+
             if data.differentialForm.transformSignificant {
                 // pValue is already -log10 transformed, use it directly as plot Y coordinate
                 finalPValue = pow(10, -pValue) // Convert back to raw p-value for compatibility
@@ -514,10 +520,11 @@ struct PlotGenerationContext {
                 finalPValue = pValue
                 plotYCoordinate = -log10(max(pValue, 1e-300)) // Apply transformation for plot coordinates
             }
-            
+
             return ProteinPoint(
-                id: primaryID, // Use primary ID as the main ID 
+                id: primaryID, // Use primary ID as the main ID
                 primaryID: primaryID,
+                accession: accession,  // PTM-specific accession
                 proteinName: proteinName,
                 geneNames: geneNames,
                 log2FC: log2FC,
@@ -538,31 +545,32 @@ struct PlotGenerationContext {
         
         var processedCount = 0
         let proteins = data.proteomicsData.compactMap { key, value -> ProteinPoint? in
-            guard let proteinData = value as? [String: Any] else { 
-                return nil 
+            guard let proteinData = value as? [String: Any] else {
+                return nil
             }
-            
+
             // Extract values using user-specified field mapping from differential form
             let diffForm = data.differentialForm
             let fcColumn = diffForm.foldChange
             let sigColumn = diffForm.significant
             let idColumn = diffForm.primaryIDs
             let geneColumn = diffForm.geneNames
-            
-            
+            let accessionColumn = diffForm.accession  // PTM-specific accession column
+
+
             guard !fcColumn.isEmpty && !sigColumn.isEmpty && !idColumn.isEmpty else {
                 if processedCount < 3 {
                 }
                 return nil
             }
-            
+
             let log2FC = proteinData[fcColumn] as? Double ?? 0.0
             let pValue = proteinData[sigColumn] as? Double ?? 1.0
-            
+
             // Debug first few proteins to understand data structure
             if processedCount < 3 {
             }
-            
+
             // Validate significance value - handle both raw p-values and transformed (-log10) values
             let isValidSignificance: Bool
             if data.differentialForm.transformSignificant {
@@ -572,31 +580,34 @@ struct PlotGenerationContext {
                 // For raw p-values, expect 0 < p <= 1
                 isValidSignificance = pValue > 0 && pValue <= 1
             }
-            
-            guard isValidSignificance else { 
+
+            guard isValidSignificance else {
                 if processedCount < 3 {
                 }
-                return nil 
+                return nil
             }
-            
+
             processedCount += 1
-            
+
             let proteinName = proteinData["proteinName"] as? String ??
                              proteinData["protein_names"] as? String
-            
+
             let geneNames = proteinData[geneColumn] as? String
-            
+
+            // Extract accession for PTM data
+            let accession: String? = !accessionColumn.isEmpty ? (proteinData[accessionColumn] as? String) : nil
+
             let thresholds = SignificanceThresholds(
                 pCutoff: settings.pCutoff,
                 log2FCCutoff: settings.log2FCCutoff
             )
-            
-            let isSignificant = abs(log2FC) >= thresholds.log2FCCutoff && 
+
+            let isSignificant = abs(log2FC) >= thresholds.log2FCCutoff &&
                                pValue <= thresholds.pCutoff
-            
+
             // Default color assignment
             let defaultColor = isSignificant ? "#d32f2f" : "#cccccc"
-            
+
             // Extract primary ID using ONLY user-specified column
             let primaryID = proteinData[idColumn] as? String ?? ""
             guard !primaryID.isEmpty else {
@@ -608,7 +619,7 @@ struct PlotGenerationContext {
             // Store the correct values based on transformation status
             let finalPValue: Double
             let plotYCoordinate: Double
-            
+
             if data.differentialForm.transformSignificant {
                 // pValue is already -log10 transformed, use it directly as plot Y coordinate
                 finalPValue = pow(10, -pValue) // Convert back to raw p-value for compatibility
@@ -618,10 +629,11 @@ struct PlotGenerationContext {
                 finalPValue = pValue
                 plotYCoordinate = -log10(max(pValue, 1e-300)) // Apply transformation for plot coordinates
             }
-            
+
             return ProteinPoint(
                 id: key,
                 primaryID: primaryID,
+                accession: accession,  // PTM-specific accession
                 proteinName: proteinName,
                 geneNames: geneNames,
                 log2FC: log2FC,

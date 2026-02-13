@@ -74,6 +74,7 @@ struct AnnotationEditModal: View {
                     }
                     .fixedSize()
                     .disabled(selectedCandidate == nil && candidates.count > 1)
+                    .accessibilityIdentifier("annotationEditDoneButton")
                 }
             }
         }
@@ -162,7 +163,8 @@ struct AnnotationEditModal: View {
                                 }
                                 .foregroundColor(editAction == .editText ? .blue : .primary)
                             }
-        
+                            .accessibilityIdentifier("annotationEditTextOption")
+
                             Button(action: {
                                 editAction = .moveText
                             }) {
@@ -173,7 +175,8 @@ struct AnnotationEditModal: View {
                                 }
                                 .foregroundColor(editAction == .moveText ? .blue : .primary)
                             }
-        
+                            .accessibilityIdentifier("annotationMoveSliderOption")
+
                             Button(action: {
                                 editAction = .moveTextInteractive
                             }) {
@@ -184,6 +187,7 @@ struct AnnotationEditModal: View {
                                 }
                                 .foregroundColor(editAction == .moveTextInteractive ? .blue : .primary)
                             }
+                            .accessibilityIdentifier("annotationMoveInteractiveOption")
                         }
                     }
         

@@ -101,6 +101,11 @@ struct CurtainSettings: Codable {
     let dataAnalysisContact: String
     let markerSizeMap: [String: AnyCodable]
 
+    // PTM-specific settings
+    let customPTMData: [String: AnyCodable]
+    let variantCorrection: [String: AnyCodable]
+    let customSequences: [String: AnyCodable]
+
     init() {
         self.fetchUniprot = true
         self.inputDataCols = [:]
@@ -170,6 +175,9 @@ struct CurtainSettings: Codable {
         self.encrypted = false
         self.dataAnalysisContact = ""
         self.markerSizeMap = [:]
+        self.customPTMData = [:]
+        self.variantCorrection = [:]
+        self.customSequences = [:]
     }
     
     init(
@@ -240,7 +248,10 @@ struct CurtainSettings: Codable {
         metabolomicsColumnMap: MetabolomicsColumnMap = MetabolomicsColumnMap(),
         encrypted: Bool = false,
         dataAnalysisContact: String = "",
-        markerSizeMap: [String: AnyCodable] = [:]
+        markerSizeMap: [String: AnyCodable] = [:],
+        customPTMData: [String: AnyCodable] = [:],
+        variantCorrection: [String: AnyCodable] = [:],
+        customSequences: [String: AnyCodable] = [:]
     ) {
         self.fetchUniprot = fetchUniprot
         self.inputDataCols = inputDataCols
@@ -306,9 +317,12 @@ struct CurtainSettings: Codable {
         self.encrypted = encrypted
         self.dataAnalysisContact = dataAnalysisContact
         self.markerSizeMap = markerSizeMap
+        self.customPTMData = customPTMData
+        self.variantCorrection = variantCorrection
+        self.customSequences = customSequences
     }
-    
-    
+
+
     static func defaultColors() -> [String] {
         return [
             "#fd7f6f", "#7eb0d5", "#b2e061", "#bd7ebe", "#ffb55a",
@@ -755,7 +769,10 @@ extension CurtainSettings {
             metabolomicsColumnMap: MetabolomicsColumnMap.fromDictionary(map["metabolomicsColumnMap"] as? [String: Any]),
             encrypted: map["encrypted"] as? Bool ?? false,
             dataAnalysisContact: map["dataAnalysisContact"] as? String ?? "",
-            markerSizeMap: toAnyCodableMap(map["markerSizeMap"] as? [String: Any])
+            markerSizeMap: toAnyCodableMap(map["markerSizeMap"] as? [String: Any]),
+            customPTMData: toAnyCodableMap(map["customPTMData"] as? [String: Any]),
+            variantCorrection: toAnyCodableMap(map["variantCorrection"] as? [String: Any]),
+            customSequences: toAnyCodableMap(map["customSequences"] as? [String: Any])
         )
     }
     
@@ -849,6 +866,9 @@ extension CurtainSettings {
         dict["encrypted"] = encrypted
         dict["dataAnalysisContact"] = dataAnalysisContact
         dict["markerSizeMap"] = markerSizeMap.mapValues { $0.value }
+        dict["customPTMData"] = customPTMData.mapValues { $0.value }
+        dict["variantCorrection"] = variantCorrection.mapValues { $0.value }
+        dict["customSequences"] = customSequences.mapValues { $0.value }
 
         return dict
     }

@@ -24,6 +24,7 @@ struct CurtainListView: View {
     @State private var showingDownloadConfirmation = false
     @State private var curtainToDownload: CurtainEntity?
     @State private var selectedTab = 0
+    @State private var curtainTypeFilter = "all" // "all", "TP", "PTM"
 
     var body: some View {
         if UIDevice.current.userInterfaceIdiom == .pad || UIDevice.current.userInterfaceIdiom == .mac {
@@ -152,6 +153,11 @@ struct CurtainListView: View {
             SearchBar(text: $searchText)
                 .padding()
 
+            // Curtain type filter chips
+            CurtainTypeFilterBar(selectedFilter: $curtainTypeFilter)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
             if viewModel.isDownloading {
                 DownloadProgressView(
                     progress: viewModel.downloadProgress,
@@ -174,11 +180,23 @@ struct CurtainListView: View {
                 ProgressView("Loading curtains...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if viewModel.curtains.isEmpty && !viewModel.isLoading {
-                EmptyStateView(onLoadExample: {
-                    Task {
-                        await viewModel.loadExampleCurtain()
+                EmptyStateView(
+                    onLoadExample: {
+                        Task {
+                            await viewModel.loadExampleCurtain()
+                        }
+                    },
+                    onLoadPTMExample: {
+                        Task {
+                            await viewModel.loadExamplePTMCurtain()
+                        }
+                    },
+                    onLoadBothExamples: {
+                        Task {
+                            await viewModel.loadBothExampleCurtains()
+                        }
                     }
-                })
+                )
             } else {
                 curtainList
 
@@ -307,11 +325,23 @@ struct CurtainListView: View {
     }
 
     private var filteredCurtains: [CurtainEntity] {
-        if searchText.isEmpty {
-            return viewModel.curtains
-        } else {
-            return viewModel.searchCurtains(searchText)
+        var result = viewModel.curtains
+
+        // Filter by curtain type
+        if curtainTypeFilter != "all" {
+            result = result.filter { $0.curtainType == curtainTypeFilter }
         }
+
+        // Filter by search text
+        if !searchText.isEmpty {
+            let searchLower = searchText.lowercased()
+            result = result.filter {
+                $0.dataDescription.lowercased().contains(searchLower) ||
+                $0.linkId.lowercased().contains(searchLower)
+            }
+        }
+
+        return result
     }
 
     private func handleCurtainTap(_ curtain: CurtainEntity) {
@@ -425,6 +455,9 @@ struct UniversalCurtainRow: View {
                         .fontWeight(.medium)
                         .lineLimit(2)
 
+                    // Curtain type badge
+                    CurtainTypeBadge(curtainType: curtain.curtainType)
+
                     Spacer()
 
                     if isInCollection {
@@ -507,15 +540,12 @@ struct UniversalCurtainRow: View {
 
     private var statusIcon: some View {
         Group {
-            if let filePath = curtain.file {
-                if FileManager.default.fileExists(atPath: filePath) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                } else {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                }
+            // Check if SQLite database exists for this curtain
+            if ProteomicsDataDatabaseManager.shared.checkDataExists(curtain.linkId) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
             } else {
+                // Database doesn't exist - needs download
                 Image(systemName: "icloud.and.arrow.down")
                     .foregroundColor(.blue)
             }
@@ -611,6 +641,8 @@ struct ErrorView: View {
 
 struct EmptyStateView: View {
     let onLoadExample: () -> Void
+    var onLoadPTMExample: (() -> Void)?
+    var onLoadBothExamples: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 24) {
@@ -629,15 +661,165 @@ struct EmptyStateView: View {
                     .multilineTextAlignment(.center)
             }
 
-            Button(action: onLoadExample) {
-                Label("Load Example Dataset", systemImage: "arrow.down.circle")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+            VStack(spacing: 12) {
+                // Load both examples button (primary action)
+                if let onLoadBoth = onLoadBothExamples {
+                    Button(action: onLoadBoth) {
+                        Label("Load Both Examples (TP + PTM)", systemImage: "arrow.down.circle.fill")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                HStack(spacing: 12) {
+                    // Load TP example
+                    Button(action: onLoadExample) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "chart.xyaxis.line")
+                                .font(.title2)
+                            Text("TP Example")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .frame(width: 100)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("loadTPExampleButton")
+
+                    // Load PTM example
+                    if let onLoadPTM = onLoadPTMExample {
+                        Button(action: onLoadPTM) {
+                            VStack(spacing: 4) {
+                                Image(systemName: "atom")
+                                    .font(.title2)
+                                Text("PTM Example")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .frame(width: 100)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.purple)
+                        .accessibilityIdentifier("loadPTMExampleButton")
+                    }
+                }
             }
-            .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+}
+
+// MARK: - Curtain Type Badge
+struct CurtainTypeBadge: View {
+    let curtainType: String
+
+    var body: some View {
+        Text(curtainType)
+            .font(.caption2)
+            .fontWeight(.semibold)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(backgroundColor)
+            .foregroundColor(foregroundColor)
+            .cornerRadius(4)
+    }
+
+    private var backgroundColor: Color {
+        switch curtainType {
+        case "PTM":
+            return Color.green.opacity(0.2)
+        case "TP":
+            return Color.gray.opacity(0.2)
+        default:
+            return Color.gray.opacity(0.2)
+        }
+    }
+
+    private var foregroundColor: Color {
+        switch curtainType {
+        case "PTM":
+            return Color.green
+        case "TP":
+            return Color.secondary
+        default:
+            return Color.secondary
+        }
+    }
+}
+
+// MARK: - Curtain Type Filter Bar
+struct CurtainTypeFilterBar: View {
+    @Binding var selectedFilter: String
+
+    private let filters = [
+        ("all", "All"),
+        ("TP", "TP"),
+        ("PTM", "PTM")
+    ]
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(filters, id: \.0) { value, label in
+                FilterChipButton(
+                    label: label,
+                    isSelected: selectedFilter == value,
+                    isPTM: value == "PTM"
+                ) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedFilter = value
+                    }
+                }
+            }
+            Spacer()
+        }
+    }
+}
+
+struct FilterChipButton: View {
+    let label: String
+    let isSelected: Bool
+    var isPTM: Bool = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.caption)
+                .fontWeight(isSelected ? .semibold : .regular)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? selectedBackground : Color(.systemGray6))
+                .foregroundColor(isSelected ? selectedForeground : .primary)
+                .cornerRadius(16)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(isSelected ? selectedBorder : Color.clear, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var selectedBackground: Color {
+        if isPTM {
+            return Color.green.opacity(0.15)
+        }
+        return Color.accentColor.opacity(0.15)
+    }
+
+    private var selectedForeground: Color {
+        if isPTM {
+            return Color.green
+        }
+        return Color.accentColor
+    }
+
+    private var selectedBorder: Color {
+        if isPTM {
+            return Color.green.opacity(0.3)
+        }
+        return Color.accentColor.opacity(0.3)
     }
 }
 

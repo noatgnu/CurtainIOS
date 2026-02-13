@@ -247,10 +247,12 @@ struct CurtainData {
     
     var curtainType: String {
         // Derive curtain type from settings or data structure
-        if !rawForm.samples.isEmpty {
+        if differentialForm.isPTM {
+            return "PTM" // Post-Translational Modification
+        } else if !rawForm.samples.isEmpty {
             return "TP" // Total Proteome
         } else if !differentialForm.comparison.isEmpty {
-            return "CC" // Comparative Analysis  
+            return "CC" // Comparative Analysis
         }
         return "TP"
     }
@@ -365,7 +367,19 @@ struct CurtainDifferentialForm: Codable {
     let comparison: String
     let comparisonSelect: [String]
     let reverseFoldChange: Bool
-    
+
+    // PTM-specific fields
+    let accession: String
+    let position: String
+    let positionPeptide: String
+    let peptideSequence: String
+    let score: String
+
+    // Computed property for PTM type detection
+    var isPTM: Bool {
+        return !accession.isEmpty || !position.isEmpty
+    }
+
     init(
         primaryIDs: String = "",
         geneNames: String = "",
@@ -375,7 +389,12 @@ struct CurtainDifferentialForm: Codable {
         transformSignificant: Bool = false,
         comparison: String = "",
         comparisonSelect: [String] = [],
-        reverseFoldChange: Bool = false
+        reverseFoldChange: Bool = false,
+        accession: String = "",
+        position: String = "",
+        positionPeptide: String = "",
+        peptideSequence: String = "",
+        score: String = ""
     ) {
         self.primaryIDs = primaryIDs
         self.geneNames = geneNames
@@ -386,6 +405,31 @@ struct CurtainDifferentialForm: Codable {
         self.comparison = comparison
         self.comparisonSelect = comparisonSelect
         self.reverseFoldChange = reverseFoldChange
+        self.accession = accession
+        self.position = position
+        self.positionPeptide = positionPeptide
+        self.peptideSequence = peptideSequence
+        self.score = score
+    }
+
+    // Custom decoder to handle missing PTM fields (for backwards compatibility)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        primaryIDs = try container.decodeIfPresent(String.self, forKey: .primaryIDs) ?? ""
+        geneNames = try container.decodeIfPresent(String.self, forKey: .geneNames) ?? ""
+        foldChange = try container.decodeIfPresent(String.self, forKey: .foldChange) ?? ""
+        transformFC = try container.decodeIfPresent(Bool.self, forKey: .transformFC) ?? false
+        significant = try container.decodeIfPresent(String.self, forKey: .significant) ?? ""
+        transformSignificant = try container.decodeIfPresent(Bool.self, forKey: .transformSignificant) ?? false
+        comparison = try container.decodeIfPresent(String.self, forKey: .comparison) ?? ""
+        comparisonSelect = try container.decodeIfPresent([String].self, forKey: .comparisonSelect) ?? []
+        reverseFoldChange = try container.decodeIfPresent(Bool.self, forKey: .reverseFoldChange) ?? false
+        // PTM fields with defaults for backwards compatibility
+        accession = try container.decodeIfPresent(String.self, forKey: .accession) ?? ""
+        position = try container.decodeIfPresent(String.self, forKey: .position) ?? ""
+        positionPeptide = try container.decodeIfPresent(String.self, forKey: .positionPeptide) ?? ""
+        peptideSequence = try container.decodeIfPresent(String.self, forKey: .peptideSequence) ?? ""
+        score = try container.decodeIfPresent(String.self, forKey: .score) ?? ""
     }
 }
 
@@ -455,7 +499,28 @@ struct UniprotExtraData {
 // MARK: - JSON Parsing Extensions
 
 extension CurtainData {
-    
+
+    /// Unwraps special Map serialization format used by Curtain backend.
+    /// Structure: { "dataType": "Map", "value": [ ["key1", value1], ["key2", value2], ... ] }
+    /// Returns the unwrapped dictionary, or the original data if not in this format.
+    private static func unwrapMapData(_ data: Any?) -> Any? {
+        guard let map = data as? [String: Any] else { return data }
+
+        // Check for Map serialization format
+        if let dataType = map["dataType"] as? String, dataType == "Map",
+           let values = map["value"] as? [[Any]] {
+            var result: [String: Any] = [:]
+            for pair in values {
+                if pair.count >= 2, let key = pair[0] as? String {
+                    result[key] = pair[1]
+                }
+            }
+            return result
+        }
+
+        return data
+    }
+
     static func fromJSON(_ json: [String: Any]) -> CurtainData? {
         // Parse CurtainRawForm
         let rawForm: CurtainRawForm
@@ -481,7 +546,12 @@ extension CurtainData {
                 transformSignificant: diffFormDict["_transformSignificant"] as? Bool ?? false,
                 comparison: diffFormDict["_comparison"] as? String ?? "",
                 comparisonSelect: diffFormDict["_comparisonSelect"] as? [String] ?? [],
-                reverseFoldChange: diffFormDict["_reverseFoldChange"] as? Bool ?? false
+                reverseFoldChange: diffFormDict["_reverseFoldChange"] as? Bool ?? false,
+                accession: diffFormDict["_accession"] as? String ?? "",
+                position: diffFormDict["_position"] as? String ?? "",
+                positionPeptide: diffFormDict["_positionPeptide"] as? String ?? "",
+                peptideSequence: diffFormDict["_peptideSequence"] as? String ?? "",
+                score: diffFormDict["_score"] as? String ?? ""
             )
         } else {
             differentialForm = CurtainDifferentialForm()
@@ -493,31 +563,41 @@ extension CurtainData {
             // Parse UniProt data
             let uniprotData: UniprotExtraData?
             if let uniprotDict = extraDataDict["uniprot"] as? [String: Any] {
+                // Unwrap Map serialization format for db, dataMap, accMap, geneNameToAcc
+                let unwrappedDb = unwrapMapData(uniprotDict["db"]) as? [String: Any]
+                let unwrappedDataMap = unwrapMapData(uniprotDict["dataMap"]) as? [String: Any]
+                let unwrappedAccMap = unwrapMapData(uniprotDict["accMap"]) as? [String: [String]]
+                let unwrappedGeneNameToAcc = unwrapMapData(uniprotDict["geneNameToAcc"]) as? [String: [String: Any]]
+
                 uniprotData = UniprotExtraData(
                     results: uniprotDict["results"] as? [String: Any] ?? [:],
-                    dataMap: uniprotDict["dataMap"] as? [String: Any],
-                    db: uniprotDict["db"] as? [String: Any],
+                    dataMap: unwrappedDataMap,
+                    db: unwrappedDb,
                     organism: uniprotDict["organism"] as? String,
-                    accMap: uniprotDict["accMap"] as? [String: [String]],
-                    geneNameToAcc: uniprotDict["geneNameToAcc"] as? [String: [String: Any]]
+                    accMap: unwrappedAccMap,
+                    geneNameToAcc: unwrappedGeneNameToAcc
                 )
             } else {
                 uniprotData = nil
             }
-            
+
             // Parse data container
             let dataContainer: DataMapContainer?
             if let dataDict = extraDataDict["data"] as? [String: Any] {
+                // Unwrap Map serialization format for genesMap and primaryIDsMap
+                let unwrappedGenesMap = unwrapMapData(dataDict["genesMap"]) as? [String: [String: Any]]
+                let unwrappedPrimaryIDsMap = unwrapMapData(dataDict["primaryIDsMap"]) as? [String: [String: Any]]
+
                 dataContainer = DataMapContainer(
                     dataMap: dataDict["dataMap"] as? [String: Any],
-                    genesMap: dataDict["genesMap"] as? [String: [String: Any]],
-                    primaryIDsMap: dataDict["primaryIDsMap"] as? [String: [String: Any]],
+                    genesMap: unwrappedGenesMap,
+                    primaryIDsMap: unwrappedPrimaryIDsMap,
                     allGenes: dataDict["allGenes"] as? [String]
                 )
             } else {
                 dataContainer = nil
             }
-            
+
             extraData = ExtraData(uniprot: uniprotData, data: dataContainer)
         } else {
             extraData = nil
@@ -578,7 +658,12 @@ extension CurtainData {
             "_transformSignificant": differentialForm.transformSignificant,
             "_comparison": differentialForm.comparison,
             "_comparisonSelect": differentialForm.comparisonSelect,
-            "_reverseFoldChange": differentialForm.reverseFoldChange
+            "_reverseFoldChange": differentialForm.reverseFoldChange,
+            "_accession": differentialForm.accession,
+            "_position": differentialForm.position,
+            "_positionPeptide": differentialForm.positionPeptide,
+            "_peptideSequence": differentialForm.peptideSequence,
+            "_score": differentialForm.score
         ]
         
         if let selections = selections {

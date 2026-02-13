@@ -45,7 +45,7 @@ class VolcanoPlotDataService {
             guard !idColumn.isEmpty else { continue }
             guard let id = row[idColumn] as? String, !id.isEmpty else { continue }
 
-            let gene = resolveGeneName(for: id, row: row, geneColumn: geneColumn, curtainData: curtainData)
+            let gene = resolveGeneName(for: id, row: row, geneColumn: geneColumn, curtainData: curtainData, diffForm: diffForm)
             
             let fcValue = extractDoubleValue(row[fcColumn])
             let sigValue = extractDoubleValue(row[sigColumn])
@@ -94,9 +94,9 @@ class VolcanoPlotDataService {
                     selections.append("Background")
                     colors.append("#a4a2a2")
                 } else {
-                    let (group, _) = getSignificantGroup(fcValue: fcValue, sigValue: sigValue, settings: settings, comparison: comparisonValue)
+                    let (group, _) = getSignificantGroup(fcValue: fcValue, sigValue: sigValue, settings: settings, comparison: comparisonValue, isPTM: diffForm.isPTM)
                     selections.append(group)
-                    
+
                     if colorMap[group] == nil {
                         let defaultColors = settings.defaultColorList
                         if !defaultColors.isEmpty {
@@ -121,10 +121,20 @@ class VolcanoPlotDataService {
                 "color": colors.first ?? "#808080"
             ]
 
+            // Add PTM-specific fields if this is PTM data
+            if diffForm.isPTM {
+                if let accession = row[diffForm.accession] as? String, !accession.isEmpty {
+                    dataPoint["accession"] = accession
+                }
+                if let position = row[diffForm.position] as? String, !position.isEmpty {
+                    dataPoint["position"] = position
+                }
+            }
+
             if !settings.customVolcanoTextCol.isEmpty, let customValue = row[settings.customVolcanoTextCol] {
                 dataPoint["customText"] = String(describing: customValue)
             }
-            
+
             jsonData.append(dataPoint)
         }
         
@@ -200,7 +210,7 @@ class VolcanoPlotDataService {
             let sigValue = entity.significant ?? 0.0
             let comparisonValue = entity.comparison
 
-            // Resolve gene name using priority: 1) entity.geneNames, 2) mapping service, 3) primaryId
+            // Resolve gene name using priority: 1) entity.geneNames, 2) UniProt data via accession (for PTM), 3) mapping service with accession (for PTM), 4) mapping service with primaryId, 5) primaryId
             var geneName = id
             var geneSource = "primaryId"
             if let gn = entity.geneNames, !gn.isEmpty {
@@ -211,6 +221,15 @@ class VolcanoPlotDataService {
                     .first
                 geneName = firstGene ?? gn
                 geneSource = "entity.geneNames"
+            } else if differentialForm.isPTM, let accession = entity.accession, !accession.isEmpty {
+                // For PTM data, look up gene name using accession from UniProt data
+                if let gn = proteomicsDataService.getGeneNameFromAccession(linkId: linkId, accession: accession), !gn.isEmpty {
+                    geneName = gn
+                    geneSource = "uniprotData(accession)"
+                } else if let gn = proteinMappingService.getGeneNameFromPrimaryId(linkId: linkId, primaryId: accession), !gn.isEmpty {
+                    geneName = gn
+                    geneSource = "mappingService(accession)"
+                }
             } else if let gn = proteinMappingService.getGeneNameFromPrimaryId(linkId: linkId, primaryId: id), !gn.isEmpty {
                 geneName = gn
                 geneSource = "mappingService"
@@ -265,7 +284,7 @@ class VolcanoPlotDataService {
                     selections.append("Background")
                     colors.append("#a4a2a2")
                 } else {
-                    let (group, _) = getSignificantGroup(fcValue: fcValue, sigValue: sigValue, settings: settings, comparison: comparisonValue)
+                    let (group, _) = getSignificantGroup(fcValue: fcValue, sigValue: sigValue, settings: settings, comparison: comparisonValue, isPTM: differentialForm.isPTM)
                     selections.append(group)
 
                     if colorMap[group] == nil {
@@ -291,6 +310,16 @@ class VolcanoPlotDataService {
                 "colors": colors,
                 "color": colors.first ?? "#808080"
             ]
+
+            // Add PTM-specific fields if this is PTM data
+            if differentialForm.isPTM {
+                if let accession = entity.accession, !accession.isEmpty {
+                    dataPoint["accession"] = accession
+                }
+                if let position = entity.position, !position.isEmpty {
+                    dataPoint["position"] = position
+                }
+            }
 
             if !settings.customVolcanoTextCol.isEmpty {
                 // Custom text column would need to be stored separately if needed
@@ -384,9 +413,40 @@ class VolcanoPlotDataService {
         return data
     }
     
-    private func resolveGeneName(for id: String, row: [String: Any], geneColumn: String, curtainData: AppData) -> String {
-        var gene = id
+    private func resolveGeneName(for id: String, row: [String: Any], geneColumn: String, curtainData: AppData, diffForm: DifferentialForm? = nil) -> String {
+        let gene = id
+
+        // Priority 1: From gene names column in data
+        if !geneColumn.isEmpty, let geneFromColumn = row[geneColumn] as? String, !geneFromColumn.isEmpty {
+            let firstGene = geneFromColumn.components(separatedBy: CharacterSet(charactersIn: " ;\\"))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .first
+            if let geneName = firstGene {
+                return geneName
+            }
+        }
+
+        // Priority 2: From UniProt data
         if let uniprotDB = curtainData.uniprotDB {
+            // For PTM data, look up by accession
+            if let diffForm = diffForm, diffForm.isPTM {
+                if let accession = row[diffForm.accession] as? String, !accession.isEmpty {
+                    if let uniprotRecord = uniprotDB[accession] as? [String: Any],
+                       let geneNames = uniprotRecord["Gene Names"] as? String,
+                       !geneNames.isEmpty {
+                        let firstGeneName = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;\\"))
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty }
+                            .first
+                        if let geneName = firstGeneName {
+                            return geneName
+                        }
+                    }
+                }
+            }
+
+            // For non-PTM data or if PTM lookup failed, try by primary ID
             if let uniprotRecord = uniprotDB[id] as? [String: Any],
                let geneNames = uniprotRecord["Gene Names"] as? String,
                !geneNames.isEmpty {
@@ -395,13 +455,11 @@ class VolcanoPlotDataService {
                     .filter { !$0.isEmpty }
                     .first
                 if let geneName = firstGeneName {
-                    gene = geneName
+                    return geneName
                 }
             }
         }
-        if !geneColumn.isEmpty, let geneFromColumn = row[geneColumn] as? String, !geneFromColumn.isEmpty {
-            gene = geneFromColumn
-        }
+
         return gene
     }
     
@@ -460,15 +518,17 @@ class VolcanoPlotDataService {
         return currentPosition
     }
     
-    private func getSignificantGroup(fcValue: Double, sigValue: Double, settings: CurtainSettings, comparison: String) -> (String, String) {
+    private func getSignificantGroup(fcValue: Double, sigValue: Double, settings: CurtainSettings, comparison: String, isPTM: Bool = false) -> (String, String) {
         let ylog = -log10(settings.pCutoff)
         var groups: [String] = []
         var position = ""
         if sigValue < ylog { groups.append("P-value > \(settings.pCutoff)"); position = "P-value > " }
         else { groups.append("P-value <= \(settings.pCutoff)"); position = "P-value <= " }
-        if abs(fcValue) > settings.log2FCCutoff { groups.append("FC > \(settings.log2FCCutoff)"); position += "FC > " } 
+        if abs(fcValue) > settings.log2FCCutoff { groups.append("FC > \(settings.log2FCCutoff)"); position += "FC > " }
         else { groups.append("FC <= \(settings.log2FCCutoff)"); position += "FC <= " }
-        return ("\(groups.joined(separator: ";")) (\(comparison))", position)
+        // For PTM data, don't append comparison to group name
+        let groupName = isPTM ? groups.joined(separator: ";") : "\(groups.joined(separator: ";")) (\(comparison))"
+        return (groupName, position)
     }
 }
 

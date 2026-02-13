@@ -406,14 +406,14 @@ class CurtainViewModel {
     func loadExampleCurtain() async {
         isLoading = true
         error = nil
-        
+
         do {
             _ = try await curtainRepository.fetchCurtainByLinkIdAndHost(
                 linkId: CurtainConstants.ExampleData.uniqueId,
                 hostname: CurtainConstants.ExampleData.apiUrl,
                 frontendURL: CurtainConstants.ExampleData.frontendUrl
             )
-            
+
             await MainActor.run {
                 loadCurtains() // Refresh the list
                 isLoading = false
@@ -421,6 +421,62 @@ class CurtainViewModel {
         } catch {
             await MainActor.run {
                 self.error = "Failed to load example curtain: \(error.localizedDescription)"
+                isLoading = false
+            }
+        }
+    }
+
+    /// Load PTM example dataset
+    func loadExamplePTMCurtain() async {
+        isLoading = true
+        error = nil
+
+        do {
+            _ = try await curtainRepository.fetchCurtainByLinkIdAndHost(
+                linkId: CurtainConstants.ExamplePTMData.uniqueId,
+                hostname: CurtainConstants.ExamplePTMData.apiUrl,
+                frontendURL: CurtainConstants.ExamplePTMData.frontendUrl
+            )
+
+            await MainActor.run {
+                loadCurtains() // Refresh the list
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Failed to load PTM example curtain: \(error.localizedDescription)"
+                isLoading = false
+            }
+        }
+    }
+
+    /// Load both example datasets (TP and PTM)
+    func loadBothExampleCurtains() async {
+        isLoading = true
+        error = nil
+
+        do {
+            // Load TP example
+            _ = try await curtainRepository.fetchCurtainByLinkIdAndHost(
+                linkId: CurtainConstants.ExampleData.uniqueId,
+                hostname: CurtainConstants.ExampleData.apiUrl,
+                frontendURL: CurtainConstants.ExampleData.frontendUrl
+            )
+
+            // Load PTM example
+            _ = try await curtainRepository.fetchCurtainByLinkIdAndHost(
+                linkId: CurtainConstants.ExamplePTMData.uniqueId,
+                hostname: CurtainConstants.ExamplePTMData.apiUrl,
+                frontendURL: CurtainConstants.ExamplePTMData.frontendUrl
+            )
+
+            await MainActor.run {
+                loadCurtains() // Refresh the list
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                self.error = "Failed to load example curtains: \(error.localizedDescription)"
                 isLoading = false
             }
         }

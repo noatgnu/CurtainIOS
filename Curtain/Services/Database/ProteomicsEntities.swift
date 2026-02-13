@@ -18,6 +18,12 @@ struct ProcessedProteomicsData: Codable, FetchableRecord, MutablePersistableReco
     var foldChange: Double?
     var significant: Double?
     var comparison: String
+    // PTM-specific fields
+    var accession: String?
+    var position: String?
+    var positionPeptide: String?
+    var peptideSequence: String?
+    var score: Double?
 
     static let databaseTableName = "processed_proteomics_data"
 
@@ -35,11 +41,18 @@ extension ProcessedProteomicsData {
             t.column("foldChange", .double)
             t.column("significant", .double)
             t.column("comparison", .text).notNull()
+            // PTM-specific columns
+            t.column("accession", .text)
+            t.column("position", .text)
+            t.column("positionPeptide", .text)
+            t.column("peptideSequence", .text)
+            t.column("score", .double)
             t.uniqueKey(["primaryId", "comparison"])
         }
 
         try db.create(index: "idx_processed_primaryId", on: databaseTableName, columns: ["primaryId"], ifNotExists: true)
         try db.create(index: "idx_processed_comparison", on: databaseTableName, columns: ["comparison"], ifNotExists: true)
+        try db.create(index: "idx_processed_accession", on: databaseTableName, columns: ["accession"], ifNotExists: true)
     }
 }
 
@@ -221,5 +234,26 @@ extension AllGenesEntry {
         }
 
         try db.create(index: "idx_all_genes_name", on: databaseTableName, columns: ["geneName"], ifNotExists: true)
+    }
+}
+
+// MARK: - UniProtDBEntry
+// Stores UniProt database entries (accession -> JSON data)
+
+struct UniProtDBEntry: Codable, FetchableRecord, PersistableRecord {
+    var accession: String  // Primary key (e.g., "P12345")
+    var dataJson: String   // Full UniProt data as JSON
+
+    static let databaseTableName = "uniprot_db"
+}
+
+extension UniProtDBEntry {
+    static func createTable(in db: Database) throws {
+        try db.create(table: databaseTableName, ifNotExists: true) { t in
+            t.primaryKey("accession", .text)
+            t.column("dataJson", .text).notNull()
+        }
+
+        try db.create(index: "idx_uniprot_db_accession", on: databaseTableName, columns: ["accession"], ifNotExists: true)
     }
 }

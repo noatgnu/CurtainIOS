@@ -18,9 +18,10 @@ class ProteomicsDataDatabaseManager {
     // MARK: - Constants
 
     static let schemaVersionKey = "schema_version"
-    /// Schema version must match Android (version 5)
+    /// Schema version must match Android (version 6)
     /// When this changes, existing databases will be dropped and recreated (fallbackToDestructiveMigration equivalent)
-    static let currentSchemaVersion = 5
+    /// Version 6: Added PTM support columns (accession, position, positionPeptide, peptideSequence, score)
+    static let currentSchemaVersion = 6
 
     // MARK: - Private Properties
 
@@ -64,6 +65,7 @@ class ProteomicsDataDatabaseManager {
             try PrimaryIdsMapEntry.createTable(in: database)
             try GeneNameToAccEntry.createTable(in: database)
             try AllGenesEntry.createTable(in: database)
+            try UniProtDBEntry.createTable(in: database)
             // Denormalized mapping tables (matching Android ProteinMappingDatabase)
             try GeneNameMapping.createTable(in: database)
             try PrimaryIdMapping.createTable(in: database)

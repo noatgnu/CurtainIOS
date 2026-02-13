@@ -39,6 +39,7 @@ struct PointInteractionModal: View {
                     .pickerStyle(SegmentedPickerStyle())
                     .listRowInsets(EdgeInsets())
                     .padding(.vertical, 4)
+                    .accessibilityIdentifier("pointInteractionTabPicker")
                 }
 
                 // Content based on selected tab
@@ -64,6 +65,7 @@ struct PointInteractionModal: View {
                         isPresented = false
                     }
                     .fixedSize()
+                    .accessibilityIdentifier("pointInteractionCancelButton")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
@@ -84,6 +86,7 @@ struct PointInteractionModal: View {
                     }
                     .fixedSize()
                     .disabled(!canPerformAction)
+                    .accessibilityIdentifier("pointInteractionDoneButton")
                 }
             }
         }
@@ -304,6 +307,31 @@ struct PointInteractionModal: View {
             proteinDetailCard(clickData.clickedProtein)
         }
 
+        // PTM Viewer button - show if data is PTM type
+        if curtainData.differentialForm.isPTM {
+            Section("PTM Analysis") {
+                Button(action: {
+                    openPTMViewer()
+                }) {
+                    HStack {
+                        Image(systemName: "atom")
+                            .foregroundColor(.purple)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("View PTM Details")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text("Sequence alignment and modification sites")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+
         if !clickData.nearbyProteins.isEmpty {
             Section("Nearby Proteins (\(clickData.nearbyProteins.count))") {
                 ForEach(clickData.nearbyProteins.prefix(10), id: \.protein.id) { nearbyProtein in
@@ -317,6 +345,31 @@ struct PointInteractionModal: View {
                 }
             }
         }
+    }
+
+    /// Opens PTM viewer for the clicked protein
+    private func openPTMViewer() {
+        // Get the accession from the protein - for PTM data this is typically stored in the protein ID
+        // or can be extracted from the data
+        let accession = getAccessionForProtein(clickData.clickedProtein)
+
+        // Close this modal
+        isPresented = false
+
+        // Post notification to open PTM viewer
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("OpenPTMViewer"),
+                object: nil,
+                userInfo: ["accession": accession]
+            )
+        }
+    }
+
+    /// Gets the accession for a protein point - for PTM data this is stored separately
+    private func getAccessionForProtein(_ protein: ProteinPoint) -> String {
+        // For PTM data, use the accession field if available, otherwise fall back to primaryID
+        return protein.accession ?? protein.primaryID
     }
     
     // MARK: - Helper Views

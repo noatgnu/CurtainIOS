@@ -22,10 +22,21 @@ struct CurtainConstants {
         static let uniqueId = "f4b009f3-ac3c-470a-a68b-55fcadf68d0f"
         static let apiUrl = "https://celsus.muttsu.xyz/"
         static let frontendUrl = "https://curtain.proteo.info/"
-        
+
         // Default description for example curtain
         static let description = "Example Proteomics Dataset"
         static let curtainType = "TP"
+    }
+
+    /// PTM (Post-Translational Modification) example dataset
+    struct ExamplePTMData {
+        static let uniqueId = "85970b1d-8052-4d6f-bf67-654396534d76"
+        static let apiUrl = "https://celsus.muttsu.xyz/"
+        static let frontendUrl = "https://curtainptm.proteo.info/"
+
+        // Default description for PTM example curtain
+        static let description = "Example PTM Dataset"
+        static let curtainType = "PTM"
     }
     
     struct ExampleCollection {
@@ -57,6 +68,8 @@ struct CurtainConstants {
         /// Extract link ID from curtain.proteo.info URL fragment
         static func extractLinkIdFromProteoURL(_ urlString: String) -> String? {
             guard let url = URL(string: urlString),
+                  let host = url.host,
+                  host == proteoHost,
                   let fragment = url.fragment else { return nil }
             // Remove leading "/" if present
             return fragment.hasPrefix("/") ? String(fragment.dropFirst()) : fragment

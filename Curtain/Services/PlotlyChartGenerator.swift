@@ -90,7 +90,12 @@ class PlotlyChartGenerator {
             transformSignificant: data.differentialForm.transformSignificant,
             comparison: data.differentialForm.comparison,
             comparisonSelect: data.differentialForm.comparisonSelect,
-            reverseFoldChange: data.differentialForm.reverseFoldChange
+            reverseFoldChange: data.differentialForm.reverseFoldChange,
+            accession: data.differentialForm.accession,
+            position: data.differentialForm.position,
+            positionPeptide: data.differentialForm.positionPeptide,
+            peptideSequence: data.differentialForm.peptideSequence,
+            score: data.differentialForm.score
         )
         appData.selectedMap = data.selectedMap ?? [:]
         if let rawString = data.raw {
@@ -120,7 +125,9 @@ class PlotlyChartGenerator {
                 selections: dataPoint["selections"] as? [String] ?? [],
                 colors: dataPoint["colors"] as? [String] ?? [],
                 color: dataPoint["color"] as? String ?? "#808080",
-                customText: dataPoint["customText"] as? String
+                customText: dataPoint["customText"] as? String,
+                accession: dataPoint["accession"] as? String,
+                position: dataPoint["position"] as? String
             )
 
             for (index, selectionName) in point.selections.enumerated() {
@@ -208,7 +215,14 @@ class PlotlyChartGenerator {
             }
             let geneName = point.gene.trimmingCharacters(in: .whitespacesAndNewlines)
             let primaryId = point.id.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !geneName.isEmpty && geneName != primaryId {
+            let accession = point.accession?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let position = point.position?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+            // PTM data: show "GeneName Position" or "Accession Position"
+            if !accession.isEmpty && !position.isEmpty {
+                let label = !geneName.isEmpty ? geneName : accession
+                return "\(label) \(position)"
+            } else if !geneName.isEmpty && geneName != primaryId {
                 return "\(geneName)(\(primaryId))"
             } else {
                 return primaryId
@@ -216,7 +230,7 @@ class PlotlyChartGenerator {
         }
         
         let customdata = dataPoints.map { point -> [String: Any] in
-            return [
+            var data: [String: Any] = [
                 "id": point.id,
                 "gene": point.gene,
                 "comparison": point.comparison,
@@ -226,6 +240,14 @@ class PlotlyChartGenerator {
                 "selections": point.selections,
                 "colors": point.colors
             ]
+            // Add PTM-specific fields if present
+            if let accession = point.accession {
+                data["accession"] = accession
+            }
+            if let position = point.position {
+                data["position"] = position
+            }
+            return data
         }
         
         let marker = PlotMarker(
@@ -371,6 +393,8 @@ class PlotlyChartGenerator {
         let colors: [String]
         let color: String
         let customText: String?
+        let accession: String?
+        let position: String?
     }
     
     private func convertTextAnnotations(_ textAnnotations: [String: Any], isDarkMode: Bool) -> [PlotAnnotation] {

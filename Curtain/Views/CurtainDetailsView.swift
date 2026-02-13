@@ -22,13 +22,49 @@ struct CurtainDetailsView: View {
     @State private var error: String?
     @State private var selectedTab = 0
     @State private var annotationEditMode = false // Shared annotation edit mode state
-    
+
+    // PTM viewer state - using identifiable wrapper to avoid timing issues
+    @State private var ptmViewerAccession: PTMViewerAccession? = nil
+
+    // Wrapper struct to make accession identifiable for sheet(item:)
+    struct PTMViewerAccession: Identifiable {
+        let id: String
+        var accession: String { id }
+    }
+
     private var isWideLayout: Bool {
         UIDevice.current.userInterfaceIdiom == .pad || UIDevice.current.userInterfaceIdiom == .mac
     }
 
+    /// Checks if current data is PTM type
+    private var isPTMData: Bool {
+        let isPTM = curtainData?.differentialForm.isPTM ?? false
+        if let df = curtainData?.differentialForm {
+            print("[CurtainDetailsView] isPTMData check - accession: '\(df.accession)', position: '\(df.position)', isPTM: \(isPTM)")
+        }
+        return isPTM
+    }
+
     var body: some View {
         VStack(spacing: 0) {
+                // Header with menu button for force rebuild (like Android's MoreVert menu)
+                HStack {
+                    Spacer()
+                    Menu {
+                        Button(action: {
+                            forceRebuildDataset()
+                        }) {
+                            Label("Force Rebuild Dataset", systemImage: "arrow.clockwise")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.title2)
+                            .foregroundColor(.accentColor)
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.top, 8)
+                }
+
                 // Header Information
                 CurtainHeaderView(curtain: curtain)
 
@@ -42,7 +78,7 @@ struct CurtainDetailsView: View {
                     if isWideLayout {
                         // iPad: use TabView with tab bar
                         TabView(selection: $selectedTab) {
-                            DataOverviewTab(data: data)
+                            DataOverviewTab(data: data, linkId: curtain.linkId)
                                 .tabItem {
                                     Image(systemName: "info.circle")
                                     Text("Overview")
@@ -58,10 +94,11 @@ struct CurtainDetailsView: View {
 
                             ProteinDetailsTab(data: $curtainData)
                                 .tabItem {
-                                    Image(systemName: "list.bullet.rectangle")
-                                    Text("Protein Details")
+                                    Image(systemName: isPTMData ? "atom" : "list.bullet.rectangle")
+                                    Text(isPTMData ? "Site List" : "Protein List")
                                 }
                                 .tag(2)
+                                .accessibilityIdentifier(isPTMData ? "siteListTab" : "proteinListTab")
 
                             SettingsTab(data: Binding(
                                 get: { data },
@@ -82,17 +119,18 @@ struct CurtainDetailsView: View {
                         Picker("Section", selection: $selectedTab) {
                             Image(systemName: "info.circle").tag(0)
                             Image(systemName: "chart.xyaxis.line").tag(1)
-                            Image(systemName: "list.bullet.rectangle").tag(2)
+                            Image(systemName: isPTMData ? "atom" : "list.bullet.rectangle").tag(2)
                             Image(systemName: "gearshape").tag(3)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal)
                         .padding(.vertical, 8)
+                        .accessibilityIdentifier("mainTabPicker")
 
                         Group {
                             switch selectedTab {
                             case 0:
-                                DataOverviewTab(data: data)
+                                DataOverviewTab(data: data, linkId: curtain.linkId)
                             case 1:
                                 VolcanoPlotTab(data: $curtainData, annotationEditMode: $annotationEditMode)
                             case 2:
@@ -117,11 +155,44 @@ struct CurtainDetailsView: View {
         }
         .navigationTitle(curtain.dataDescription)
         .navigationBarTitleDisplayMode(.inline)
-        // Remove conditional toolbar - let each tab handle its own toolbar
         .onAppear {
             loadCurtainData()
         }
+        // Listen for PTM viewer open requests from PointInteractionModal
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("OpenPTMViewer"))) { notification in
+            if let accession = notification.userInfo?["accession"] as? String {
+                openPTMViewer(for: accession)
+            }
+        }
+        // PTM Viewer sheet - using item binding for proper state capture
+        .sheet(item: $ptmViewerAccession) { accessionItem in
+            if let data = curtainData {
+                let _ = print("[CurtainDetailsView] Sheet presenting with accession: '\(accessionItem.accession)'")
+                PTMViewerScreen(
+                    linkId: data.linkId,
+                    accession: accessionItem.accession,
+                    pCutoff: data.settings.pCutoff,
+                    fcCutoff: data.settings.log2FCCutoff,
+                    customPTMData: unwrapAnyCodable(data.settings.customPTMData),
+                    variantCorrection: unwrapAnyCodable(data.settings.variantCorrection),
+                    customSequences: unwrapAnyCodable(data.settings.customSequences),
+                    onDismiss: { ptmViewerAccession = nil }
+                )
+            }
+        }
         // Protein search sheet is now handled by individual tabs
+    }
+
+    /// Opens PTM viewer for a specific accession
+    func openPTMViewer(for accession: String) {
+        guard isPTMData else { return }
+        print("[CurtainDetailsView] openPTMViewer called with accession: '\(accession)'")
+        ptmViewerAccession = PTMViewerAccession(id: accession)
+    }
+
+    /// Unwraps AnyCodable dictionary to [String: Any]
+    private func unwrapAnyCodable(_ dict: [String: AnyCodable]) -> [String: Any] {
+        return dict.mapValues { $0.value }
     }
     
     private func loadCurtainData() {
@@ -200,16 +271,45 @@ struct CurtainDetailsView: View {
                     }
                     
                 } else if FileManager.default.fileExists(atPath: jsonFilePath) {
-                    // Legacy Mode: Load from JSON
-                    let fileURL = URL(fileURLWithPath: jsonFilePath)
-                    let jsonData = try Data(contentsOf: fileURL)
-                    let jsonObject = try JSONSerialization.jsonObject(with: jsonData, options: [])
-                    
-                    try await dataService.restoreSettings(from: jsonObject)
-                    
-                    await MainActor.run {
-                        self.curtainData = convertToCurtainData(from: dataService, linkId: curtain.linkId)
-                        self.isLoading = false
+                    // JSON exists but SQLite doesn't - need to rebuild SQLite
+                    print("[CurtainDetailsView] JSON file found but no SQLite, rebuilding SQLite database")
+                    let linkId = curtain.linkId
+                    let repository = CurtainRepository(modelContext: modelContext)
+
+                    // Rebuild SQLite from JSON, preserving any existing user settings in SwiftData
+                    do {
+                        try await repository.rebuildSQLiteDataOnly(linkId: linkId)
+                        print("[CurtainDetailsView] SQLite rebuild successful")
+
+                        // Ensure SwiftData settings exist (creates from JSON if needed)
+                        let settingsResult = await repository.ensureSettingsEntityExists(linkId: linkId)
+                        print("[CurtainDetailsView] Settings result: \(settingsResult)")
+
+                        // Now load from the rebuilt SQLite
+                        let dbURL = curtainDataDir.appendingPathComponent("proteomics_data_\(linkId).sqlite")
+                        let jsonFileURL = curtainDataDir.appendingPathComponent("\(linkId).json")
+                        let metadataURL = FileManager.default.fileExists(atPath: jsonFileURL.path) ? jsonFileURL : nil
+
+                        await MainActor.run {
+                            if let settingsEntity = repository.getCurtainSettings(linkId: linkId) {
+                                Task {
+                                    await dataService.restoreFromDatabase(dbPath: dbURL, settingsEntity: settingsEntity, metadataURL: metadataURL)
+                                    await MainActor.run {
+                                        self.curtainData = convertToCurtainData(from: dataService, dbPath: dbURL, linkId: linkId)
+                                        print("[CurtainDetailsView] Data loaded successfully after rebuild")
+                                        self.isLoading = false
+                                    }
+                                }
+                            } else {
+                                self.error = "Failed to load settings after rebuild"
+                                self.isLoading = false
+                            }
+                        }
+                    } catch {
+                        await MainActor.run {
+                            self.error = "Failed to rebuild data: \(error.localizedDescription)"
+                            self.isLoading = false
+                        }
                     }
                 } else {
                     await MainActor.run {
@@ -225,9 +325,41 @@ struct CurtainDetailsView: View {
             }
         }
     }
-    
+
+    /// Force rebuild the dataset's SQLite database from stored JSON (like Android)
+    /// This preserves user settings (selections, colors, etc.) in SwiftData
+    private func forceRebuildDataset() {
+        // Clear current data and show loading (like Android)
+        curtainData = nil
+        isLoading = true
+        error = nil
+
+        Task {
+            do {
+                let linkId = curtain.linkId
+                print("[CurtainDetailsView] Force rebuilding dataset: \(linkId)")
+
+                // Use repository method that rebuilds SQLite only, preserving user settings
+                let repository = CurtainRepository(modelContext: modelContext)
+                try await repository.rebuildSQLiteDataOnly(linkId: linkId)
+
+                print("[CurtainDetailsView] Force rebuild complete, reloading data...")
+
+                // Reload the data from the rebuilt SQLite
+                await MainActor.run {
+                    self.loadCurtainData()
+                }
+            } catch {
+                await MainActor.run {
+                    self.error = "Failed to rebuild: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+
     private func convertToCurtainData(from service: CurtainDataService, dbPath: URL? = nil, linkId: String? = nil) -> CurtainData {
-        
+
         let transformedSelectedMap = transformSelectionsMapToSelectedMap(service.curtainData.selectedMap.isEmpty ? nil : service.curtainData.selectedMap)
 
         print("[convertToCurtainData] service.curtainData.selectedMap count: \(service.curtainData.selectedMap.count)")
@@ -253,7 +385,12 @@ struct CurtainDetailsView: View {
                 transformSignificant: service.curtainData.differentialForm?.transformSignificant ?? false,
                 comparison: service.curtainData.differentialForm?.comparison ?? "",
                 comparisonSelect: service.curtainData.differentialForm?.comparisonSelect ?? [],
-                reverseFoldChange: service.curtainData.differentialForm?.reverseFoldChange ?? false
+                reverseFoldChange: service.curtainData.differentialForm?.reverseFoldChange ?? false,
+                accession: service.curtainData.differentialForm?.accession ?? "",
+                position: service.curtainData.differentialForm?.position ?? "",
+                positionPeptide: service.curtainData.differentialForm?.positionPeptide ?? "",
+                peptideSequence: service.curtainData.differentialForm?.peptideSequence ?? "",
+                score: service.curtainData.differentialForm?.score ?? ""
             ),
             processed: service.curtainData.differential?.originalFile,
             selectionsMap: service.curtainData.dataMap,
@@ -323,20 +460,24 @@ struct CurtainDetailsView: View {
 struct CurtainHeaderView: View {
     let curtain: CurtainEntity
     let onSearchTapped: (() -> Void)?
-    
+
     init(curtain: CurtainEntity, onSearchTapped: (() -> Void)? = nil) {
         self.curtain = curtain
         self.onSearchTapped = onSearchTapped
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(curtain.dataDescription)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                    
+                    HStack(spacing: 8) {
+                        Text(curtain.dataDescription)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+
+                        CurtainTypeBadge(curtainType: curtain.curtainType)
+                    }
+
                     Text("ID: \(curtain.linkId)")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -456,11 +597,24 @@ struct NoDataView: View {
 
 struct DataOverviewTab: View {
     let data: CurtainData
+    let linkId: String
+
+    // Computed counts from SQLite
+    private var uniprotCount: Int {
+        (try? ProteomicsDataService.shared.getUniProtEntryCount(linkId: linkId)) ?? 0
+    }
+
+    private var allGenesCount: Int {
+        (try? ProteomicsDataService.shared.getAllGenesCount(linkId: linkId)) ?? 0
+    }
     
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 OverviewSection(title: "Data Statistics") {
+                    // Dataset Type with badge
+                    DatasetTypeRow(curtainType: data.curtainType)
+
                     OverviewRow(label: "Raw Data Rows", value: "\(data.rawDataRowCount)")
                     OverviewRow(label: "Differential Data Rows", value: "\(data.differentialDataRowCount)")
                     
@@ -509,7 +663,28 @@ struct DataOverviewTab: View {
                         OverviewRow(label: "Reverse Fold Change", value: data.differentialForm.reverseFoldChange ? "Yes" : "No")
                     }
                 }
-                
+
+                // PTM Column Mapping (only shown for PTM data)
+                if data.differentialForm.isPTM {
+                    OverviewSection(title: "PTM Column Mapping") {
+                        if !data.differentialForm.accession.isEmpty {
+                            OverviewRow(label: "Accession Column", value: data.differentialForm.accession)
+                        }
+                        if !data.differentialForm.position.isEmpty {
+                            OverviewRow(label: "Position Column", value: data.differentialForm.position)
+                        }
+                        if !data.differentialForm.positionPeptide.isEmpty {
+                            OverviewRow(label: "Position in Peptide Column", value: data.differentialForm.positionPeptide)
+                        }
+                        if !data.differentialForm.peptideSequence.isEmpty {
+                            OverviewRow(label: "Peptide Sequence Column", value: data.differentialForm.peptideSequence)
+                        }
+                        if !data.differentialForm.score.isEmpty {
+                            OverviewRow(label: "Score Column", value: data.differentialForm.score)
+                        }
+                    }
+                }
+
                 // Analysis Cutoffs
                 OverviewSection(title: "Analysis Parameters") {
                     OverviewRow(label: "P-value Cutoff", value: String(format: "%.3f", data.settings.pCutoff))
@@ -531,20 +706,14 @@ struct DataOverviewTab: View {
                     }
                 }
                 
-                // Additional Data Information
-                if let extraData = data.extraData {
+                // Additional Data Information (loaded from SQLite)
+                if uniprotCount > 0 || allGenesCount > 0 {
                     OverviewSection(title: "Additional Data") {
-                        if let uniprotData = extraData.uniprot {
-                            OverviewRow(label: "UniProt Results", value: "\(uniprotData.results.count) entries")
-                            if let organism = uniprotData.organism, !organism.isEmpty {
-                                OverviewRow(label: "Organism", value: organism)
-                            }
+                        if uniprotCount > 0 {
+                            OverviewRow(label: "UniProt Results", value: "\(uniprotCount) entries")
                         }
-                        
-                        if let dataContainer = extraData.data {
-                            if let allGenes = dataContainer.allGenes {
-                                OverviewRow(label: "Total Genes", value: "\(allGenes.count)")
-                            }
+                        if allGenesCount > 0 {
+                            OverviewRow(label: "Total Genes", value: "\(allGenesCount)")
                         }
                     }
                 }
@@ -567,6 +736,14 @@ struct VolcanoPlotTab: View {
 
     private var isMac: Bool {
         UIDevice.current.userInterfaceIdiom == .mac
+    }
+
+    private var isPTM: Bool {
+        data?.differentialForm.isPTM ?? false
+    }
+
+    private var searchLabel: String {
+        isPTM ? "Search Sites" : "Search Proteins"
     }
 
     var body: some View {
@@ -601,7 +778,7 @@ struct VolcanoPlotTab: View {
                         ToolbarHoverButton(icon: "paintpalette.fill", label: "Color Manager", disabled: annotationEditMode) {
                             showingVolcanoColorManager = true
                         }
-                        ToolbarHoverButton(icon: "magnifyingglass", label: "Search", disabled: annotationEditMode) {
+                        ToolbarHoverButton(icon: "magnifyingglass", label: searchLabel, disabled: annotationEditMode) {
                             showingProteinSearch = true
                         }
                         ExportPlotButton(useToolbarStyle: true)
@@ -811,8 +988,197 @@ struct ProteinDetailsTab: View {
     @Binding var data: CurtainData?
     @State private var selectedSelectionGroup: String = "All"
     @State private var searchText = ""
+    @State private var debouncedSearchText = "" // Debounced version for filtering
+    @State private var searchTask: Task<Void, Never>? // For debouncing
     @State private var proteinDisplayNameCache: [String: String] = [:]
-    
+    @State private var ptmSiteData: [String: ProcessedProteomicsData] = [:] // primaryId -> site data
+    @State private var accessionGroups: [String: [ProcessedProteomicsData]] = [:] // accession -> sites
+    @State private var expandedAccessions: Set<String> = [] // Track which accession groups are expanded
+
+    // Cached filtered results to avoid recomputing on every render
+    @State private var cachedFilteredAccessionGroups: [(accession: String, geneName: String?, sites: [ProcessedProteomicsData], selectedCount: Int)] = []
+    @State private var cachedFilteredProteins: [String] = []
+    @State private var isFiltering = false
+
+    private var isPTM: Bool {
+        data?.differentialForm.isPTM ?? false
+    }
+
+    private var itemLabel: String {
+        isPTM ? "sites" : "proteins"
+    }
+
+    private var searchPlaceholder: String {
+        isPTM ? "Search sites..." : "Search proteins..."
+    }
+
+    /// Accession groups - now uses cached results
+    private var filteredAccessionGroups: [(accession: String, geneName: String?, sites: [ProcessedProteomicsData], selectedCount: Int)] {
+        cachedFilteredAccessionGroups
+    }
+
+    /// Perform filtering - simple and fast, only filters by accession/gene name
+    private func performFiltering() {
+        guard let curtainData = data else {
+            cachedFilteredAccessionGroups = []
+            cachedFilteredProteins = []
+            return
+        }
+
+        let searchQuery = debouncedSearchText.lowercased()
+        let selectedMap = curtainData.selectedMap
+
+        // Filter accession groups - by accession or gene name (fast)
+        var result: [(accession: String, geneName: String?, sites: [ProcessedProteomicsData], selectedCount: Int)] = []
+
+        for (accession, sites) in accessionGroups {
+            // Get gene name for this accession
+            let geneName = curtainData.getPrimaryGeneNameForProtein(accession)
+
+            // Filter by accession OR gene name
+            if !searchQuery.isEmpty {
+                let accessionMatch = accession.lowercased().contains(searchQuery)
+                let geneNameMatch = geneName?.lowercased().contains(searchQuery) ?? false
+                if !accessionMatch && !geneNameMatch {
+                    continue
+                }
+            }
+
+            // Count selected sites
+            let selectedCount = sites.filter { site in
+                if let selections = selectedMap?[site.primaryId] {
+                    return selections.values.contains(true)
+                }
+                return false
+            }.count
+
+            if selectedCount > 0 {
+                result.append((accession: accession, geneName: geneName, sites: sites, selectedCount: selectedCount))
+            }
+        }
+
+        // Sort by gene name or accession
+        result.sort { a, b in
+            let nameA = a.geneName ?? a.accession
+            let nameB = b.geneName ?? b.accession
+            return nameA.localizedCaseInsensitiveCompare(nameB) == .orderedAscending
+        }
+
+        cachedFilteredAccessionGroups = result
+
+        // Filter proteins - only by protein ID (fast)
+        var allProteins: [String] = []
+        if let selectedMap = selectedMap {
+            allProteins = Array(selectedMap.keys)
+
+            if !searchQuery.isEmpty {
+                allProteins = allProteins.filter { proteinId in
+                    proteinId.lowercased().contains(searchQuery)
+                }
+            }
+        }
+
+        cachedFilteredProteins = allProteins.sorted()
+    }
+
+    /// Get selection groups for a site with their colors
+    private func getSelectionBadges(for primaryId: String) -> [(name: String, color: Color)] {
+        guard let curtainData = data,
+              let selectedMap = curtainData.selectedMap,
+              let selections = selectedMap[primaryId] else { return [] }
+
+        let colorMap = curtainData.settings.colorMap
+        let defaultColors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F"]
+
+        var badges: [(name: String, color: Color)] = []
+        let sortedSelections = selections.keys.sorted()
+
+        for (index, selectionName) in sortedSelections.enumerated() {
+            if selections[selectionName] == true {
+                // colorMap is [String: String]
+                let hexColor = colorMap[selectionName] ?? defaultColors[index % defaultColors.count]
+                let color = Color(hex: hexColor) ?? .blue
+                badges.append((name: selectionName, color: color))
+            }
+        }
+
+        return badges
+    }
+
+    /// Total site count across all filtered groups
+    private var totalFilteredSiteCount: Int {
+        filteredAccessionGroups.reduce(0) { $0 + $1.sites.count }
+    }
+
+    /// Total selected site count
+    private var totalSelectedSiteCount: Int {
+        filteredAccessionGroups.reduce(0) { $0 + $1.selectedCount }
+    }
+
+    // Load PTM site data from SQLite
+    private func loadPTMSiteData() {
+        guard isPTM, let linkId = data?.linkId, !linkId.isEmpty else { return }
+
+        Task {
+            do {
+                let allData = try ProteomicsDataService.shared.getAllProcessedData(linkId: linkId)
+                print("[ProteinDetailsTab] Loaded \(allData.count) PTM sites from SQLite")
+
+                // Build lookup dictionaries
+                var siteDataMap: [String: ProcessedProteomicsData] = [:]
+                var accGroups: [String: [ProcessedProteomicsData]] = [:]
+
+                // Debug: Check first few sites for accession data
+                for (index, site) in allData.prefix(3).enumerated() {
+                    print("[ProteinDetailsTab] Site \(index): primaryId=\(site.primaryId), accession=\(site.accession ?? "nil"), position=\(site.position ?? "nil")")
+                }
+
+                for site in allData {
+                    siteDataMap[site.primaryId] = site
+
+                    // Group by accession
+                    let acc = site.accession ?? "Unknown"
+                    if accGroups[acc] == nil {
+                        accGroups[acc] = []
+                    }
+                    accGroups[acc]?.append(site)
+                }
+
+                print("[ProteinDetailsTab] Created \(accGroups.count) accession groups: \(Array(accGroups.keys.prefix(5)))")
+
+                await MainActor.run {
+                    self.ptmSiteData = siteDataMap
+                    self.accessionGroups = accGroups
+                    performFiltering() // Initial filter after loading
+                }
+            } catch {
+                print("[ProteinDetailsTab] Error loading PTM data: \(error)")
+            }
+        }
+    }
+
+    // Get display name for a site (PTM-aware)
+    private func getSiteDisplayName(for primaryId: String) -> String {
+        guard let curtainData = data else { return primaryId }
+
+        if isPTM, let siteData = ptmSiteData[primaryId] {
+            let position = siteData.position ?? ""
+            let accession = siteData.accession ?? primaryId
+
+            // Try to get gene name
+            if let geneName = curtainData.getPrimaryGeneNameForProtein(accession), !geneName.isEmpty {
+                return position.isEmpty ? geneName : "\(geneName) \(position)"
+            }
+            return position.isEmpty ? accession : "\(accession) \(position)"
+        }
+
+        // Fallback for non-PTM or missing data
+        if let geneName = curtainData.getPrimaryGeneNameForProtein(primaryId), geneName != primaryId {
+            return "\(geneName) (\(primaryId))"
+        }
+        return primaryId
+    }
+
     private var availableSelectionGroups: [String] {
         guard let curtainData = data else { return ["All"] }
         
@@ -838,48 +1204,7 @@ struct ProteinDetailsTab: View {
     
     
     private var filteredProteins: [String] {
-        guard let curtainData = data else { 
-            return [] 
-        }
-        
-        
-        // Get proteins based on selection group
-        var allProteins: [String] = []
-        
-        if selectedSelectionGroup == "All" {
-            // For "All", show only proteins that are in ANY selection (not all proteins from dataframe)
-            if let selectedMap = curtainData.selectedMap, !selectedMap.isEmpty {
-                allProteins = Array(selectedMap.keys)
-            } else {
-            }
-        } else {
-            // For specific selection group, get only proteins from selectedMap
-            if let selectedMap = curtainData.selectedMap {
-                allProteins = selectedMap.compactMap { (proteinId, selections) in
-                    // Check if this protein has the selected group and it's true
-                    if selections[selectedSelectionGroup] == true {
-                        return proteinId
-                    }
-                    return nil
-                }
-            } else {
-            }
-        }
-        
-        // Filter by search text - search in display name (gene names + protein ID)
-        if !searchText.isEmpty {
-            allProteins = allProteins.filter { proteinId in
-                // Use read-only display name calculation to avoid state modification during view update
-                let displayName = calculateDisplayName(for: proteinId, curtainData: curtainData)
-                return displayName.localizedCaseInsensitiveContains(searchText) ||
-                       proteinId.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-        
-        let finalProteins = allProteins.sorted()
-        if finalProteins.count > 0 && finalProteins.count <= 5 {
-        }
-        return finalProteins
+        cachedFilteredProteins
     }
     
     private func populateDisplayNameCache(for curtainData: CurtainData) {
@@ -900,6 +1225,11 @@ struct ProteinDetailsTab: View {
     }
     
     private func calculateDisplayName(for proteinId: String, curtainData: CurtainData) -> String {
+        // For PTM data, use getSiteDisplayName
+        if isPTM {
+            return getSiteDisplayName(for: proteinId)
+        }
+
         // Use unified gene name resolution (SQLite first, then extraData fallback)
         if let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId),
            geneName != proteinId {
@@ -930,14 +1260,31 @@ struct ProteinDetailsTab: View {
                             .foregroundColor(.secondary)
                             .font(.caption)
 
-                        TextField("Search proteins...", text: $searchText)
+                        TextField(searchPlaceholder, text: $searchText)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .autocapitalization(.none)
                             .disableAutocorrection(true)
+                            .onChange(of: searchText) { _, newValue in
+                                // Cancel previous search task
+                                searchTask?.cancel()
+                                // Debounce: wait 300ms before filtering
+                                searchTask = Task {
+                                    try? await Task.sleep(nanoseconds: 300_000_000)
+                                    if !Task.isCancelled {
+                                        await MainActor.run {
+                                            debouncedSearchText = newValue
+                                            performFiltering()
+                                        }
+                                    }
+                                }
+                            }
 
                         if !searchText.isEmpty {
                             Button {
                                 searchText = ""
+                                debouncedSearchText = ""
+                                searchTask?.cancel()
+                                performFiltering()
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundColor(.secondary)
@@ -947,40 +1294,151 @@ struct ProteinDetailsTab: View {
                         }
                     }
 
-                    Text("\(filteredProteins.count) proteins")
+                    Text(isPTM ? "\(totalSelectedSiteCount)/\(totalFilteredSiteCount) \(itemLabel)" : "\(filteredProteins.count) \(itemLabel)")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .layoutPriority(1)
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
-                
-                // Protein list
-                List {
-                    ForEach(Array(filteredProteins.enumerated()), id: \.element) { index, proteinId in
-                        ProteinDetailRowView(
-                            proteinId: proteinId,
-                            curtainData: $data,
-                            selectedSelectionGroup: selectedSelectionGroup,
-                            proteinList: filteredProteins,
-                            proteinIndex: index
-                        )
+
+                // PTM: Grouped list by accession (like Android's PTMGroupedList)
+                // Non-PTM: Flat protein list
+                if isPTM && !accessionGroups.isEmpty {
+                    List {
+                        ForEach(filteredAccessionGroups, id: \.accession) { group in
+                            Section {
+                                // Expandable header (like Android's AccessionGroupHeader Card)
+                                HStack {
+                                    // Toggle expand/collapse
+                                    Button(action: {
+                                        withAnimation {
+                                            if expandedAccessions.contains(group.accession) {
+                                                expandedAccessions.remove(group.accession)
+                                            } else {
+                                                expandedAccessions.insert(group.accession)
+                                            }
+                                        }
+                                    }) {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(group.geneName ?? group.accession)
+                                                    .font(.subheadline)
+                                                    .fontWeight(.semibold)
+                                                    .foregroundColor(.primary)
+                                                if group.geneName != nil {
+                                                    Text(group.accession)
+                                                        .font(.caption)
+                                                        .foregroundColor(.secondary)
+                                                }
+                                            }
+                                            Spacer()
+                                        }
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    // Show selected/total count
+                                    Text("\(group.selectedCount)/\(group.sites.count)")
+                                        .font(.caption)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(group.selectedCount > 0 ? .blue : .secondary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(group.selectedCount > 0 ? Color.blue.opacity(0.1) : Color.clear)
+                                        .cornerRadius(4)
+
+                                    // PTM Viewer button (like Android)
+                                    Button(action: {
+                                        NotificationCenter.default.post(
+                                            name: NSNotification.Name("OpenPTMViewer"),
+                                            object: nil,
+                                            userInfo: ["accession": group.accession]
+                                        )
+                                    }) {
+                                        Image(systemName: "atom")
+                                            .font(.body)
+                                            .foregroundColor(.purple)
+                                            .frame(width: 28, height: 28)
+                                            .background(Color.purple.opacity(0.1))
+                                            .clipShape(Circle())
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+
+                                    // Expand/collapse indicator
+                                    Button(action: {
+                                        withAnimation {
+                                            if expandedAccessions.contains(group.accession) {
+                                                expandedAccessions.remove(group.accession)
+                                            } else {
+                                                expandedAccessions.insert(group.accession)
+                                            }
+                                        }
+                                    }) {
+                                        Image(systemName: expandedAccessions.contains(group.accession) ? "chevron.down" : "chevron.right")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 24, height: 24)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .background(Color(UIColor.secondarySystemBackground))
+                                .cornerRadius(8)
+
+                                // Show sites when expanded
+                                if expandedAccessions.contains(group.accession) {
+                                    ForEach(group.sites, id: \.primaryId) { site in
+                                        PTMSiteRowView(
+                                            site: site,
+                                            selectionBadges: getSelectionBadges(for: site.primaryId),
+                                            curtainData: $data,
+                                            onTap: {
+                                                // Handle site tap - could show chart or details
+                                            }
+                                        )
+                                        .padding(.leading, 16)
+                                    }
+                                }
+                            }
+                        }
                     }
+                    .listStyle(PlainListStyle())
+                } else {
+                    // Regular protein list
+                    List {
+                        ForEach(Array(filteredProteins.enumerated()), id: \.element) { index, proteinId in
+                            ProteinDetailRowView(
+                                proteinId: proteinId,
+                                curtainData: $data,
+                                selectedSelectionGroup: selectedSelectionGroup,
+                                proteinList: filteredProteins,
+                                proteinIndex: index,
+                                ptmSiteData: ptmSiteData[proteinId]
+                            )
+                        }
+                    }
+                    .listStyle(PlainListStyle())
                 }
-                .listStyle(PlainListStyle())
             }
             .onAppear {
                 // Populate cache when view appears
                 if let curtainData = data {
                     populateDisplayNameCache(for: curtainData)
                 }
+                // Load PTM site data from SQLite
+                loadPTMSiteData()
             }
             .onChange(of: data?.linkId) { oldValue, newValue in
                 // Clear cache and repopulate when data changes (using linkId as identifier)
                 proteinDisplayNameCache.removeAll()
+                ptmSiteData.removeAll()
+                accessionGroups.removeAll()
                 if let curtainData = data {
                     populateDisplayNameCache(for: curtainData)
                 }
+                // Reload PTM data
+                loadPTMSiteData()
             }
             .onChange(of: selectedSelectionGroup) { oldValue, newValue in
                 // Clear cache and repopulate when selection group changes
@@ -1894,6 +2352,20 @@ struct OverviewRow: View {
     }
 }
 
+struct DatasetTypeRow: View {
+    let curtainType: String
+
+    var body: some View {
+        HStack {
+            Text("Dataset Type")
+                .font(.subheadline)
+                .fontWeight(.medium)
+            Spacer()
+            CurtainTypeBadge(curtainType: curtainType)
+        }
+    }
+}
+
 struct PlotSettingsView: View {
     let settings: CurtainSettings
     
@@ -1921,31 +2393,238 @@ struct PlotSettingsView: View {
     }
 }
 
+// MARK: - PTM Site Row View (for grouped list)
+/// Shows a PTM site with selection badges colored by colorMap
+struct PTMSiteRowView: View {
+    let site: ProcessedProteomicsData
+    let selectionBadges: [(name: String, color: Color)]
+    @Binding var curtainData: CurtainData?
+    var onTap: (() -> Void)?
+
+    @State private var showingChart = false
+    @State private var chartType: ProteinChartType = .barChart
+
+    private var displayName: String {
+        let position = site.position ?? ""
+        if !position.isEmpty {
+            return position
+        }
+        return site.primaryId
+    }
+
+    /// Creates an attributed string with modified residues highlighted
+    private var highlightedPeptideSequence: AttributedString? {
+        guard let peptide = site.peptideSequence, !peptide.isEmpty else { return nil }
+
+        // Get positions to highlight (1-indexed positions within peptide)
+        let positions = parsePositionPeptide(site.positionPeptide)
+
+        // Clean peptide sequence - remove modification annotations like (Phospho), [mod], etc.
+        let cleanedPeptide = cleanPeptideSequence(peptide)
+
+        guard !cleanedPeptide.isEmpty else { return nil }
+
+        var attributedString = AttributedString(cleanedPeptide)
+
+        // Apply monospace font
+        attributedString.font = .system(.caption2, design: .monospaced)
+        attributedString.foregroundColor = .secondary
+
+        // Highlight modified positions (convert 1-indexed to 0-indexed)
+        for pos in positions {
+            let index = pos - 1 // Convert to 0-indexed
+            guard index >= 0, index < cleanedPeptide.count else { continue }
+
+            let startIndex = cleanedPeptide.index(cleanedPeptide.startIndex, offsetBy: index)
+            let endIndex = cleanedPeptide.index(after: startIndex)
+
+            if let attrStart = AttributedString.Index(startIndex, within: attributedString),
+               let attrEnd = AttributedString.Index(endIndex, within: attributedString) {
+                attributedString[attrStart..<attrEnd].foregroundColor = Color(red: 0.83, green: 0.18, blue: 0.18) // #D32F2F
+                attributedString[attrStart..<attrEnd].font = .system(.caption2, design: .monospaced).bold()
+            }
+        }
+
+        return attributedString
+    }
+
+    /// Parse positionPeptide string to get highlight positions
+    private func parsePositionPeptide(_ positionPeptide: String?) -> [Int] {
+        guard let posStr = positionPeptide, !posStr.isEmpty else { return [] }
+        return posStr
+            .split(separator: ";")
+            .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+            .sorted()
+    }
+
+    /// Clean peptide sequence by removing modification annotations
+    private func cleanPeptideSequence(_ peptide: String) -> String {
+        var result = peptide
+        // Remove (Phospho), (Acetyl), etc.
+        result = result.replacingOccurrences(of: "\\([^)]*\\)", with: "", options: .regularExpression)
+        // Remove [mod], etc.
+        result = result.replacingOccurrences(of: "\\[[^\\]]*\\]", with: "", options: .regularExpression)
+        // Remove {mod}, etc.
+        result = result.replacingOccurrences(of: "\\{[^}]*\\}", with: "", options: .regularExpression)
+        // Remove underscores
+        result = result.replacingOccurrences(of: "_", with: "")
+        return result
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Site info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+
+                if let highlighted = highlightedPeptideSequence {
+                    Text(highlighted)
+                        .lineLimit(1)
+                } else if let peptide = site.peptideSequence, !peptide.isEmpty {
+                    Text(peptide)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            // Selection badges with colors from colorMap
+            if !selectionBadges.isEmpty {
+                HStack(spacing: 4) {
+                    ForEach(selectionBadges, id: \.name) { badge in
+                        Text(badge.name)
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(badge.color)
+                            .cornerRadius(4)
+                    }
+                }
+                .accessibilityIdentifier("selectionBadges_\(site.primaryId)")
+            }
+
+            // Chart button
+            Button(action: {
+                showingChart = true
+            }) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    .frame(width: 24, height: 24)
+                    .background(Color.blue.opacity(0.1))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityIdentifier("siteChartButton_\(site.primaryId)")
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onTap?()
+        }
+        .sheet(isPresented: $showingChart) {
+            if let curtainData = curtainData {
+                ProteinChartView(
+                    proteinId: site.primaryId,
+                    curtainData: Binding(
+                        get: { curtainData },
+                        set: { newValue in
+                            self.curtainData = newValue
+                        }
+                    ),
+                    chartType: $chartType,
+                    isPresented: $showingChart,
+                    proteinList: [site.primaryId],
+                    initialIndex: 0
+                )
+            }
+        }
+    }
+}
+
 struct ProteinDetailRowView: View {
     let proteinId: String
     @Binding var curtainData: CurtainData?
     let selectedSelectionGroup: String
     let proteinList: [String]
     let proteinIndex: Int
-    
+    var ptmSiteData: ProcessedProteomicsData? = nil
+
     // Add chart presentation state
     @State private var showingChart = false
     @State private var chartType: ProteinChartType = .barChart
-    
+    @State private var showingPTMViewer = false
+
+    private var isPTM: Bool {
+        curtainData?.differentialForm.isPTM ?? false
+    }
+
     private var proteinData: [String: Any]? {
         guard let curtainData = curtainData else { return nil }
         return curtainData.proteomicsData[proteinId] as? [String: Any]
     }
-    
+
+    // Get PTM-specific fields - prefer SQLite data, fallback to in-memory
+    private var accession: String? {
+        // First try SQLite data
+        if let siteData = ptmSiteData, let acc = siteData.accession, !acc.isEmpty {
+            return acc
+        }
+        // Fallback to in-memory data
+        guard let data = proteinData,
+              let accCol = curtainData?.differentialForm.accession,
+              !accCol.isEmpty else { return nil }
+        return data[accCol] as? String
+    }
+
+    private var position: String? {
+        // First try SQLite data
+        if let siteData = ptmSiteData, let pos = siteData.position, !pos.isEmpty {
+            return pos
+        }
+        // Fallback to in-memory data
+        guard let data = proteinData,
+              let posCol = curtainData?.differentialForm.position,
+              !posCol.isEmpty else { return nil }
+        return data[posCol] as? String
+    }
+
+    private var geneName: String? {
+        // First try SQLite data
+        if let siteData = ptmSiteData, let gn = siteData.geneNames, !gn.isEmpty {
+            return gn.components(separatedBy: CharacterSet(charactersIn: " ;")).first
+        }
+        // Try gene name resolution
+        guard let curtainData = curtainData else { return nil }
+        let lookupId = isPTM ? (accession ?? proteinId) : proteinId
+        return curtainData.getPrimaryGeneNameForProtein(lookupId)
+    }
+
     private var displayName: String {
         guard let curtainData = curtainData else {
             return proteinId
         }
 
-        // Use unified gene name resolution (SQLite first, then extraData fallback)
-        if let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId),
-           geneName != proteinId {
-            return "\(geneName) (\(proteinId))"
+        // For PTM data: show "GeneName Position" or "Accession Position"
+        if isPTM {
+            let pos = position ?? ""
+            let acc = accession ?? proteinId
+
+            if let gn = geneName, !gn.isEmpty {
+                return pos.isEmpty ? gn : "\(gn) \(pos)"
+            }
+            return pos.isEmpty ? acc : "\(acc) \(pos)"
+        }
+
+        // Regular TP data: show "GeneName (PrimaryId)"
+        if let gn = geneName, gn != proteinId {
+            return "\(gn) (\(proteinId))"
         }
 
         return proteinId
@@ -2017,10 +2696,20 @@ struct ProteinDetailRowView: View {
     private func generateAnnotationTitle(for proteinId: String) -> String {
         guard let curtainData = curtainData else { return proteinId }
 
+        // For PTM data: use "GeneName Position" or "Accession Position"
+        if isPTM {
+            let pos = position ?? ""
+            let acc = accession ?? proteinId
+
+            if let gn = geneName, !gn.isEmpty {
+                return pos.isEmpty ? gn : "\(gn) \(pos)"
+            }
+            return pos.isEmpty ? acc : "\(acc) \(pos)"
+        }
+
         // Use unified gene name resolution (SQLite first, then extraData fallback)
-        if let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId),
-           geneName != proteinId {
-            return "\(geneName)(\(proteinId))"
+        if let gn = geneName, gn != proteinId {
+            return "\(gn)(\(proteinId))"
         }
 
         return proteinId
@@ -2213,17 +2902,28 @@ struct ProteinDetailRowView: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 6) {
-                // Protein name with selection indicators
+                // Protein/Site name with selection indicators
                 HStack {
-                    Text(displayName)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .lineLimit(1)
-                        .foregroundColor(.primary)
-                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(displayName)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .lineLimit(1)
+                            .foregroundColor(.primary)
+                            .accessibilityIdentifier("proteinDisplayName_\(proteinId)")
+
+                        // Show accession as subtitle for PTM data
+                        if isPTM, let acc = accession, !acc.isEmpty {
+                            Text(acc)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .accessibilityIdentifier("proteinAccession_\(proteinId)")
+                        }
+                    }
+
                     Spacer()
-                    
-                    // Selection group indicators 
+
+                    // Selection group indicators
                     HStack(spacing: 4) {
                         ForEach(Array(zip(selectionGroups, selectionColors)), id: \.0) { (groupName, color) in
                             Circle()
@@ -2249,6 +2949,7 @@ struct ProteinDetailRowView: View {
                                 .padding(.vertical, 2)
                                 .background((Color(hex: color) ?? .blue).opacity(0.2))
                                 .cornerRadius(4)
+                                .accessibilityIdentifier("selectionBadge_\(groupName)")
                         }
                         if selectionGroups.count > 3 {
                             Text("+\(selectionGroups.count - 3)")
@@ -2256,6 +2957,7 @@ struct ProteinDetailRowView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
+                    .accessibilityIdentifier("selectionBadgesRow_\(proteinId)")
                 }
 
                 // Protein statistics (like volcano plot)
@@ -2313,6 +3015,7 @@ struct ProteinDetailRowView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityIdentifier("proteinChartButton_\(proteinId)")
                 
                 // Annotation toggle button
                 Button(action: {
@@ -2330,10 +3033,41 @@ struct ProteinDetailRowView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityIdentifier("annotationToggleButton_\(proteinId)")
+
+                // PTM Viewer button (only for PTM data)
+                if isPTM {
+                    Button(action: {
+                        showingPTMViewer = true
+                    }) {
+                        Image(systemName: "atom")
+                            .font(.caption)
+                            .foregroundColor(.purple)
+                            .frame(width: 24, height: 24)
+                            .background(Color.purple.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .accessibilityIdentifier("ptmViewerButton_\(proteinId)")
+                }
             }
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
+        .sheet(isPresented: $showingPTMViewer) {
+            if let curtainData = curtainData, let acc = accession {
+                PTMViewerScreen(
+                    linkId: curtainData.linkId ?? "",
+                    accession: acc,
+                    pCutoff: curtainData.settings.pCutoff,
+                    fcCutoff: curtainData.settings.log2FCCutoff,
+                    customPTMData: curtainData.settings.customPTMData.mapValues { $0.value },
+                    variantCorrection: curtainData.settings.variantCorrection.mapValues { $0.value },
+                    customSequences: curtainData.settings.customSequences.mapValues { $0.value },
+                    onDismiss: { showingPTMViewer = false }
+                )
+            }
+        }
         .sheet(isPresented: $showingChart) {
             if curtainData != nil {
                 ProteinChartView(

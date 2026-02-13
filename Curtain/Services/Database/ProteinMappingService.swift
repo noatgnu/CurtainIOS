@@ -180,7 +180,8 @@ class ProteinMappingService {
         // Debug: Check UniProt data availability
         let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any]
         let uniprotCount = uniprotDB?.count ?? 0
-        print("[ProteinMappingService] Building mappings for \(processedData.count) proteins, UniProt entries: \(uniprotCount)")
+        let isPTM = curtainData.differentialForm.isPTM
+        print("[ProteinMappingService] Building mappings for \(processedData.count) proteins, UniProt entries: \(uniprotCount), isPTM: \(isPTM)")
 
         var geneNameMappings: [(String, String)] = []
         var primaryIdMappings: [(String, String)] = []
@@ -199,7 +200,12 @@ class ProteinMappingService {
                 primaryIdMappings.append((splitId.uppercased(), primaryId))
             }
 
-            // 3. Get gene name from multiple sources
+            // 3. For PTM data, create accession -> site ID mapping
+            if isPTM, let accession = entity.accession, !accession.isEmpty {
+                primaryIdMappings.append((accession.uppercased(), primaryId))
+            }
+
+            // 4. Get gene name from multiple sources
             var geneName: String? = nil
 
             // Priority 1: From processed data geneNames column
@@ -207,12 +213,18 @@ class ProteinMappingService {
                 geneName = gn
             }
 
-            // Priority 2: From UniProt data
+            // Priority 2: For PTM data, look up gene name using accession from UniProt data
+            if (geneName == nil || geneName?.isEmpty == true) && isPTM,
+               let accession = entity.accession, !accession.isEmpty {
+                geneName = getGeneNameFromUniProt(primaryId: accession, splitIds: [accession], uniprotDB: uniprotDB)
+            }
+
+            // Priority 3: From UniProt data using primary ID
             if geneName == nil || geneName?.isEmpty == true {
                 geneName = getGeneNameFromUniProt(primaryId: primaryId, splitIds: splitIds, uniprotDB: uniprotDB)
             }
 
-            // 4. Create gene name mappings if we found a gene name
+            // 5. Create gene name mappings if we found a gene name
             if let gn = geneName, !gn.isEmpty {
                 // Map full gene name
                 geneNameMappings.append((gn.uppercased(), primaryId))
