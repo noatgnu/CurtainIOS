@@ -74,6 +74,7 @@ struct PlotlyWebView: UIViewRepresentable {
         contentController.add(context.coordinator, name: "plotExported")
         contentController.add(context.coordinator, name: "plotExportError")
         contentController.add(context.coordinator, name: "plotInfo")
+        contentController.add(context.coordinator, name: "svgCached")
         configuration.userContentController = contentController
         
         let webView = WKWebView(frame: .zero, configuration: configuration)
@@ -170,29 +171,64 @@ struct PlotlyWebView: UIViewRepresentable {
     }
     
     
-    /// Export the currently active plot as PNG (static method for global access)
+    /// Export the currently active plot as PNG using layer rendering (bypasses evaluateJavaScript)
     static func exportCurrentPlotAsPNG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
-        guard let webView = PlotlyCoordinator.getCurrentWebView() else {
-            return
-        }
-        
+        guard let webView = PlotlyCoordinator.getCurrentWebView() else { return }
+
         let finalFilename = filename ?? "plot_\(DateFormatter.filenameSafe.string(from: Date())).png"
-        let jsCode = "window.CurtainVisualization.exportAsPNG('\(finalFilename)', \(width), \(height));"
-        
-        webView.evaluateJavaScript(jsCode) { _, _ in
+
+        // Use layer rendering to capture the webview as PNG — avoids evaluateJavaScript
+        // which fails on Mac Catalyst due to WebContent process XPC issues
+        let scale = UIScreen.main.scale
+        let size = webView.bounds.size
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let image = renderer.image { ctx in
+            webView.layer.render(in: ctx.cgContext)
+        }
+
+        guard let pngData = image.pngData() else { return }
+
+        let dataURL = "data:image/png;base64," + pngData.base64EncodedString()
+
+        // Route through the existing export pipeline via PlotExportService
+        let exportData: [String: Any] = [
+            "format": "png",
+            "filename": finalFilename,
+            "dataURL": dataURL,
+            "width": Int(size.width * scale),
+            "height": Int(size.height * scale)
+        ]
+
+        Task { @MainActor in
+            _ = await PlotExportService.shared.processExportData(exportData)
         }
     }
-    
-    /// Export the currently active plot as SVG (static method for global access)
+
+    /// Export the currently active plot as SVG using the SVG data URL cached at render time
     static func exportCurrentPlotAsSVG(filename: String? = nil, width: Int = 1200, height: Int = 800) {
-        guard let webView = PlotlyCoordinator.getCurrentWebView() else {
+        guard let dataURL = PlotlyCoordinator.sharedCoordinator?.cachedSVGString else {
+            PlotExportService.shared.exportError = "No SVG data available. Please wait for the plot to finish rendering."
             return
         }
-        
+
         let finalFilename = filename ?? "plot_\(DateFormatter.filenameSafe.string(from: Date())).svg"
-        let jsCode = "window.CurtainVisualization.exportAsSVG('\(finalFilename)', \(width), \(height));"
-        
-        webView.evaluateJavaScript(jsCode) { _, _ in
+
+        Task { @MainActor in
+            let exportService = PlotExportService.shared
+            do {
+                let svgData = try exportService.convertDataURLToData(dataURL)
+                let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(finalFilename)
+                try svgData.write(to: tempURL)
+                switch exportService.pendingAction {
+                case .share:
+                    exportService.exportedShareItems = [tempURL]
+                case .saveToFile:
+                    exportService.exportedFileURL = tempURL
+                }
+                exportService.pendingAction = .share
+            } catch {
+                exportService.exportError = "SVG export failed: \(error.localizedDescription)"
+            }
         }
     }
     

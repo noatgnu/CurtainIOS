@@ -63,62 +63,22 @@ class CrossDatasetSearchService {
         return curtain.dataDescription.isEmpty ? linkId : curtain.dataDescription
     }
 
-    // MARK: - Gene Name Resolution (matches Android)
+    // MARK: - Gene Name Resolution (uses SQLite mapping tables)
 
-    private func getUniprotFromPrimary(_ id: String, curtainData: CurtainData) -> [String: Any]? {
-        guard let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any] else {
-            return nil
+    private func getGeneNameForProtein(_ proteinId: String, linkId: String, curtainData: CurtainData) -> String? {
+        // Use the pre-built gene name mapping table (populated from UniProt during ensureMappingsExist)
+        if let geneName = proteinMappingService.getGeneNameFromPrimaryId(linkId: linkId, primaryId: proteinId) {
+            return geneName
         }
 
-        if let record = uniprotDB[id] as? [String: Any] {
-            return record
-        }
-
-        if let accMap = curtainData.extraData?.uniprot?.accMap {
-            if let alternatives = accMap[id] {
-                let dataMap = curtainData.extraData?.uniprot?.dataMap
-                for alt in alternatives {
-                    if let dataMap = dataMap,
-                       let canonicalEntry = dataMap[alt] as? String,
-                       let record = uniprotDB[canonicalEntry] as? [String: Any] {
-                        return record
-                    }
-                }
-            }
+        // Fall back to processedData geneNames column
+        if let processedData = try? proteomicsDataService.getProcessedDataForProtein(linkId: linkId, primaryId: proteinId),
+           let first = processedData.first,
+           let gn = first.geneNames, !gn.isEmpty {
+            return gn
         }
 
         return nil
-    }
-
-    private func getGeneNameFromUniProt(_ id: String, curtainData: CurtainData) -> String? {
-        guard let uniprotRecord = getUniprotFromPrimary(id, curtainData: curtainData) else {
-            return nil
-        }
-        guard let geneNames = uniprotRecord["Gene Names"] as? String, !geneNames.isEmpty else {
-            return nil
-        }
-        let parts = geneNames.components(separatedBy: CharacterSet(charactersIn: " ;\\"))
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        return parts.first
-    }
-
-    private func getGeneNameForProtein(_ proteinId: String, linkId: String, curtainData: CurtainData) -> String? {
-        var geneName: String?
-
-        if curtainData.fetchUniprot {
-            geneName = getGeneNameFromUniProt(proteinId, curtainData: curtainData)
-        }
-
-        if geneName == nil || geneName?.isEmpty == true {
-            if let processedData = try? proteomicsDataService.getProcessedDataForProtein(linkId: linkId, primaryId: proteinId),
-               let first = processedData.first,
-               let gn = first.geneNames, !gn.isEmpty {
-                geneName = gn
-            }
-        }
-
-        return geneName
     }
 
     // MARK: - Main Entry Point
@@ -130,25 +90,17 @@ class CrossDatasetSearchService {
         let searchTerms = parseSearchInput(config.searchTerms)
         let linkIds = config.datasetLinkIds
 
-        let datasetResults = await withTaskGroup(of: DatasetSearchResult?.self, returning: [DatasetSearchResult].self) { group in
-            for linkId in linkIds {
-                group.addTask { [weak self] in
-                    guard let self else { return nil }
-                    return await self.searchInDataset(
-                        linkId: linkId,
-                        terms: searchTerms,
-                        searchType: config.searchType,
-                        useRegex: config.useRegex,
-                        onStatus: onStatus
-                    )
-                }
+        var datasetResults: [DatasetSearchResult] = []
+        for linkId in linkIds {
+            if let result = await searchInDataset(
+                linkId: linkId,
+                terms: searchTerms,
+                searchType: config.searchType,
+                useRegex: config.useRegex,
+                onStatus: onStatus
+            ) {
+                datasetResults.append(result)
             }
-
-            var results: [DatasetSearchResult] = []
-            for await result in group {
-                if let result { results.append(result) }
-            }
-            return results
         }
 
         let summaries = aggregateResults(

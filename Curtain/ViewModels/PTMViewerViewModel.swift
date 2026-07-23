@@ -46,7 +46,6 @@ class PTMViewerViewModel: ObservableObject {
         self.pCutoff = pCutoff
         self.fcCutoff = fcCutoff
 
-        do {
             // Load experimental PTM sites
             let experimentalSites = proteomicsDataService.getExperimentalPTMSites(
                 linkId: linkId,
@@ -165,10 +164,6 @@ class PTMViewerViewModel: ObservableObject {
             self.ptmViewerState = state
             self.selectedModTypes = Set(availableModTypes)
             self.selectedCustomDatabases = Set(availableCustomDatabases)
-
-        } catch {
-            self.error = "Failed to load PTM data: \(error.localizedDescription)"
-        }
 
         isLoading = false
     }

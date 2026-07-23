@@ -74,18 +74,27 @@ class PlotExportService: ObservableObject {
     
     static let shared = PlotExportService()
     
+    enum ExportAction {
+        case share
+        case saveToFile
+    }
+
     // MARK: - Published Properties
-    
+
     @Published var isExporting = false
     @Published var exportProgress: Double = 0.0
     @Published var lastExportResult: PlotExportResult?
     @Published var exportError: String?
     @Published var exportedShareItems: [Any]?
-    
+    @Published var exportedFileURL: URL?
+
+    /// Set before triggering export to control where the result goes
+    var pendingAction: ExportAction = .share
+
     // MARK: - Private Properties
-    
+
     private let fileManager = FileManager.default
-    
+
     private init() {} // Private initializer for singleton
     
     // MARK: - Public Methods
@@ -135,12 +144,18 @@ class PlotExportService: ObservableObject {
             try imageData.write(to: tempURL)
             exportProgress = 0.9
 
-            // Publish share items for the share sheet
-            if format == .png, let image = UIImage(data: imageData) {
-                exportedShareItems = [image]
-            } else {
-                exportedShareItems = [tempURL]
+            // Route result based on pending action
+            switch pendingAction {
+            case .share:
+                if format == .png, let image = UIImage(data: imageData) {
+                    exportedShareItems = [image]
+                } else {
+                    exportedShareItems = [tempURL]
+                }
+            case .saveToFile:
+                exportedFileURL = tempURL
             }
+            pendingAction = .share // Reset to default
 
             let fileSize = Int64(imageData.count)
             exportProgress = 1.0
@@ -194,15 +209,28 @@ class PlotExportService: ObservableObject {
     
     // MARK: - Private Methods
     
-    private func convertDataURLToData(_ dataURL: String) throws -> Data {
-        // Extract the base64 part from data URL (format: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...")
-        guard let range = dataURL.range(of: ","),
-              let base64String = String(dataURL[range.upperBound...]).removingPercentEncoding,
-              let data = Data(base64Encoded: base64String) else {
+    func convertDataURLToData(_ dataURL: String) throws -> Data {
+        guard let commaRange = dataURL.range(of: ",") else {
             throw PlotExportError.invalidDataURL
         }
-        
-        return data
+
+        let header = String(dataURL[dataURL.startIndex..<commaRange.lowerBound])
+        let payload = String(dataURL[commaRange.upperBound...])
+
+        if header.contains(";base64") {
+            // Base64-encoded: data:image/png;base64,... or data:image/svg+xml;base64,...
+            guard let data = Data(base64Encoded: payload, options: .ignoreUnknownCharacters) else {
+                throw PlotExportError.invalidDataURL
+            }
+            return data
+        } else {
+            // URL-encoded text: data:image/svg+xml,...
+            guard let decoded = payload.removingPercentEncoding,
+                  let data = decoded.data(using: .utf8) else {
+                throw PlotExportError.invalidDataURL
+            }
+            return data
+        }
     }
     
     private func saveToFiles(data: Data, filename: String, format: PlotExportOptions.ExportFormat) async throws -> String {

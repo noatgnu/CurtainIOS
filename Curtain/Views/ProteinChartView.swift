@@ -27,6 +27,13 @@ struct ProteinChartView: View {
     @State private var showingIndividualYAxisLimits = false
     @State private var showingBracketSettings = false
     @State private var showFABs = true
+    @State private var isExporting = false
+    @State private var showingExportOptions = false
+    @State private var showingFileSaver = false
+    @State private var showingShareSheet = false
+    @State private var exportFileURL: URL?
+    @State private var shareItems: [Any] = []
+    @StateObject private var webViewHolder = WebViewHolder()
     @Environment(\.colorScheme) var colorScheme
 
     private var isMac: Bool {
@@ -108,12 +115,14 @@ struct ProteinChartView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Chart type selector + navigation
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     // Navigation (previous)
                     if proteinList.count > 1 {
                         Button(action: { navigateToPrevious() }) {
                             Image(systemName: "chevron.left")
-                                .font(.caption)
+                                .font(.subheadline)
+                                .padding(6)
+                                .contentShape(Rectangle())
                         }
                         .disabled(!hasPreviousProtein)
                         .buttonStyle(.plain)
@@ -131,7 +140,9 @@ struct ProteinChartView: View {
 
                         Button(action: { navigateToNext() }) {
                             Image(systemName: "chevron.right")
-                                .font(.caption)
+                                .font(.subheadline)
+                                .padding(6)
+                                .contentShape(Rectangle())
                         }
                         .disabled(!hasNextProtein)
                         .buttonStyle(.plain)
@@ -190,9 +201,13 @@ struct ProteinChartView: View {
                                 Spacer()
                             }
                         } else {
-                            ProteinChartWebView(htmlContent: chartHtml)
-                                .onAppear {
-                                }
+                            ProteinChartWebView(
+                                htmlContent: chartHtml,
+                                onExport: { exportData in
+                                    handleExportData(exportData)
+                                },
+                                webViewHolder: webViewHolder
+                            )
                                 .gesture(
                                     // Add swipe gesture for navigation
                                     DragGesture(minimumDistance: 50)
@@ -309,11 +324,29 @@ struct ProteinChartView: View {
                     .fixedSize()
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Export") {
-                        // TODO: Export functionality
+                    HStack(spacing: 8) {
+                        if showingExportOptions {
+                            Button("PNG") { exportChartAsPNG() }
+                                .font(.caption)
+                            Button("SVG") { exportChartAsSVG() }
+                                .font(.caption)
+                            Button {
+                                shareChart()
+                            } label: {
+                                Image(systemName: "square.and.arrow.up.on.square")
+                                    .font(.caption)
+                            }
+                        }
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showingExportOptions.toggle()
+                            }
+                        } label: {
+                            Text(showingExportOptions ? "Cancel" : "Export")
+                        }
                     }
                     .fixedSize()
-                    .disabled(isLoading || error != nil)
+                    .disabled(isLoading || error != nil || isExporting)
                 }
             }
         }
@@ -344,12 +377,25 @@ struct ProteinChartView: View {
             // Reload the chart with updated colors
             loadChart()
         }
+        .sheet(isPresented: $showingFileSaver) {
+            if let url = exportFileURL {
+                DocumentExportView(fileURL: url) {
+                    showingFileSaver = false
+                    // Clean up temp file after export
+                    try? FileManager.default.removeItem(at: url)
+                    exportFileURL = nil
+                }
+            }
+        }
+        .sheet(isPresented: $showingShareSheet) {
+            ShareSheet(activityItems: shareItems)
+        }
     }
     
     private func loadChart() {
         isLoading = true
         error = nil
-        
+
         Task {
             do {
                 let html = try await generateChartHtml()
@@ -403,6 +449,175 @@ struct ProteinChartView: View {
         }
     }
     
+    private var exportFilename: String {
+        let geneName = curtainData.getPrimaryGeneNameForProtein(currentProteinId) ?? currentProteinId
+        let cleanName = geneName.replacingOccurrences(of: "[^a-zA-Z0-9_-]", with: "_", options: .regularExpression)
+        return "\(chartType.rawValue.replacingOccurrences(of: " ", with: "_"))_\(cleanName)"
+    }
+
+    private enum PendingExportAction {
+        case savePNG
+        case saveSVG
+        case share
+    }
+
+    @State private var pendingExportAction: PendingExportAction = .share
+
+    /// Fire-and-forget: trigger Plotly.toImage, result comes back via exportHandler message handler
+    private func triggerPlotlyExport(format: String) {
+        guard let webView = webViewHolder.webView else { return }
+
+        let js = """
+        (function() {
+            var plotDiv = document.getElementById('plot');
+            if (!plotDiv || typeof Plotly === 'undefined') return;
+            var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.exportHandler;
+            if (!handler) return;
+            var rect = plotDiv.getBoundingClientRect();
+            Plotly.toImage(plotDiv, {
+                format: '\(format)',
+                width: Math.round(rect.width * 2),
+                height: Math.round(rect.height * 2)
+            }).then(function(dataUrl) {
+                handler.postMessage(JSON.stringify({
+                    format: '\(format)',
+                    filename: '\(exportFilename).\(format)',
+                    dataURL: dataUrl
+                }));
+            }).catch(function(e) {
+                handler.postMessage(JSON.stringify({ error: String(e) }));
+            });
+        })();
+        """
+
+        webView.evaluateJavaScript(js) { _, _ in }
+    }
+
+    private func shareChart() {
+        guard let webView = webViewHolder.webView else { return }
+        isExporting = true
+        showingExportOptions = false
+
+        // Use layer rendering to capture PNG for sharing (bypasses evaluateJavaScript)
+        let renderer = UIGraphicsImageRenderer(size: webView.bounds.size)
+        let image = renderer.image { ctx in
+            webView.layer.render(in: ctx.cgContext)
+        }
+        shareItems = [image]
+        isExporting = false
+        showingShareSheet = true
+    }
+
+    private func exportChartAsPNG() {
+        guard let webView = webViewHolder.webView else { return }
+        isExporting = true
+        showingExportOptions = false
+
+        // Use layer rendering (bypasses evaluateJavaScript which fails on Mac Catalyst)
+        let renderer = UIGraphicsImageRenderer(size: webView.bounds.size)
+        let image = renderer.image { ctx in
+            webView.layer.render(in: ctx.cgContext)
+        }
+
+        guard let pngData = image.pngData() else {
+            isExporting = false
+            return
+        }
+
+        let filename = "\(exportFilename).png"
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        do {
+            try pngData.write(to: tempURL)
+            exportFileURL = tempURL
+            isExporting = false
+            showingFileSaver = true
+        } catch {
+            isExporting = false
+        }
+    }
+
+    private func exportChartAsSVG() {
+        guard let dataURL = webViewHolder.cachedSVGString else {
+            // SVG not cached yet — chart may still be rendering
+            return
+        }
+        isExporting = true
+        showingExportOptions = false
+
+        let filename = "\(exportFilename).svg"
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        do {
+            let svgData = try PlotExportService.shared.convertDataURLToData(dataURL)
+            try svgData.write(to: tempURL)
+            exportFileURL = tempURL
+            isExporting = false
+            showingFileSaver = true
+        } catch {
+            isExporting = false
+        }
+    }
+
+    /// Extract SVG content from a web archive plist
+
+    private func handleExportData(_ exportData: [String: Any]) {
+        if let error = exportData["error"] as? String {
+            print("[ProteinChartView] Export error: \(error)")
+            isExporting = false
+            return
+        }
+
+        guard let dataURL = exportData["dataURL"] as? String,
+              let format = exportData["format"] as? String,
+              let filename = exportData["filename"] as? String else {
+            isExporting = false
+            return
+        }
+
+        // Decode the data URL
+        let fileData: Data?
+        if dataURL.contains(";base64,"), let range = dataURL.range(of: ";base64,") {
+            let base64Part = String(dataURL[range.upperBound...])
+            fileData = Data(base64Encoded: base64Part)
+        } else if let range = dataURL.range(of: ",") {
+            fileData = String(dataURL[range.upperBound...]).removingPercentEncoding?.data(using: .utf8)
+        } else {
+            fileData = nil
+        }
+
+        guard let data = fileData else {
+            isExporting = false
+            return
+        }
+
+        switch pendingExportAction {
+        case .savePNG, .saveSVG:
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            do {
+                try data.write(to: tempURL)
+                exportFileURL = tempURL
+                isExporting = false
+                showingFileSaver = true
+            } catch {
+                isExporting = false
+            }
+
+        case .share:
+            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+            do {
+                try data.write(to: tempURL)
+                if format == "png", let image = UIImage(data: data) {
+                    shareItems = [image]
+                } else {
+                    shareItems = [tempURL]
+                }
+                isExporting = false
+                showingShareSheet = true
+            } catch {
+                isExporting = false
+            }
+        }
+    }
+
     private func generateChartHtml() async throws -> String {
         let startTime = Date()
         
@@ -435,27 +650,114 @@ struct ProteinChartView: View {
     }
 }
 
+class WebViewHolder: ObservableObject {
+    weak var webView: WKWebView?
+    /// Cached SVG string from DOM extraction at render time (for export without evaluateJavaScript)
+    var cachedSVGString: String?
+}
+
 struct ProteinChartWebView: UIViewRepresentable {
     let htmlContent: String
-    
+    var onExport: (([String: Any]) -> Void)? = nil
+    var webViewHolder: WebViewHolder? = nil
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onExport: onExport, webViewHolder: webViewHolder)
+    }
+
     func makeUIView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
-        
+        configuration.userContentController.add(context.coordinator, name: "exportHandler")
+        configuration.userContentController.add(context.coordinator, name: "svgCached")
+
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.bounces = false
         webView.isOpaque = false
         webView.backgroundColor = UIColor.clear
-        
+        webViewHolder?.webView = webView
+
         return webView
     }
-    
+
     func updateUIView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onExport = onExport
+        webViewHolder?.webView = webView
         if !htmlContent.isEmpty {
             webView.loadHTMLString(htmlContent, baseURL: nil)
-        } else {
+        }
+    }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "exportHandler")
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "svgCached")
+    }
+
+    class Coordinator: NSObject, WKScriptMessageHandler {
+        var onExport: (([String: Any]) -> Void)?
+        weak var webViewHolder: WebViewHolder?
+
+        init(onExport: (([String: Any]) -> Void)?, webViewHolder: WebViewHolder?) {
+            self.onExport = onExport
+            self.webViewHolder = webViewHolder
+        }
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "svgCached" {
+                if let svgDataURL = message.body as? String {
+                    DispatchQueue.main.async {
+                        self.webViewHolder?.cachedSVGString = svgDataURL
+                    }
+                }
+                return
+            }
+
+            guard message.name == "exportHandler" else { return }
+            guard let body = message.body as? String else { return }
+            guard let data = body.data(using: .utf8),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return
+            }
+            DispatchQueue.main.async {
+                self.onExport?(json)
+            }
+        }
+    }
+}
+
+// MARK: - Document Export View
+
+struct DocumentExportView: UIViewControllerRepresentable {
+    let fileURL: URL
+    var onDismiss: (() -> Void)? = nil
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onDismiss: onDismiss)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forExporting: [fileURL])
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onDismiss: (() -> Void)?
+
+        init(onDismiss: (() -> Void)?) {
+            self.onDismiss = onDismiss
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            onDismiss?()
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onDismiss?()
         }
     }
 }

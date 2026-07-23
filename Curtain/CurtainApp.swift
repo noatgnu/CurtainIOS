@@ -11,6 +11,7 @@ import SwiftData
 @main
 struct CurtainApp: App {
     @State private var deepLinkViewModel = DeepLinkViewModel()
+    @AppStorage("appearanceMode") private var appearanceMode: String = "auto"
 
     /// Check if running under UI tests
     private static var isUITesting: Bool {
@@ -62,6 +63,7 @@ struct CurtainApp: App {
         WindowGroup {
             ContentView()
                 .environment(deepLinkViewModel)
+                .preferredColorScheme(resolvedColorScheme)
                 .onOpenURL { url in
                     Task {
                         await handleDeepLink(url)
@@ -69,6 +71,14 @@ struct CurtainApp: App {
                 }
         }
         .modelContainer(sharedModelContainer)
+    }
+
+    private var resolvedColorScheme: ColorScheme? {
+        switch appearanceMode {
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
+        }
     }
 
     private func handleDeepLink(_ url: URL) async {

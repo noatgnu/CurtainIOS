@@ -229,7 +229,7 @@ struct CrossDatasetResultsView: View {
                 ProgressView()
                 Spacer()
             }
-        } else if let matrix = viewModel.matrixData, let selected = viewModel.selectedProtein {
+        } else if viewModel.matrixData != nil, let selected = viewModel.selectedProtein {
             CrossDatasetMatrixView(
                 viewModel: viewModel,
                 selectedProteinId: selected.primaryId ?? selected.searchTerm

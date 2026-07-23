@@ -42,6 +42,7 @@ struct CurtainListView: View {
             Group {
                 if let curtain = curtainForDetails {
                     CurtainDetailsView(curtain: curtain)
+                        .id(curtain.linkId)
                 } else {
                     emptyDetailView
                 }
@@ -230,8 +231,13 @@ struct CurtainListView: View {
                 .padding(.bottom, 8)
             }
 
+            CurtainTypeFilterBar(selectedFilter: $curtainTypeFilter)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
             CollectionsTabView(
                 viewModel: viewModel,
+                curtainTypeFilter: curtainTypeFilter,
                 onSessionTap: { session, collection in
                     handleCollectionSessionTap(session: session, collection: collection)
                 },
@@ -347,30 +353,25 @@ struct CurtainListView: View {
     private func handleCurtainTap(_ curtain: CurtainEntity) {
         let curtainLinkId = curtain.linkId
 
-        #if targetEnvironment(simulator)
-        let isSimulator = true
-        #else
-        let isSimulator = false
-        #endif
+        // Check if data exists in SQLite database
+        let dataExistsInDB = ProteomicsDataDatabaseManager.shared.checkDataExists(curtainLinkId)
 
+        if dataExistsInDB {
+            curtainForDetails = curtain
+            return
+        }
+
+        // Fallback: check JSON file
         let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let curtainDataDir = documentsURL.appendingPathComponent("CurtainData", isDirectory: true)
         let currentFilePath = curtainDataDir.appendingPathComponent("\(curtainLinkId).json").path
 
-        let fileExistsAtCurrentPath = FileManager.default.fileExists(atPath: currentFilePath)
-
-        if fileExistsAtCurrentPath {
+        if FileManager.default.fileExists(atPath: currentFilePath) {
             if curtain.file != currentFilePath {
                 curtain.file = currentFilePath
-                do {
-                    try modelContext.save()
-                } catch {
-                }
+                try? modelContext.save()
             }
             curtainForDetails = curtain
-        } else if isSimulator || curtain.file == nil {
-            curtainToDownload = curtain
-            showingDownloadConfirmation = true
         } else {
             curtainToDownload = curtain
             showingDownloadConfirmation = true
