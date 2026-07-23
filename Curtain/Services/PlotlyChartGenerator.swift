@@ -13,6 +13,11 @@ class PlotlyChartGenerator {
     /// selections are added. Static so it survives PlotlyWebView .id() recreation.
     private static var persistedColorMap: [String: String] = [:]
 
+    /// Reset persisted color map (used by tests to ensure clean state).
+    static func clearPersistedColorMap() {
+        persistedColorMap.removeAll()
+    }
+
     init(curtainDataService: CurtainDataService? = nil) {
         self.curtainDataService = curtainDataService
         self.volcanoPlotDataService = VolcanoPlotDataService()

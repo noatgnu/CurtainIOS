@@ -23,6 +23,22 @@ enum InputMode: String, CaseIterable {
     }
 }
 
+/// Filter for dataset types in cross-dataset search
+/// Search cannot mix PTM and TP datasets
+enum DatasetTypeFilter: String, CaseIterable {
+    case all
+    case tp
+    case ptm
+
+    var displayName: String {
+        switch self {
+        case .all: return "All"
+        case .tp: return "Total Proteome"
+        case .ptm: return "PTM"
+        }
+    }
+}
+
 enum ProteinSortOption: String, CaseIterable {
     case nameAsc
     case nameDesc

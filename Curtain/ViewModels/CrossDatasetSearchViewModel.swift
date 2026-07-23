@@ -29,6 +29,7 @@ class CrossDatasetSearchViewModel {
     var expandedCollectionIds: Set<Int> = []
     var selectionTab: Int = 0 // 0 = Sessions, 1 = Collections
     var showSearchInput: Bool = false
+    var datasetTypeFilter: DatasetTypeFilter = .all // Filter for TP or PTM datasets
 
     // MARK: - Results
     var searchResult: CrossDatasetSearchResult?
@@ -118,7 +119,7 @@ class CrossDatasetSearchViewModel {
     }
 
     func selectAllDatasets() {
-        selectedDatasetIds = Set(availableDatasets.map { $0.linkId })
+        selectedDatasetIds = Set(filteredDatasets.map { $0.linkId })
     }
 
     func deselectAllDatasets() {
@@ -130,6 +131,93 @@ class CrossDatasetSearchViewModel {
             selectedDatasetIds.remove(linkId)
         } else {
             selectedDatasetIds.insert(linkId)
+        }
+    }
+
+    // MARK: - Dataset Type Filtering
+
+    /// Returns datasets filtered by the current type filter
+    var filteredDatasets: [CurtainEntity] {
+        switch datasetTypeFilter {
+        case .all:
+            return availableDatasets
+        case .tp:
+            return availableDatasets.filter { $0.curtainType != "PTM" }
+        case .ptm:
+            return availableDatasets.filter { $0.curtainType == "PTM" }
+        }
+    }
+
+    /// Checks if selected datasets have mixed types (PTM and non-PTM)
+    var hasMixedDatasetTypes: Bool {
+        let selectedTypes = Set(availableDatasets
+            .filter { selectedDatasetIds.contains($0.linkId) }
+            .map { $0.curtainType == "PTM" ? "PTM" : "TP" })
+        return selectedTypes.count > 1
+    }
+
+    /// Returns the type of selected datasets (nil if mixed or none selected)
+    var selectedDatasetType: String? {
+        let selectedTypes = Set(availableDatasets
+            .filter { selectedDatasetIds.contains($0.linkId) }
+            .map { $0.curtainType == "PTM" ? "PTM" : "TP" })
+        return selectedTypes.count == 1 ? selectedTypes.first : nil
+    }
+
+    /// Whether selected datasets are PTM type
+    var isPTMSearch: Bool {
+        return selectedDatasetType == "PTM"
+    }
+
+    /// Returns collections filtered by the current type filter, with sessions also filtered
+    var filteredCollections: [CurtainCollectionEntity] {
+        switch datasetTypeFilter {
+        case .all:
+            return collections
+        case .tp:
+            return collections.compactMap { collection in
+                let filtered = collection.sessions.filter { $0.curtainType != "PTM" }
+                return filtered.isEmpty ? nil : collection
+            }
+        case .ptm:
+            return collections.compactMap { collection in
+                let filtered = collection.sessions.filter { $0.curtainType == "PTM" }
+                return filtered.isEmpty ? nil : collection
+            }
+        }
+    }
+
+    /// Returns sessions for a collection filtered by the current type filter
+    func filteredSessionsForCollection(_ collectionId: Int) -> [CollectionSessionEntity] {
+        let sessions = collectionSessions[collectionId] ?? collections.first(where: { $0.collectionId == collectionId })?.sessions ?? []
+        switch datasetTypeFilter {
+        case .all:
+            return sessions
+        case .tp:
+            return sessions.filter { $0.curtainType != "PTM" }
+        case .ptm:
+            return sessions.filter { $0.curtainType == "PTM" }
+        }
+    }
+
+    /// Sets the dataset type filter and updates selection
+    func setDatasetTypeFilter(_ filter: DatasetTypeFilter) {
+        datasetTypeFilter = filter
+        // Clear selection and select all of the filtered type
+        selectedDatasetIds.removeAll()
+        for dataset in filteredDatasets {
+            selectedDatasetIds.insert(dataset.linkId)
+        }
+    }
+
+    /// Select all datasets of a specific type
+    func selectAllDatasetsOfType(_ type: String) {
+        selectedDatasetIds.removeAll()
+        for dataset in availableDatasets {
+            if (type == "PTM" && dataset.curtainType == "PTM") ||
+               (type == "TP" && dataset.curtainType != "PTM") {
+                selectedDatasetIds.insert(dataset.linkId)
+            }
         }
     }
 
@@ -150,21 +238,21 @@ class CrossDatasetSearchViewModel {
     }
 
     func selectAllSessionsInCollection(_ collectionId: Int) {
-        let sessions = collectionSessions[collectionId] ?? collections.first(where: { $0.collectionId == collectionId })?.sessions ?? []
+        let sessions = filteredSessionsForCollection(collectionId)
         for session in sessions {
             selectedDatasetIds.insert(session.linkId)
         }
     }
 
     func deselectAllSessionsInCollection(_ collectionId: Int) {
-        let sessions = collectionSessions[collectionId] ?? collections.first(where: { $0.collectionId == collectionId })?.sessions ?? []
+        let sessions = filteredSessionsForCollection(collectionId)
         for session in sessions {
             selectedDatasetIds.remove(session.linkId)
         }
     }
 
     func selectedCountInCollection(_ collectionId: Int) -> Int {
-        let sessions = collectionSessions[collectionId] ?? collections.first(where: { $0.collectionId == collectionId })?.sessions ?? []
+        let sessions = filteredSessionsForCollection(collectionId)
         return sessions.filter { selectedDatasetIds.contains($0.linkId) }.count
     }
 
@@ -192,6 +280,12 @@ class CrossDatasetSearchViewModel {
         let linkIds = resolvedDatasetLinkIds
         guard !linkIds.isEmpty else {
             error = "No datasets selected"
+            return
+        }
+
+        // Validate that datasets are not mixed (PTM and TP cannot be searched together)
+        if hasMixedDatasetTypes {
+            error = "Cannot search across PTM and Total Proteome datasets together. Please select only one type."
             return
         }
 

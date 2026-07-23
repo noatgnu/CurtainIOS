@@ -16,6 +16,7 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
     var parent: PlotlyWebView
     let chartGenerator: PlotlyChartGenerator
     private var isHtmlLoaded = false
+    private var hasStartedLoading = false
     private let bridgeService: PlotlyBridgeService
     private let colorResolver: ProteinColorResolver
     private var webViewId: String = UUID().uuidString
@@ -26,6 +27,9 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
     var annotationCoordinates: [[String: Any]]?
 
     var renderedTraceNames: [String]?
+
+    /// Cached SVG string from the last render (for export without evaluateJavaScript)
+    var cachedSVGString: String?
 
 
     init(_ parent: PlotlyWebView) {
@@ -117,7 +121,12 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
     nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         Task { @MainActor in
+            guard self.hasStartedLoading else {
+                // Ignore didFinish for the initial about:blank page
+                return
+            }
             self.isHtmlLoaded = true
+            Self.sharedCoordinator = self
             self.parent.isLoading = false
             self.parent.error = nil
 
@@ -195,6 +204,11 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
             case "plotInfo":
                 self.handlePlotInfo(message.body)
 
+            case "svgCached":
+                if let svgString = message.body as? String {
+                    self.cachedSVGString = svgString
+                }
+
             default:
                 break
             }
@@ -235,6 +249,7 @@ class PlotlyCoordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
             }
 
             await MainActor.run {
+                self.hasStartedLoading = true
                 webView.loadHTMLString(html, baseURL: nil)
 
                 Task {

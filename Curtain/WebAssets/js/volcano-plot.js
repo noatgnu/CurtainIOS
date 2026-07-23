@@ -500,6 +500,23 @@ if (typeof Plotly === 'undefined') {
             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotReady) {
                 window.webkit.messageHandlers.plotReady.postMessage('ready');
             }
+            this.cacheSVG();
+        },
+
+        cacheSVG: function() {
+            var plotDiv = document.getElementById('plot');
+            if (!plotDiv || typeof Plotly === 'undefined') return;
+            var bgColor = window.getComputedStyle(document.body).backgroundColor || '#ffffff';
+            Plotly.toImage(plotDiv, {
+                format: 'svg',
+                setBackground: bgColor
+            }).then(function(dataURL) {
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.svgCached) {
+                    window.webkit.messageHandlers.svgCached.postMessage(dataURL);
+                }
+            }).catch(function(e) {
+                console.error('SVG cache failed:', e);
+            });
         },
 
         notifyPointClicked: function(pointData) {
@@ -518,6 +535,7 @@ if (typeof Plotly === 'undefined') {
             if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.plotUpdated) {
                 window.webkit.messageHandlers.plotUpdated.postMessage('updated');
             }
+            this.cacheSVG();
         },
 
         notifyError: function(message) {

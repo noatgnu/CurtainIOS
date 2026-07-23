@@ -15,7 +15,7 @@ struct SiteDetailSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             // Title
-            Text("\(site.residue)\(site.position)")
+            Text(String(site.residue) + "\(site.position)")
                 .font(.title2)
                 .fontWeight(.bold)
                 .padding(.top, 20)

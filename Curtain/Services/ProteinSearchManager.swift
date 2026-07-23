@@ -404,7 +404,7 @@ class ProteinSearchManager: ObservableObject {
                     }
                 } else if let selectionMap = selections as? [String: Any] {
                     for (selectionName, value) in selectionMap {
-                        let isSelected = (value as? Bool) ?? (value as? Int == 1) ?? ((value as? NSNumber)?.boolValue ?? false)
+                        let isSelected = (value as? Bool) ?? ((value as? Int == 1) || ((value as? NSNumber)?.boolValue ?? false))
                         if isSelected {
                             if newSelectionsMap[proteinId] == nil {
                                 newSelectionsMap[proteinId] = [:]

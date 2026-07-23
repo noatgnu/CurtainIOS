@@ -201,7 +201,6 @@ struct CurtainDetailsView: View {
         error = nil
 
         Task {
-            do {
                 // Determine file path and type
                 // 1. Check for SQLite file in CurtainData
                 let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -317,12 +316,6 @@ struct CurtainDetailsView: View {
                         self.isLoading = false
                     }
                 }
-            } catch {
-                await MainActor.run {
-                    self.error = "Failed to load data: \(error.localizedDescription)"
-                    self.isLoading = false
-                }
-            }
         }
     }
 
@@ -1000,6 +993,12 @@ struct ProteinDetailsTab: View {
     @State private var cachedFilteredProteins: [String] = []
     @State private var isFiltering = false
 
+    // Chart presentation state (managed at parent level to prevent sheet dismissal from List row recycling)
+    @State private var showingChart = false
+    @State private var chartProteinId: String = ""
+    @State private var chartProteinIndex: Int = 0
+    @State private var chartType: ProteinChartType = .barChart
+
     private var isPTM: Bool {
         data?.differentialForm.isPTM ?? false
     }
@@ -1066,14 +1065,28 @@ struct ProteinDetailsTab: View {
 
         cachedFilteredAccessionGroups = result
 
-        // Filter proteins - only by protein ID (fast)
+        // Filter proteins - only those with active selections
         var allProteins: [String] = []
         if let selectedMap = selectedMap {
-            allProteins = Array(selectedMap.keys)
+            allProteins = selectedMap.keys.filter { proteinId in
+                guard let selections = selectedMap[proteinId] else { return false }
+                // Only include proteins with at least one true selection
+                let hasActiveSelection = selections.values.contains(true)
+                if !hasActiveSelection { return false }
+                // Filter by selection group if not "All"
+                if selectedSelectionGroup != "All" {
+                    return selections[selectedSelectionGroup] == true
+                }
+                return true
+            }
 
             if !searchQuery.isEmpty {
                 allProteins = allProteins.filter { proteinId in
-                    proteinId.lowercased().contains(searchQuery)
+                    if proteinId.lowercased().contains(searchQuery) {
+                        return true
+                    }
+                    let geneName = curtainData.getPrimaryGeneNameForProtein(proteinId)
+                    return geneName?.lowercased().contains(searchQuery) ?? false
                 }
             }
         }
@@ -1310,32 +1323,19 @@ struct ProteinDetailsTab: View {
                             Section {
                                 // Expandable header (like Android's AccessionGroupHeader Card)
                                 HStack {
-                                    // Toggle expand/collapse
-                                    Button(action: {
-                                        withAnimation {
-                                            if expandedAccessions.contains(group.accession) {
-                                                expandedAccessions.remove(group.accession)
-                                            } else {
-                                                expandedAccessions.insert(group.accession)
-                                            }
-                                        }
-                                    }) {
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(group.geneName ?? group.accession)
-                                                    .font(.subheadline)
-                                                    .fontWeight(.semibold)
-                                                    .foregroundColor(.primary)
-                                                if group.geneName != nil {
-                                                    Text(group.accession)
-                                                        .font(.caption)
-                                                        .foregroundColor(.secondary)
-                                                }
-                                            }
-                                            Spacer()
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(group.geneName ?? group.accession)
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.primary)
+                                        if group.geneName != nil {
+                                            Text(group.accession)
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
                                         }
                                     }
-                                    .buttonStyle(PlainButtonStyle())
+
+                                    Spacer()
 
                                     // Show selected/total count
                                     Text("\(group.selectedCount)/\(group.sites.count)")
@@ -1365,26 +1365,25 @@ struct ProteinDetailsTab: View {
                                     .buttonStyle(PlainButtonStyle())
 
                                     // Expand/collapse indicator
-                                    Button(action: {
-                                        withAnimation {
-                                            if expandedAccessions.contains(group.accession) {
-                                                expandedAccessions.remove(group.accession)
-                                            } else {
-                                                expandedAccessions.insert(group.accession)
-                                            }
-                                        }
-                                    }) {
-                                        Image(systemName: expandedAccessions.contains(group.accession) ? "chevron.down" : "chevron.right")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                            .frame(width: 24, height: 24)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
+                                    Image(systemName: expandedAccessions.contains(group.accession) ? "chevron.down" : "chevron.right")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 24, height: 24)
                                 }
                                 .padding(.vertical, 8)
                                 .padding(.horizontal, 12)
                                 .background(Color(UIColor.secondarySystemBackground))
                                 .cornerRadius(8)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    withAnimation {
+                                        if expandedAccessions.contains(group.accession) {
+                                            expandedAccessions.remove(group.accession)
+                                        } else {
+                                            expandedAccessions.insert(group.accession)
+                                        }
+                                    }
+                                }
 
                                 // Show sites when expanded
                                 if expandedAccessions.contains(group.accession) {
@@ -1395,6 +1394,11 @@ struct ProteinDetailsTab: View {
                                             curtainData: $data,
                                             onTap: {
                                                 // Handle site tap - could show chart or details
+                                            },
+                                            onShowChart: { siteId in
+                                                chartProteinId = siteId
+                                                chartProteinIndex = filteredProteins.firstIndex(of: siteId) ?? 0
+                                                showingChart = true
                                             }
                                         )
                                         .padding(.leading, 16)
@@ -1414,7 +1418,12 @@ struct ProteinDetailsTab: View {
                                 selectedSelectionGroup: selectedSelectionGroup,
                                 proteinList: filteredProteins,
                                 proteinIndex: index,
-                                ptmSiteData: ptmSiteData[proteinId]
+                                ptmSiteData: ptmSiteData[proteinId],
+                                onShowChart: { id, idx in
+                                    chartProteinId = id
+                                    chartProteinIndex = idx
+                                    showingChart = true
+                                }
                             )
                         }
                     }
@@ -1428,23 +1437,45 @@ struct ProteinDetailsTab: View {
                 }
                 // Load PTM site data from SQLite
                 loadPTMSiteData()
+                // Initial filter for non-PTM data
+                performFiltering()
             }
             .onChange(of: data?.linkId) { oldValue, newValue in
                 // Clear cache and repopulate when data changes (using linkId as identifier)
                 proteinDisplayNameCache.removeAll()
                 ptmSiteData.removeAll()
                 accessionGroups.removeAll()
+                cachedFilteredProteins.removeAll()
+                cachedFilteredAccessionGroups.removeAll()
                 if let curtainData = data {
                     populateDisplayNameCache(for: curtainData)
                 }
                 // Reload PTM data
                 loadPTMSiteData()
+                // Re-filter for non-PTM data
+                performFiltering()
             }
             .onChange(of: selectedSelectionGroup) { oldValue, newValue in
                 // Clear cache and repopulate when selection group changes
                 proteinDisplayNameCache.removeAll()
                 if let curtainData = data {
                     populateDisplayNameCache(for: curtainData)
+                }
+                performFiltering()
+            }
+            .sheet(isPresented: $showingChart) {
+                if data != nil {
+                    ProteinChartView(
+                        proteinId: chartProteinId,
+                        curtainData: Binding(
+                            get: { data! },
+                            set: { newValue in data = newValue }
+                        ),
+                        chartType: $chartType,
+                        isPresented: $showingChart,
+                        proteinList: filteredProteins,
+                        initialIndex: chartProteinIndex
+                    )
                 }
             }
     }
@@ -2400,9 +2431,7 @@ struct PTMSiteRowView: View {
     let selectionBadges: [(name: String, color: Color)]
     @Binding var curtainData: CurtainData?
     var onTap: (() -> Void)?
-
-    @State private var showingChart = false
-    @State private var chartType: ProteinChartType = .barChart
+    var onShowChart: ((String) -> Void)? = nil
 
     private var displayName: String {
         let position = site.position ?? ""
@@ -2511,7 +2540,7 @@ struct PTMSiteRowView: View {
 
             // Chart button
             Button(action: {
-                showingChart = true
+                onShowChart?(site.primaryId)
             }) {
                 Image(systemName: "chart.bar.fill")
                     .font(.caption)
@@ -2528,23 +2557,6 @@ struct PTMSiteRowView: View {
         .onTapGesture {
             onTap?()
         }
-        .sheet(isPresented: $showingChart) {
-            if let curtainData = curtainData {
-                ProteinChartView(
-                    proteinId: site.primaryId,
-                    curtainData: Binding(
-                        get: { curtainData },
-                        set: { newValue in
-                            self.curtainData = newValue
-                        }
-                    ),
-                    chartType: $chartType,
-                    isPresented: $showingChart,
-                    proteinList: [site.primaryId],
-                    initialIndex: 0
-                )
-            }
-        }
     }
 }
 
@@ -2555,10 +2567,8 @@ struct ProteinDetailRowView: View {
     let proteinList: [String]
     let proteinIndex: Int
     var ptmSiteData: ProcessedProteomicsData? = nil
+    var onShowChart: ((String, Int) -> Void)? = nil
 
-    // Add chart presentation state
-    @State private var showingChart = false
-    @State private var chartType: ProteinChartType = .barChart
     @State private var showingPTMViewer = false
 
     private var isPTM: Bool {
@@ -2607,7 +2617,7 @@ struct ProteinDetailRowView: View {
     }
 
     private var displayName: String {
-        guard let curtainData = curtainData else {
+        guard curtainData != nil else {
             return proteinId
         }
 
@@ -2694,7 +2704,7 @@ struct ProteinDetailRowView: View {
     // MARK: - Annotation Management
     
     private func generateAnnotationTitle(for proteinId: String) -> String {
-        guard let curtainData = curtainData else { return proteinId }
+        guard curtainData != nil else { return proteinId }
 
         // For PTM data: use "GeneName Position" or "Accession Position"
         if isPTM {
@@ -3005,7 +3015,7 @@ struct ProteinDetailRowView: View {
             VStack(spacing: 8) {
                 // Chart button
                 Button(action: {
-                    showingChart = true
+                    onShowChart?(proteinId, proteinIndex)
                 }) {
                     Image(systemName: "chart.bar.fill")
                         .font(.caption)
@@ -3016,7 +3026,7 @@ struct ProteinDetailRowView: View {
                 }
                 .buttonStyle(PlainButtonStyle())
                 .accessibilityIdentifier("proteinChartButton_\(proteinId)")
-                
+
                 // Annotation toggle button
                 Button(action: {
                     if hasAnnotation(for: proteinId) {
@@ -3057,7 +3067,7 @@ struct ProteinDetailRowView: View {
         .sheet(isPresented: $showingPTMViewer) {
             if let curtainData = curtainData, let acc = accession {
                 PTMViewerScreen(
-                    linkId: curtainData.linkId ?? "",
+                    linkId: curtainData.linkId,
                     accession: acc,
                     pCutoff: curtainData.settings.pCutoff,
                     fcCutoff: curtainData.settings.log2FCCutoff,
@@ -3065,23 +3075,6 @@ struct ProteinDetailRowView: View {
                     variantCorrection: curtainData.settings.variantCorrection.mapValues { $0.value },
                     customSequences: curtainData.settings.customSequences.mapValues { $0.value },
                     onDismiss: { showingPTMViewer = false }
-                )
-            }
-        }
-        .sheet(isPresented: $showingChart) {
-            if curtainData != nil {
-                ProteinChartView(
-                    proteinId: proteinId,
-                    curtainData: Binding(
-                        get: { curtainData! },
-                        set: { newValue in 
-                            curtainData = newValue 
-                        }
-                    ),
-                    chartType: $chartType,
-                    isPresented: $showingChart,
-                    proteinList: proteinList,
-                    initialIndex: proteinIndex
                 )
             }
         }

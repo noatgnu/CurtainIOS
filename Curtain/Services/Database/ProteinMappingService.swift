@@ -58,7 +58,10 @@ class ProteinMappingService {
             }
 
             // Check if UniProt data is available and mappings might need rebuild
-            let hasUniprotData = (curtainData.extraData?.uniprot?.db as? [String: Any])?.count ?? 0 > 0
+            let uniprotDbCount = try db.read { database in
+                try UniProtDBEntry.fetchCount(database)
+            }
+            let hasUniprotData = uniprotDbCount > 0 || ((curtainData.extraData?.uniprot?.db as? [String: Any])?.count ?? 0) > 0
 
             if mappingsExist {
                 print("[ProteinMappingService] Mappings exist for \(linkId), geneNameMappings: \(geneCount), idMappings: \(idCount)")
@@ -177,8 +180,24 @@ class ProteinMappingService {
         // Get all processed data
         let processedData = try proteomicsDataService.getAllProcessedData(linkId: linkId)
 
-        // Debug: Check UniProt data availability
-        let uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any]
+        // Load UniProt data from database (preferred) or fall back to in-memory CurtainData
+        var uniprotDB: [String: Any]? = nil
+        let storedUniProtEntries = try db.read { database in
+            try UniProtDBEntry.fetchAll(database)
+        }
+        if !storedUniProtEntries.isEmpty {
+            var dbDict: [String: Any] = [:]
+            for entry in storedUniProtEntries {
+                if let data = entry.dataJson.data(using: .utf8),
+                   let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    dbDict[entry.accession] = parsed
+                }
+            }
+            uniprotDB = dbDict
+        } else {
+            uniprotDB = curtainData.extraData?.uniprot?.db as? [String: Any]
+        }
+
         let uniprotCount = uniprotDB?.count ?? 0
         let isPTM = curtainData.differentialForm.isPTM
         print("[ProteinMappingService] Building mappings for \(processedData.count) proteins, UniProt entries: \(uniprotCount), isPTM: \(isPTM)")

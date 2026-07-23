@@ -9,17 +9,32 @@ import SwiftUI
 
 struct CollectionsTabView: View {
     let viewModel: CurtainViewModel
+    var curtainTypeFilter: String = "all"
     let onSessionTap: (CollectionSessionEntity, CurtainCollectionEntity) -> Void
     var onEditSession: ((CurtainEntity) -> Void)?
     var onTogglePinSession: ((CurtainEntity) -> Void)?
     var onRedownloadSession: ((CurtainEntity) -> Void)?
     var onDeleteSessionData: ((CurtainEntity) -> Void)?
 
+    private var filteredCollections: [CurtainCollectionEntity] {
+        guard curtainTypeFilter != "all" else { return viewModel.collections }
+        return viewModel.collections.compactMap { collection in
+            let hasMatchingSessions = collection.sessions.contains { session in
+                if curtainTypeFilter == "PTM" {
+                    return session.curtainType == "PTM"
+                } else {
+                    return session.curtainType != "PTM"
+                }
+            }
+            return hasMatchingSessions ? collection : nil
+        }
+    }
+
     var body: some View {
         if viewModel.isLoadingCollections && viewModel.collections.isEmpty {
             ProgressView("Loading collections...")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if viewModel.collections.isEmpty {
+        } else if filteredCollections.isEmpty {
             collectionsEmptyState
         } else {
             collectionsList
@@ -61,10 +76,11 @@ struct CollectionsTabView: View {
     private var collectionsList: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                ForEach(viewModel.collections, id: \.collectionId) { collection in
+                ForEach(filteredCollections, id: \.collectionId) { collection in
                     CollectionCardView(
                         collection: collection,
                         viewModel: viewModel,
+                        curtainTypeFilter: curtainTypeFilter,
                         onSessionTap: onSessionTap,
                         onEditSession: onEditSession,
                         onTogglePinSession: onTogglePinSession,
@@ -83,6 +99,7 @@ struct CollectionsTabView: View {
 struct CollectionCardView: View {
     let collection: CurtainCollectionEntity
     let viewModel: CurtainViewModel
+    var curtainTypeFilter: String = "all"
     let onSessionTap: (CollectionSessionEntity, CurtainCollectionEntity) -> Void
     var onEditSession: ((CurtainEntity) -> Void)?
     var onTogglePinSession: ((CurtainEntity) -> Void)?
@@ -245,9 +262,21 @@ struct CollectionCardView: View {
         .padding(.vertical, 8)
     }
 
+    private var filteredSessions: [CollectionSessionEntity] {
+        let sessions = viewModel.collectionSessions[collection.collectionId] ?? collection.sessions
+        guard curtainTypeFilter != "all" else { return sessions }
+        return sessions.filter { session in
+            if curtainTypeFilter == "PTM" {
+                return session.curtainType == "PTM"
+            } else {
+                return session.curtainType != "PTM"
+            }
+        }
+    }
+
     private var sessionsContent: some View {
         VStack(spacing: 0) {
-            let sessions = viewModel.collectionSessions[collection.collectionId] ?? collection.sessions
+            let sessions = filteredSessions
             ForEach(sessions, id: \.linkId) { session in
                 CollectionSessionRowView(
                     session: session,

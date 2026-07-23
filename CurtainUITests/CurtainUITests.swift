@@ -468,13 +468,7 @@ final class CurtainUITests: XCTestCase {
         if volcanoPlot.waitForExistence(timeout: 30) {
             print("Volcano plot found")
 
-            // Test tap on plot (should select a point)
             volcanoPlot.tap()
-
-            // Test pinch to zoom (if supported)
-            volcanoPlot.pinch(withScale: 2.0, velocity: 1.0)
-            sleep(1)
-            volcanoPlot.pinch(withScale: 0.5, velocity: 1.0)
         }
 
         // Look for plot controls

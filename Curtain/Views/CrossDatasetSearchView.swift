@@ -154,6 +154,19 @@ struct CrossDatasetSearchView: View {
 
     private var datasetSelectionContent: some View {
         VStack(spacing: 0) {
+            // Dataset type filter (PTM vs TP - cannot be mixed)
+            Picker("Dataset Type", selection: $viewModel.datasetTypeFilter) {
+                ForEach(DatasetTypeFilter.allCases, id: \.self) { filter in
+                    Text(filter.displayName).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+            .padding(.top, 8)
+            .onChange(of: viewModel.datasetTypeFilter) { _, newValue in
+                viewModel.setDatasetTypeFilter(newValue)
+            }
+
             Picker("View", selection: $viewModel.selectionTab) {
                 Text("Sessions").tag(0)
                 Text("Collections").tag(1)
@@ -174,6 +187,19 @@ struct CrossDatasetSearchView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+
+            // Warning if mixed dataset types selected
+            if viewModel.hasMixedDatasetTypes {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                    Text("Cannot mix PTM and TP datasets")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
 
             if viewModel.selectionTab == 0 {
                 sessionsContent
@@ -203,7 +229,7 @@ struct CrossDatasetSearchView: View {
 
     private var sessionsContent: some View {
         VStack(spacing: 0) {
-            if viewModel.availableDatasets.isEmpty {
+            if viewModel.filteredDatasets.isEmpty {
                 VStack(spacing: 24) {
                     Image(systemName: "tray")
                         .font(.system(size: 64))
@@ -222,7 +248,7 @@ struct CrossDatasetSearchView: View {
                 .padding()
             } else {
                 List {
-                    ForEach(viewModel.availableDatasets, id: \.linkId) { dataset in
+                    ForEach(viewModel.filteredDatasets, id: \.linkId) { dataset in
                         SelectableDatasetRow(
                             dataset: dataset,
                             isSelected: viewModel.selectedDatasetIds.contains(dataset.linkId),
@@ -240,7 +266,7 @@ struct CrossDatasetSearchView: View {
 
     private var collectionsContent: some View {
         VStack(spacing: 0) {
-            if viewModel.collections.isEmpty {
+            if viewModel.filteredCollections.isEmpty {
                 VStack(spacing: 24) {
                     Image(systemName: "folder")
                         .font(.system(size: 64))
@@ -260,7 +286,7 @@ struct CrossDatasetSearchView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(viewModel.collections, id: \.collectionId) { collection in
+                        ForEach(viewModel.filteredCollections, id: \.collectionId) { collection in
                             SelectableCollectionCard(
                                 collection: collection,
                                 viewModel: viewModel
@@ -696,7 +722,7 @@ struct SelectableCollectionCard: View {
 
     private var sessionsContent: some View {
         VStack(spacing: 0) {
-            let sessions = viewModel.collectionSessions[collection.collectionId] ?? collection.sessions
+            let sessions = viewModel.filteredSessionsForCollection(collection.collectionId)
             ForEach(sessions, id: \.linkId) { session in
                 SelectableSessionRow(
                     session: session,

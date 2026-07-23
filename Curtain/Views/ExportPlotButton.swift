@@ -6,49 +6,61 @@
 //
 
 import SwiftUI
+import WebKit
 
 // MARK: - Simple Export Plot Button
 
 struct ExportPlotButton: View {
     var useToolbarStyle: Bool = false
     @ObservedObject private var exportService = PlotExportService.shared
+    @State private var showingOptions = false
     @State private var showingShareSheet = false
+    @State private var showingFileSaver = false
     @State private var showingError = false
     @State private var errorMessage = ""
 
     var body: some View {
-        Button(action: {
-            exportPlot()
-        }) {
-            if useToolbarStyle {
-                Image(systemName: exportService.isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
-                    .font(.body)
-                    .foregroundColor(exportService.isExporting ? .gray : .accentColor)
-            } else {
-                Image(systemName: exportService.isExporting ? "arrow.up.circle.fill" : "square.and.arrow.up")
-                    .font(.title2)
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-                    .background(exportService.isExporting ? Color.gray : Color.purple)
-                    .clipShape(Circle())
-                    .shadow(radius: 4)
+        HStack(spacing: 4) {
+            if showingOptions {
+                exportOptionsButtons
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
-        }
-        .buttonStyle(.plain)
-        .disabled(exportService.isExporting)
-        .overlay(alignment: .topTrailing) {
-            if exportService.isExporting {
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .background(Circle().fill(Color.white.opacity(0.8)))
-                    .offset(x: 8, y: -8)
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showingOptions.toggle()
+                }
+            } label: {
+                if useToolbarStyle {
+                    Image(systemName: showingOptions ? "xmark.circle" : "square.and.arrow.up")
+                        .font(.body)
+                        .foregroundColor(exportService.isExporting ? .gray : .accentColor)
+                } else {
+                    Image(systemName: showingOptions ? "xmark.circle.fill" : "square.and.arrow.up")
+                        .font(.title2)
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(showingOptions ? Color.gray : Color.purple)
+                        .clipShape(Circle())
+                        .shadow(radius: 4)
+                }
             }
+            .disabled(exportService.isExporting)
         }
         .sheet(isPresented: $showingShareSheet, onDismiss: {
             exportService.exportedShareItems = nil
         }) {
             if let items = exportService.exportedShareItems {
                 ShareSheet(activityItems: items)
+            }
+        }
+        .sheet(isPresented: $showingFileSaver) {
+            if let url = exportService.exportedFileURL {
+                DocumentExportView(fileURL: url) {
+                    showingFileSaver = false
+                    try? FileManager.default.removeItem(at: url)
+                    exportService.exportedFileURL = nil
+                }
             }
         }
         .alert("Export Failed", isPresented: $showingError) {
@@ -61,6 +73,11 @@ struct ExportPlotButton: View {
                 showingShareSheet = true
             }
         }
+        .onReceive(exportService.$exportedFileURL) { url in
+            if url != nil {
+                showingFileSaver = true
+            }
+        }
         .onReceive(exportService.$exportError) { error in
             if let error = error {
                 errorMessage = error
@@ -69,16 +86,55 @@ struct ExportPlotButton: View {
         }
     }
 
-    private func exportPlot() {
+    @ViewBuilder
+    private var exportOptionsButtons: some View {
+        if useToolbarStyle {
+            Button("PNG") { triggerExport(format: "png", action: .saveToFile) }
+                .font(.caption)
+            Button("SVG") { triggerExport(format: "svg", action: .saveToFile) }
+                .font(.caption)
+            Button {
+                triggerExport(format: "png", action: .share)
+            } label: {
+                Image(systemName: "square.and.arrow.up.on.square")
+                    .font(.caption)
+            }
+        } else {
+            Button("PNG") { triggerExport(format: "png", action: .saveToFile) }
+                .buttonStyle(.bordered)
+            Button("SVG") { triggerExport(format: "svg", action: .saveToFile) }
+                .buttonStyle(.bordered)
+            Button {
+                triggerExport(format: "png", action: .share)
+            } label: {
+                Image(systemName: "square.and.arrow.up.on.square")
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    private func triggerExport(format: String, action: PlotExportService.ExportAction) {
         guard PlotlyCoordinator.getCurrentWebView() != nil else {
             errorMessage = "No plot available to export"
             showingError = true
             return
         }
 
-        // Use Plotly's native PNG export
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showingOptions = false
+        }
+
+        exportService.pendingAction = action
         let dimensions = PlotExportOptions.ExportQuality.high.dimensions
-        PlotlyWebView.exportCurrentPlotAsPNG(width: dimensions.width, height: dimensions.height)
+
+        switch format {
+        case "png":
+            PlotlyWebView.exportCurrentPlotAsPNG(width: dimensions.width, height: dimensions.height)
+        case "svg":
+            PlotlyWebView.exportCurrentPlotAsSVG(width: dimensions.width, height: dimensions.height)
+        default:
+            break
+        }
     }
 }
 

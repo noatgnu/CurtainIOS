@@ -35,6 +35,7 @@ enum AppTab: String, CaseIterable {
 struct ContentView: View {
     @State private var selectedTab: AppTab = .datasets
     @State private var crossDatasetViewModel = CrossDatasetSearchViewModel()
+    @AppStorage("appearanceMode") private var appearanceMode: String = "auto"
 
     var body: some View {
         if UIDevice.current.userInterfaceIdiom == .pad || UIDevice.current.userInterfaceIdiom == .mac {
@@ -47,12 +48,21 @@ struct ContentView: View {
     private var compactLayout: some View {
         TabView(selection: $selectedTab) {
             ForEach(AppTab.allCases, id: \.self) { tab in
-                tabContent(for: tab)
-                    .tabItem {
-                        Image(systemName: tab.icon)
-                        Text(tab.title)
-                    }
-                    .tag(tab)
+                NavigationStack {
+                    tabContent(for: tab)
+                        .navigationTitle(tab.title)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarTrailing) {
+                                AppearanceToggleButton(appearanceMode: $appearanceMode)
+                            }
+                        }
+                }
+                .tabItem {
+                    Image(systemName: tab.icon)
+                    Text(tab.title)
+                }
+                .tag(tab)
             }
         }
     }
@@ -61,12 +71,16 @@ struct ContentView: View {
         HStack(spacing: 0) {
             CompactSideBar(selectedTab: $selectedTab)
             VStack(alignment: .leading, spacing: 0) {
-                Text(selectedTab.title)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
+                HStack {
+                    Text(selectedTab.title)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Spacer()
+                    AppearanceToggleButton(appearanceMode: $appearanceMode)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
 
                 tabContent(for: selectedTab)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -152,6 +166,62 @@ struct CompactSideBar: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Appearance Toggle
+
+struct AppearanceToggleButton: View {
+    @Binding var appearanceMode: String
+
+    private var icon: String {
+        switch appearanceMode {
+        case "light": return "sun.max.fill"
+        case "dark": return "moon.fill"
+        default: return "circle.lefthalf.filled"
+        }
+    }
+
+    private var label: String {
+        switch appearanceMode {
+        case "light": return "Light"
+        case "dark": return "Dark"
+        default: return "Auto"
+        }
+    }
+
+    var body: some View {
+        Menu {
+            Button {
+                appearanceMode = "auto"
+            } label: {
+                Label("Auto", systemImage: "circle.lefthalf.filled")
+            }
+            Button {
+                appearanceMode = "light"
+            } label: {
+                Label("Light", systemImage: "sun.max.fill")
+            }
+            Button {
+                appearanceMode = "dark"
+            } label: {
+                Label("Dark", systemImage: "moon.fill")
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                Text(label)
+                    .font(.caption)
+                    .fontWeight(.medium)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(.systemGray6))
+            .cornerRadius(8)
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 }
 

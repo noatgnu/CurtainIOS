@@ -101,7 +101,7 @@ struct PTMSiteRow: View {
     var body: some View {
         HStack(spacing: 12) {
             // Position and residue
-            Text("\(site.residue)\(site.position)")
+            Text(String(site.residue) + "\(site.position)")
                 .font(.system(.body, design: .monospaced))
                 .fontWeight(.bold)
                 .frame(width: 60, alignment: .leading)
